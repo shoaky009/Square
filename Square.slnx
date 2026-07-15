@@ -2,6 +2,7 @@
   <Project Path="src/Square.Markup/Square.Markup.csproj" />
   <Project Path="src/Square.SourceGenerator/Square.SourceGenerator.csproj" />
   <Project Path="src/Square.Runtime/Square.Runtime.csproj" />
+  <Project Path="src/Square.Router/Square.Router.csproj" />
   <Project Path="src/Square.UI/Square.UI.csproj" />
   <Project Path="src/Square.Controls/Square.Controls.csproj" />
   <Project Path="src/Square.CSS/Square.CSS.csproj" />

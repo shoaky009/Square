@@ -110,3 +110,18 @@ public class SizeTests
         Assert.True(Size.Empty.IsEmpty);
     }
 }
+
+public class TextLayoutTests
+{
+    [Fact]
+    public void MeasuresHalfWidthAndFullWidthCharacters()
+    {
+        var font = new Font("Segoe UI", 20);
+
+        Assert.Equal(20, new TextLayout("AB", font).Measure().Width);
+        Assert.Equal(40, new TextLayout("ＡＢ", font).Measure().Width);
+        Assert.Equal(20, new TextLayout("ｱｲ", font).Measure().Width);
+        Assert.Equal(40, new TextLayout("アイ", font).Measure().Width);
+        Assert.Equal(30, new TextLayout("A中", font).Measure().Width);
+    }
+}

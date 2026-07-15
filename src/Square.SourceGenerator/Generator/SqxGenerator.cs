@@ -14,10 +14,12 @@ public sealed class SqxGenerator : IIncrementalGenerator
         var sqxFiles = context.AdditionalTextsProvider
             .Where(f => f.Path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase));
 
-        var parsed = sqxFiles.Select((file, ct) =>
+        var parsed = sqxFiles.Combine(context.AnalyzerConfigOptionsProvider).Select((pair, ct) =>
         {
+            var file = pair.Left;
             var sourceText = file.GetText(ct);
-            return new SqxInput(file.Path, sourceText?.ToString() ?? "");
+            pair.Right.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+            return new SqxInput(file.Path, sourceText?.ToString() ?? "", rootNamespace ?? "Square.Sample");
         });
 
         context.RegisterSourceOutput(parsed, (spc, input) =>
@@ -26,7 +28,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
             try
             {
                 var doc = SqxParser.Parse(input.Content, input.Path);
-                var emitter = new ComponentEmitter(doc);
+                var emitter = new ComponentEmitter(doc, input.Namespace);
                 code = emitter.Emit();
             }
             catch (Exception ex)
@@ -38,15 +40,32 @@ public sealed class SqxGenerator : IIncrementalGenerator
                     ex.Message));
             }
 
-            var hintName = Path.GetFileNameWithoutExtension(input.Path) + "_" + Math.Abs(input.Path.GetHashCode()) + ".g.cs";
+            var hintName = Path.GetFileNameWithoutExtension(input.Path) + "_" + StableHash(input.Path) + ".g.cs";
             spc.AddSource(hintName, SourceText.From(code, Encoding.UTF8));
         });
+    }
+
+    private static uint StableHash(string value)
+    {
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var c in value)
+                hash = (hash ^ c) * 16777619u;
+            return hash;
+        }
     }
 
     private sealed class SqxInput
     {
         public string Path { get; }
         public string Content { get; }
-        public SqxInput(string path, string content) { Path = path; Content = content; }
+        public string Namespace { get; }
+        public SqxInput(string path, string content, string namespaceName)
+        {
+            Path = path;
+            Content = content;
+            Namespace = namespaceName;
+        }
     }
 }

@@ -59,9 +59,10 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 |---|---|---|
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props 解析、ref 字段生成、绑定/事件编译、结构原语特判、诊断映射 |
-| `Square.Runtime` | `Application`、组件生命周期、调度 | 消息循环调度；组件树挂载 |
+| `Square.Runtime` | `Application`、组件生命周期、调度、信号 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递 |
 | `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码）；元素操作 API（Style/ClassList/Children/Event） |
 | `Square.Controls` | 控件 + 结构原语 | 控件 = 视觉 + 行为 + 默认样式；结构原语由生成器编译 |
+| `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
 | `Square.Layout` | CSS 布局引擎 | 高 DPI 物理像素对齐；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
@@ -138,6 +139,34 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 | `OnArrange` | 布局排列 |
 | `OnStart` / `OnExit` | 应用级 |
 
+### 4.6 组件内容与插槽
+
+- 调用处 children 编译为调用方作用域内的 `RenderFragment`。
+- `<Slot>` 是生成器结构节点，不产生额外布局容器。
+- 默认、具名与 fallback 内容由 `SlotOutlet` 管理为连续子节点区域。
+- 嵌套路由布局复用默认 Slot；`Outlet` 只是路由语义别名。
+
+### 4.7 路由
+
+`Square.Router` 位于 UI/Controls 之上、Platform 之下无依赖。桌面默认使用 `MemoryNavigationHistory`，未来平台可提供 URL/系统导航适配器。路由页面类型由 Source Generator 生成静态构造委托，满足 NativeAOT 的零反射约束。
+
+路由切换通过 `ChildrenCollection` 替换当前分支，因此沿用视觉树生命周期和布局失效机制。静态段、参数段、通配符的匹配顺序确定，不进行运行时路由程序集发现。
+
+### 4.8 Tabs 组合组件
+
+`Tabs` 不引入新的结构原语。调用方将页签按钮投影到 `tabs` 命名 Slot，将对应页面投影到默认 Slot；组件按索引维护按钮选中状态和页面可见性。页签与页面一一对应，Slot 不产生额外布局节点。
+
+### 4.9 跨组件信号与线程切换
+
+- `ObservableValue<T>` 继续承担组件局部属性绑定，不保证跨线程访问。
+- `Signal<T>` 是线程安全的状态信号；发布时对订阅者使用快照，允许订阅者在回调中取消订阅。
+- `SignalHub` 按名称共享强类型信号。相同名称只能绑定一种 `T`，类型冲突立即抛错。
+- 未指定 `Dispatcher` 的订阅在发布线程同步执行；绑定 `Dispatcher` 后，后台发布会排队到该 Dispatcher 的所属线程。
+- 组件在 `OnAttached` 订阅，在 `OnDetached` 释放订阅，避免卸载组件继续接收消息。
+- Dispatcher 队列由平台消息循环在 UI 线程排空；后台线程不得直接修改 Visual Tree。
+
+完整用法与生命周期示例见 `Composition-and-Signals.md`。
+
 ---
 
 ## 5. 元素操作管线
@@ -199,6 +228,7 @@ BACKEND_SOFTWARE / SKIA / BLEND2D / CAIRO
 | 决策 | 选择 | 理由 |
 |---|---|---|
 | 绑定后端 | `ObservableValue<T>` 委托订阅 | AOT 安全、零反射、体积小 |
+| 跨组件通信 | `Signal<T>` + `SignalHub` + `Dispatcher` | 强类型、线程安全、显式 UI 线程切换 |
 | 流程控制 | 编译期命令式控制流，无 VDOM | 与 Retained Rendering 同构 |
 | Props | `[Prop]` 特性 + `ObservableValue<T>` | C# 习惯、类型安全、编译期校验 |
 | 元素操作 | ref + 强类型 API + 仲裁规则 | 声明式为主、命令式兜底 |

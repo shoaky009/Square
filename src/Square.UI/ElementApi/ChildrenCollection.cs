@@ -1,5 +1,7 @@
 namespace Square.UI.ElementApi;
 
+using Square.Runtime;
+
 public sealed class ChildrenCollection : IList<Visual>
 {
     private readonly Visual _owner;
@@ -23,6 +25,7 @@ public sealed class ChildrenCollection : IList<Visual>
         _list.Add(item);
         item.Parent = _owner;
         _owner.OnChildAdded(item);
+        AttachIfNeeded(item);
         _owner.InvalidateLayout();
     }
 
@@ -38,6 +41,7 @@ public sealed class ChildrenCollection : IList<Visual>
         _list.Insert(index, item);
         item.Parent = _owner;
         _owner.OnChildAdded(item);
+        AttachIfNeeded(item);
         _owner.InvalidateLayout();
     }
 
@@ -59,6 +63,7 @@ public sealed class ChildrenCollection : IList<Visual>
     public void RemoveAt(int index)
     {
         var item = _list[index];
+        DetachIfNeeded(item);
         _list.RemoveAt(index);
         item.Parent = null;
         _owner.OnChildRemoved(item);
@@ -69,6 +74,7 @@ public sealed class ChildrenCollection : IList<Visual>
     {
         foreach (var item in _list)
         {
+            DetachIfNeeded(item);
             item.Parent = null;
             _owner.OnChildRemoved(item);
         }
@@ -81,4 +87,16 @@ public sealed class ChildrenCollection : IList<Visual>
     public void CopyTo(Visual[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
     public IEnumerator<Visual> GetEnumerator() => _list.GetEnumerator();
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => _list.GetEnumerator();
+
+    private void AttachIfNeeded(Visual item)
+    {
+        if (_owner.IsAttached) ((IComponentLifecycle)item).OnAttached();
+        if (_owner.IsLoaded) ((IComponentLifecycle)item).OnLoaded();
+    }
+
+    private void DetachIfNeeded(Visual item)
+    {
+        if (item.IsLoaded) ((IComponentLifecycle)item).OnUnloaded();
+        if (item.IsAttached) ((IComponentLifecycle)item).OnDetached();
+    }
 }

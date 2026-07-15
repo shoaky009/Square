@@ -63,7 +63,9 @@ internal sealed class TemplateParser
         if (isSelfClosing)
         {
             Advance();
-            return new SqxElement(tagName, attributes, [], openTag.Line, openTag.Column);
+            var selfClosingElement = new SqxElement(tagName, attributes, [], openTag.Line, openTag.Column);
+            selfClosingElement.Kind = GetElementKind(tagName);
+            return selfClosingElement;
         }
 
         Expect(SqxTokenType.CloseTag);
@@ -120,6 +122,9 @@ internal sealed class TemplateParser
         "For" => SqxNodeKind.For,
         "Switch" => SqxNodeKind.Switch,
         "Match" => SqxNodeKind.Match,
+        "Slot" or "Outlet" => SqxNodeKind.Slot,
+        "Router" => SqxNodeKind.Router,
+        "Route" => SqxNodeKind.Route,
         _ => SqxNodeKind.Element
     };
 

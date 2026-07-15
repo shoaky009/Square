@@ -1,0 +1,17 @@
+<sqx>
+  <template>
+    <SlotCard>
+      <Text slot="header" class="route-title" text="Router + named/default slots" />
+      <View class="route-links">
+        <Link to="/">Home</Link>
+        <Link to="/users/42?tab=profile">User 42</Link>
+      </View>
+      <Slot />
+    </SlotCard>
+  </template>
+  <style>
+    .route-title { color: #202124; font-size: 15px; }
+    .route-links { display: flex; flex-direction: row; gap: 6px; height: 30px; }
+    Link { background: #e8f1fb; color: #175cd3; }
+  </style>
+</sqx>

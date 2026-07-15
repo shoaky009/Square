@@ -74,6 +74,9 @@ namespace Square.SourceGenerator.Parser
             else if (tagName == "For") kind = SqxNodeKind.For;
             else if (tagName == "Switch") kind = SqxNodeKind.Switch;
             else if (tagName == "Match") kind = SqxNodeKind.Match;
+            else if (tagName == "Slot" || tagName == "Outlet") kind = SqxNodeKind.Slot;
+            else if (tagName == "Router") kind = SqxNodeKind.Router;
+            else if (tagName == "Route") kind = SqxNodeKind.Route;
 
             return new SqxElement
             {

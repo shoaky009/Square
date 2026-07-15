@@ -1,0 +1,18 @@
+<sqx>
+  <template>
+    <Text ref={RouteLabel} class="route-page" text="Current route: /users/:id" />
+  </template>
+  <script lang="csharp">
+    protected override void OnAttachedCore()
+    {
+      var route = Square.Router.RouteContext.Find(this);
+      if (route == null) return;
+      var id = route.Parameters.TryGetValue("id", out var value) ? value : "?";
+      var tab = route.Query.TryGetValue("tab", out var query) ? query : "-";
+      RouteLabel.TextContent = "Current route: /users/" + id + "  tab=" + tab;
+    }
+  </script>
+  <style>
+    .route-page { color: #b54708; font-size: 14px; }
+  </style>
+</sqx>

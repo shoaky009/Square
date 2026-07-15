@@ -1,4 +1,5 @@
 using Square.Graphics;
+using System.Text;
 
 namespace Square.Text.Layout;
 
@@ -10,34 +11,36 @@ public sealed class TextMeasurer
     {
         if (string.IsNullOrEmpty(text)) return Size.Zero;
 
-        var lineHeight = font.Size * 1.2f;
-        var charWidth = font.Size * 0.5f;
-        var totalWidth = text.Length * charWidth;
-
-        if (maxSize.Width < float.MaxValue && totalWidth > maxSize.Width && maxSize.Width > 0)
-        {
-            var charsPerLine = Math.Max(1, (int)(maxSize.Width / charWidth));
-            var lines = (text.Length + charsPerLine - 1) / charsPerLine;
-            return new Size(maxSize.Width, lines * lineHeight);
-        }
-
-        return new Size(totalWidth, lineHeight);
+        return new TextLayout(text, font) { MaxSize = maxSize }.Measure();
     }
 
     public int HitTest(string text, Font font, float x)
     {
         if (string.IsNullOrEmpty(text)) return 0;
-        var charWidth = font.Size * 0.5f;
-        var index = (int)(x / charWidth);
-        return Math.Clamp(index, 0, text.Length);
+        var width = 0f;
+        var index = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var advance = TextLayout.MeasureRuneAdvance(rune, font.Size);
+            if (x < width + advance / 2f) return index;
+            width += advance;
+            index += rune.Utf16SequenceLength;
+        }
+        return text.Length;
     }
 
     public Point GetPosition(string text, Font font, int index)
     {
         if (string.IsNullOrEmpty(text)) return Point.Zero;
-        var charWidth = font.Size * 0.5f;
-        var lineHeight = font.Size * 1.2f;
         index = Math.Clamp(index, 0, text.Length);
-        return new Point(index * charWidth, 0);
+        var width = 0f;
+        var consumed = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (consumed >= index) break;
+            width += TextLayout.MeasureRuneAdvance(rune, font.Size);
+            consumed += rune.Utf16SequenceLength;
+        }
+        return new Point(width, 0);
     }
 }

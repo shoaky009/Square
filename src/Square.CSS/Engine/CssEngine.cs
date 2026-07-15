@@ -13,7 +13,13 @@ public sealed class CssEngine
 
     public void LoadStyleSheet(CssStyleSheet sheet)
     {
-        foreach (var rule in sheet.Rules) _rules.Add(rule);
+        foreach (var rule in sheet.Rules)
+        {
+            _rules.Add(rule);
+            foreach (var declaration in rule.Declarations)
+                if (declaration.Property.StartsWith("--", StringComparison.Ordinal))
+                    _variables[declaration.Property] = declaration.Value;
+        }
         foreach (var kf in sheet.KeyFrames) _keyFrames[kf.Name] = kf;
     }
 
@@ -35,39 +41,74 @@ public sealed class CssEngine
 
     public void ApplyStyles(Visual visual)
     {
-        var matched = new List<(CssRule rule, int specificity)>();
+        ApplyInheritedProperties(visual);
+        var matched = new List<(CssRule rule, int specificity, int order)>();
 
-        foreach (var rule in _rules)
+        for (var i = 0; i < _rules.Count; i++)
         {
+            var rule = _rules[i];
             if (TryMatchSelector(rule.Selector, visual, out var spec))
-                matched.Add((rule, spec));
+                matched.Add((rule, spec, i));
         }
 
-        matched.Sort((a, b) => a.specificity.CompareTo(b.specificity));
+        matched.Sort((a, b) =>
+        {
+            var specificity = a.specificity.CompareTo(b.specificity);
+            return specificity != 0 ? specificity : a.order.CompareTo(b.order);
+        });
 
-        foreach (var (rule, _) in matched)
+        foreach (var (rule, specificity, _) in matched)
         {
             foreach (var decl in rule.Declarations)
             {
+                if (decl.Property.StartsWith("--", StringComparison.Ordinal)) continue;
                 var value = ResolveVariables(decl.Value);
-                ApplyDeclaration(visual, decl.Property, value);
+                ApplyDeclaration(visual, decl.Property, value, specificity);
             }
         }
     }
 
+    public void ApplyStylesToTree(Visual visual)
+    {
+        ApplyStyles(visual);
+        foreach (var child in visual.Children)
+            ApplyStylesToTree(child);
+    }
+
     private string ResolveVariables(string value)
     {
-        if (!value.Contains("var(")) return value;
-        var start = value.IndexOf("var(");
-        var end = value.IndexOf(')', start);
-        if (end < 0) return value;
-        var inner = value[(start + 4)..end].Trim();
-        var commaIdx = inner.IndexOf(',');
-        var varName = commaIdx >= 0 ? inner[..commaIdx].Trim() : inner;
-        var fallback = commaIdx >= 0 ? inner[(commaIdx + 1)..].Trim() : null;
+        while (value.Contains("var(", StringComparison.Ordinal))
+        {
+            var start = value.IndexOf("var(", StringComparison.Ordinal);
+            var end = value.IndexOf(')', start);
+            if (end < 0) break;
+            var inner = value[(start + 4)..end].Trim();
+            var commaIdx = inner.IndexOf(',');
+            var varName = commaIdx >= 0 ? inner[..commaIdx].Trim() : inner;
+            var fallback = commaIdx >= 0 ? inner[(commaIdx + 1)..].Trim() : null;
+            var replacement = GetVariable(varName) ?? fallback;
+            if (replacement == null) break;
+            value = value[..start] + replacement + value[(end + 1)..];
+        }
+        return value;
+    }
 
-        if (_variables.TryGetValue(varName, out var v)) return v;
-        return fallback ?? value;
+    private string? GetVariable(string name)
+    {
+        if (_activeTheme != null && _themes.TryGetValue(_activeTheme, out var theme) && theme.TryGetValue(name, out var themed))
+            return themed;
+        return _variables.TryGetValue(name, out var value) ? value : null;
+    }
+
+    private static void ApplyInheritedProperties(Visual visual)
+    {
+        if (visual.Parent == null) return;
+        foreach (var property in new[] { "color", "font-family", "font-size" })
+        {
+            if (visual.Style.Get(property) != null) continue;
+            var inherited = visual.Parent.Style.Get(property);
+            if (inherited != null) visual.Style.SetCascaded(property, inherited, -1);
+        }
     }
 
     private static bool TryMatchSelector(ComplexSelector selector, Visual visual, out int specificity)
@@ -141,11 +182,12 @@ public sealed class CssEngine
         "empty" => visual.Children.Count == 0,
         "first-child" => visual.Parent?.Children[0] == visual,
         "last-child" => visual.Parent?.Children[^1] == visual,
+        "root" => visual.Parent == null,
         _ => false
     };
 
-    private static void ApplyDeclaration(Visual visual, string property, string value)
+    private static void ApplyDeclaration(Visual visual, string property, string value, int specificity)
     {
-        visual.Style.Set(property, value);
+        visual.Style.SetCascaded(property, value, specificity);
     }
 }

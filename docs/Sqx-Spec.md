@@ -72,6 +72,50 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 
 详见 §6。
 
+### 2.4 插槽与组件内容
+
+自定义组件使用 `<Slot>` 接收调用处的子节点。未指定 `slot` 的直接子节点进入默认插槽：
+
+```xml
+<!-- AppShell.sqx -->
+<View class="shell">
+  <Slot name="header"><Text text="Default header" /></Slot>
+  <Slot />
+</View>
+```
+
+```xml
+<AppShell>
+  <Text slot="header" text="Dashboard" />
+  <HomePage />
+</AppShell>
+```
+
+- `<Slot />` 表示默认插槽；`<Slot name="..." />` 表示具名插槽。
+- `<Slot>` 的 children 是插槽未传入时的 fallback。
+- `slot="..."` 只在自定义组件的直接子节点上参与内容分组，不作为控件属性发射。
+- 插槽内容保持调用方的表达式、事件与绑定作用域。
+- 插槽通过延迟 `RenderFragment` 构建，每个组件实例至多解析一次。
+- 多个插槽根节点直接插入目标父节点，不额外包裹 `View`，避免改变 Flex/布局语义。
+- 组件 Props 与 Slots 必须在子组件 `BuildVisualTree()` 前完成设置。
+
+第一阶段支持默认插槽、具名插槽和 fallback；运行时替换 Slot factory、`::slotted` 样式与跨组件内容搬运后置。
+
+Tabs 等组合控件直接建立在 Slot 上，不增加专用模板语法：
+
+```xml
+<Tabs>
+  <Button slot="tabs" class="tab-button">Controls</Button>
+  <Button slot="tabs" class="tab-button">Signals</Button>
+  <ControlsPage />
+  <SignalsPage />
+</Tabs>
+```
+
+- `tabs` Slot 中的按钮与默认 Slot 中的页面按顺序一一对应。
+- Tabs 只切换页面的可见性，不重建页面，因此页内输入状态会保留。
+- 页签按钮数量与页面数量不一致时，只对可配对部分建立选择关系。
+
 ---
 
 ## 3. Props
@@ -209,6 +253,30 @@ MyBtn.ClassList.Add("active");
 - 绑定后端**必须**用 `ObservableValue<T>`（强类型、委托驱动、零反射、AOT 安全）
 - `{expr}` 在编译期解析成员引用并生成订阅代码
 - 运行时零解析
+
+### 5.7 跨组件信号
+
+`ObservableValue<T>` 用于组件内部绑定；不相关组件之间使用应用共享的强类型信号：
+
+```csharp
+var activity = SignalHub.Default.Get("sample.activity", "Ready");
+activity.Publish("Saved");
+
+_subscription = activity.Subscribe(
+    value => Status.Value = value,
+    uiDispatcher,
+    emitCurrent: true);
+```
+
+- `Signal<T>` 可从任意线程发布。
+- 未传 `Dispatcher` 时，回调在发布线程同步执行。
+- 传入 UI `Dispatcher` 时，后台发布的回调进入 UI 队列；UI 线程发布可同步回调。
+- 同值默认不重复通知；需要强制通知时使用 `Publish(value, force: true)`。
+- `Update` 在信号锁内原子计算新值，在锁外通知订阅者。
+- 订阅返回 `IDisposable`，组件必须在卸载时释放。
+- Signal 只传递状态和消息，不隐式操作 Visual Tree。
+
+Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Composition-and-Signals.md`。
 
 ---
 
@@ -388,6 +456,31 @@ var btn = el.Query<Tag.Button>(".cls");
 | 命令式写已绑定属性 | 允许写入，但下一次源变更会覆盖，不静默回滚 |
 | 命令式操作 `<Show>` 子树 | 不允许（会被条件更新冲掉） |
 | 命令式操作 `<For>` 子树 | 不允许（会被列表更新冲掉） |
+| 命令式操作 `<Slot>` 区域 | 不允许（区域由组件调用方与生成代码管理） |
+
+---
+
+## 10. 路由
+
+Square 桌面应用默认采用内存历史。路由声明由 Source Generator 编译为静态组件工厂，不使用反射：
+
+```xml
+<Router initialPath="/">
+  <Route path="/" component={HomePage} />
+  <Route path="/users" component={UsersLayout}>
+    <Route path="/" component={UsersPage} />
+    <Route path=":id" component={UserPage} />
+  </Route>
+  <Route path="*" component={NotFoundPage} />
+</Router>
+```
+
+- 匹配优先级：静态段 > `:parameter` > `*wildcard`。
+- 父 Route 有组件时作为布局组件，子路由内容投影到其默认 Slot；`<Outlet />` 是该 Slot 的路由语义别名。
+- `<Link to="...">` 执行声明式导航；`Navigate`、`Replace`、`Back`、`Forward` 提供命令式导航。
+- `RouteContext` 提供当前 Path、Params 和 Query。
+- 导航替换视觉子树时，沿用 Attached/Loaded/Unloaded/Detached 生命周期顺序。
+- MVP 不包含运行时程序集懒加载、异步守卫、页面缓存和平台 URL 协议；仅预留 preload/历史适配边界。
 | 命令式操作静态声明区域 | 允许 |
 | 命令式创建并挂载元素 | 允许，接生命周期钩子 |
 | Props 子组件改写 | 不允许（单向数据流） |

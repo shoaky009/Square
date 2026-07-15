@@ -1,0 +1,15 @@
+<sqx>
+  <template>
+    <View class="signals-page sample-page">
+      <Text class="page-title" text="Signals" />
+      <SignalPublisher />
+      <SignalSubscriber />
+    </View>
+  </template>
+  <style>
+    .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
+    .page-title { color: #202124; font-size: 18px; }
+    SignalPublisher { height: 180px; }
+    SignalSubscriber { height: 150px; }
+  </style>
+</sqx>

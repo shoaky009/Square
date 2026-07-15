@@ -20,6 +20,7 @@ namespace Square.SourceGenerator.Parser
         private readonly string _s;
         private int _pos, _line = 1, _col = 1;
         private bool _inTag;
+        private int _templateExpressionDepth;
 
         public SqxLexer(string s) { _s = s; }
 
@@ -67,9 +68,21 @@ namespace Square.SourceGenerator.Parser
                 }
                 else if (c == '{')
                 {
+                    string expr;
+                    if (!_inTag && TryReadTemplateLambda(out expr))
+                    {
+                        tokens.Add(New(SqxTokenType.OpenBraceExpr, expr));
+                        continue;
+                    }
                     _pos++; _col++;
-                    var expr = ReadUntilBrace();
+                    expr = ReadUntilBrace();
                     tokens.Add(New(SqxTokenType.OpenBraceExpr, expr));
+                }
+                else if (c == '}' && !_inTag && _templateExpressionDepth > 0)
+                {
+                    _pos++; _col++;
+                    _templateExpressionDepth--;
+                    tokens.Add(New(SqxTokenType.OpenBraceExpr, "}"));
                 }
                 else if (c == '"' || c == '\'')
                 {
@@ -139,8 +152,26 @@ namespace Square.SourceGenerator.Parser
         private string ReadText()
         {
             var start = _pos;
-            while (_pos < _s.Length && _s[_pos] != '<' && _s[_pos] != '{') Adv();
+            while (_pos < _s.Length && _s[_pos] != '<' && _s[_pos] != '{' &&
+                   !(_s[_pos] == '}' && _templateExpressionDepth > 0)) Adv();
             return _s.Substring(start, _pos - start);
+        }
+
+        private bool TryReadTemplateLambda(out string expression)
+        {
+            expression = "";
+            var start = _pos + 1;
+            var arrow = _s.IndexOf("=>", start, StringComparison.Ordinal);
+            var tag = _s.IndexOf('<', start);
+            if (arrow < 0 || tag < 0 || arrow > tag) return false;
+
+            var candidate = _s.Substring(start, arrow + 2 - start).Trim();
+            if (!candidate.StartsWith("(", StringComparison.Ordinal)) return false;
+
+            while (_pos <= arrow + 1) Adv();
+            _templateExpressionDepth++;
+            expression = candidate;
+            return true;
         }
 
         private void AdvanceWs() { while (_pos < _s.Length && char.IsWhiteSpace(_s[_pos])) Adv(); }

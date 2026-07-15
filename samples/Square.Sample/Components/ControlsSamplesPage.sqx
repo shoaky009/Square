@@ -1,0 +1,63 @@
+<sqx>
+  <template>
+    <View class="controls-page sample-page">
+      <Text class="page-title" text="Controls and reactive collections" />
+      <Button ref={MyBtn} onClick={OnClick}>Button - add activity</Button>
+      <CheckBox ref={AcceptCheckBox} text="CheckBox - enable feature" checked={Accepted} onChange={OnAcceptedChanged} />
+      <Radio ref={RadioA} text="Radio - option A" group="demo" checked={OptionA} onChange={OnRadioAChanged} />
+      <Radio ref={RadioB} text="Radio - option B" group="demo" checked={OptionB} onChange={OnRadioBChanged} />
+      <Select ref={DemoSelect} value={SelectedValue} options={ColorOptions} onChange={OnSelectChanged} />
+      <Show when={ShowCount}>
+        <Text class="status" text="Show: button clicked" />
+      </Show>
+      <For each={Items}>{(it)=>
+        <Text class="status" text={it} />
+      }</For>
+    </View>
+  </template>
+  <script lang="csharp">
+    private int _count;
+    public ObservableValue<bool> ShowCount = new(false);
+    public ObservableValue<bool> Accepted = new(false);
+    public ObservableValue<bool> OptionA = new(true);
+    public ObservableValue<bool> OptionB = new(false);
+    public ObservableValue<string> SelectedValue = new("Blue");
+    public ObservableValue<string[]> ColorOptions = new(["Blue", "Green", "Orange"]);
+    public ObservableCollection<string> Items = new() { "For: ready" };
+
+    private void OnClick()
+    {
+      _count++;
+      ShowCount.Value = true;
+      Items.Add("Click " + _count);
+    }
+
+    private void OnAcceptedChanged()
+    {
+      Accepted.Value = AcceptCheckBox.IsChecked;
+    }
+
+    private void OnRadioAChanged()
+    {
+      OptionA.Value = true;
+      OptionB.Value = false;
+    }
+
+    private void OnRadioBChanged()
+    {
+      OptionA.Value = false;
+      OptionB.Value = true;
+    }
+
+    private void OnSelectChanged()
+    {
+      SelectedValue.Value = DemoSelect.Value;
+    }
+  </script>
+  <style>
+    .sample-page { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+    .page-title { color: #202124; font-size: 18px; }
+    .status { color: #555b61; font-size: 14px; }
+    .controls-page Button { background: #0078d4; color: #ffffff; }
+  </style>
+</sqx>

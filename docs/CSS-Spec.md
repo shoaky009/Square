@@ -42,6 +42,13 @@ CSS 是框架的重要组成部分，与 `.sqx` 的 `<style>` 段和 `style`/`cl
 
 ## 4. Cascade 与 Specificity
 
+组件样式表分别在各组件构建时应用，但级联元数据必须保留在 `StyleAccessor` 中：
+
+- 后应用的低 specificity 规则不得覆盖先应用的高 specificity 规则。
+- specificity 相同时，后应用规则覆盖先应用规则。
+- `element.Style.Set(...)` 视为 inline style，优先级高于所有样式表规则。
+- 插槽内容保留调用方样式规则；进入子组件视觉树不会重置已计算 specificity。
+
 - 级联顺序：`!important` > 内联 `style` > ID > 类/属性/伪类 > 类型
 - Specificity 计算：`(id_count, class_count, type_count)`
 - 同 specificity 时，后定义胜出

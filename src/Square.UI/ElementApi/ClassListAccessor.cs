@@ -25,6 +25,12 @@ public sealed class ClassListAccessor
         else Add(className);
     }
 
+    public void Toggle(string className, bool force)
+    {
+        if (force) Add(className);
+        else Remove(className);
+    }
+
     public bool Contains(string className) => _classes?.Contains(className) ?? false;
 
     public string ToClassString() => _classes == null ? "" : string.Join(' ', _classes);

@@ -15,6 +15,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
     <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
+    <ProjectReference Include="..\..\src\Square.Layout\Square.Layout.csproj" />
+    <ProjectReference Include="..\..\src\Square.Router\Square.Router.csproj" />
+    <ProjectReference Include="..\..\samples\Square.Sample\Square.Sample.csproj" />
   </ItemGroup>
 
 </Project>

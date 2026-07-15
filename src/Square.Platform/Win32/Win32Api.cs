@@ -11,15 +11,45 @@ internal static partial class Win32Api
     public const int SW_SHOW = 5;
     public const int WM_DESTROY = 0x0002;
     public const int WM_PAINT = 0x000F;
+    public const int WM_SETCURSOR = 0x0020;
     public const int WM_SIZE = 0x0005;
+    public const int WM_DPICHANGED = 0x02E0;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_LBUTTONUP = 0x0202;
     public const int WM_MOUSEMOVE = 0x0200;
     public const int WM_KEYDOWN = 0x0100;
     public const int WM_KEYUP = 0x0101;
+    public const int WM_CHAR = 0x0102;
+    public const int WM_UNICHAR = 0x0109;
+    public const int WM_TIMER = 0x0113;
+    public const int WM_IME_STARTCOMPOSITION = 0x010D;
+    public const int WM_IME_COMPOSITION = 0x010F;
     public const int WM_QUIT = 0x0012;
     public const int CS_HREDRAW = 0x0002;
     public const int CS_VREDRAW = 0x0001;
+    public const uint BI_RGB = 0;
+    public const uint DIB_RGB_COLORS = 0;
+    public const uint SRCCOPY = 0x00CC0020;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    public const int GCS_RESULTSTR = 0x0800;
+    public const int UNICODE_NOCHAR = 0xFFFF;
+    public const int HTCLIENT = 1;
+    public const int IDC_ARROW = 32512;
+    public const int IDC_IBEAM = 32513;
+    public const int VK_SHIFT = 0x10;
+    public const int VK_CONTROL = 0x11;
+    public const int VK_MENU = 0x12;
+    public const uint CF_UNICODETEXT = 13;
+    public const uint GMEM_MOVEABLE = 0x0002;
+    public const uint GMEM_ZEROINIT = 0x0040;
+    public const uint CFS_POINT = 0x0002;
+    public const uint CFS_EXCLUDE = 0x0080;
+    public static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new(-4);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
+    public static partial bool SetProcessDpiAwarenessContext(IntPtr value);
 
     [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr CreateWindowEx(
@@ -58,6 +88,22 @@ internal static partial class Win32Api
     [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
     public static partial IntPtr DefWindowProc(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+    [LibraryImport("user32.dll", EntryPoint = "GetDC")]
+    public static partial IntPtr GetDC(IntPtr hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "ReleaseDC")]
+    public static partial int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [LibraryImport("gdi32.dll", EntryPoint = "StretchDIBits")]
+    public static partial int StretchDIBits(
+        IntPtr hdc,
+        int xDest, int yDest, int destWidth, int destHeight,
+        int xSrc, int ySrc, int srcWidth, int srcHeight,
+        IntPtr bits,
+        ref BITMAPINFO bitmapInfo,
+        uint usage,
+        uint rasterOperation);
+
     [DllImport("user32.dll", EntryPoint = "BeginPaint")]
     public static extern IntPtr BeginPaint(IntPtr hwnd, ref PAINTSTRUCT lpPaint);
 
@@ -68,8 +114,94 @@ internal static partial class Win32Api
     [LibraryImport("user32.dll", EntryPoint = "GetClientRect")]
     public static partial bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowPos")]
+    public static partial bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [LibraryImport("user32.dll", EntryPoint = "LoadCursorW")]
+    public static partial IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetCursor")]
+    public static partial IntPtr SetCursor(IntPtr cursor);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetCapture")]
+    public static partial IntPtr SetCapture(IntPtr hWnd);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "ReleaseCapture")]
+    public static partial bool ReleaseCapture();
+
+    [LibraryImport("user32.dll", EntryPoint = "SetTimer")]
+    public static partial UIntPtr SetTimer(IntPtr hWnd, UIntPtr timerId, uint intervalMilliseconds, IntPtr callback);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "KillTimer")]
+    public static partial bool KillTimer(IntPtr hWnd, UIntPtr timerId);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetKeyState")]
+    public static partial short GetKeyState(int virtualKey);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "GetCursorPos")]
+    public static partial bool GetCursorPos(out POINT point);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "ScreenToClient")]
+    public static partial bool ScreenToClient(IntPtr hWnd, ref POINT point);
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr GetModuleHandle(string? lpModuleName);
+
+    [LibraryImport("imm32.dll", EntryPoint = "ImmGetContext")]
+    public static partial IntPtr ImmGetContext(IntPtr hWnd);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("imm32.dll", EntryPoint = "ImmReleaseContext")]
+    public static partial bool ImmReleaseContext(IntPtr hWnd, IntPtr inputContext);
+
+    [LibraryImport("imm32.dll", EntryPoint = "ImmGetCompositionStringW")]
+    public static partial int ImmGetCompositionString(
+        IntPtr inputContext, int index, IntPtr buffer, int bufferLength);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("imm32.dll", EntryPoint = "ImmSetCompositionWindow")]
+    public static partial bool ImmSetCompositionWindow(IntPtr inputContext, ref COMPOSITIONFORM form);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("imm32.dll", EntryPoint = "ImmSetCandidateWindow")]
+    public static partial bool ImmSetCandidateWindow(IntPtr inputContext, ref CANDIDATEFORM form);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "OpenClipboard")]
+    public static partial bool OpenClipboard(IntPtr owner);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "CloseClipboard")]
+    public static partial bool CloseClipboard();
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "EmptyClipboard")]
+    public static partial bool EmptyClipboard();
+
+    [LibraryImport("user32.dll", EntryPoint = "GetClipboardData")]
+    public static partial IntPtr GetClipboardData(uint format);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetClipboardData")]
+    public static partial IntPtr SetClipboardData(uint format, IntPtr memory);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GlobalAlloc")]
+    public static partial IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GlobalLock")]
+    public static partial IntPtr GlobalLock(IntPtr memory);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("kernel32.dll", EntryPoint = "GlobalUnlock")]
+    public static partial bool GlobalUnlock(IntPtr memory);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GlobalFree")]
+    public static partial IntPtr GlobalFree(IntPtr memory);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MSG
@@ -104,6 +236,53 @@ internal static partial class Win32Api
         public int reserved3;
         public int reserved4;
         public int reserved5;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct COMPOSITIONFORM
+    {
+        public uint Style;
+        public POINT CurrentPosition;
+        public RECT Area;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CANDIDATEFORM
+    {
+        public uint Index;
+        public uint Style;
+        public POINT CurrentPosition;
+        public RECT Area;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        public uint bmiColors;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

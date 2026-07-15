@@ -7,6 +7,7 @@ public sealed class RenderContextCreateInfo
     public required Size CanvasSize { get; set; }
     public float DpiScale { get; set; } = 1f;
     public bool VSync { get; set; } = true;
+    public Action<Bitmap>? PresentFrame { get; set; }
 }
 
 public interface IRenderContext : IDisposable
@@ -36,4 +37,9 @@ public interface IRenderContext : IDisposable
     void Clear(Color color);
     void Flush();
     void Present();
+}
+
+public interface IResizableRenderContext
+{
+    void Resize(Size canvasSize);
 }

@@ -1,22 +1,26 @@
 using System.Numerics;
 using Square.Graphics;
+using Square.Text.Glyph;
 
 namespace Square.Backends;
 
-internal sealed class RenderContext : IRenderContext
+internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 {
-    private readonly Bitmap _bitmap;
+    private Bitmap _bitmap;
     private readonly float _dpiScale;
+    private readonly Action<Bitmap>? _presentFrame;
     private readonly Stack<Rect> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
+    private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
     public Size CanvasSize => new(_bitmap.Width, _bitmap.Height);
     public float DpiScale => _dpiScale;
 
-    internal RenderContext(Bitmap bitmap, float dpiScale)
+    internal RenderContext(Bitmap bitmap, float dpiScale, Action<Bitmap>? presentFrame = null)
     {
         _bitmap = bitmap;
         _dpiScale = dpiScale;
+        _presentFrame = presentFrame;
     }
 
     public void PushTransform(Matrix3x2 matrix) => _transformStack.Push(matrix);
@@ -128,8 +132,19 @@ internal sealed class RenderContext : IRenderContext
     public void PopLayer() { }
 
     public void Flush() { }
-    public void Present() { }
-    public void Dispose() { }
+    public void Present() => _presentFrame?.Invoke(_bitmap);
+    public void Resize(Size canvasSize)
+    {
+        var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * _dpiScale));
+        var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * _dpiScale));
+        if (_bitmap.Width == width && _bitmap.Height == height) return;
+
+        var previous = _bitmap;
+        _bitmap = new Bitmap(width, height);
+        previous.Dispose();
+    }
+
+    public void Dispose() => _bitmap.Dispose();
 
     internal Bitmap GetBitmap() => _bitmap;
 
@@ -179,6 +194,7 @@ internal sealed class RenderContext : IRenderContext
     private void BlendPixel(int x, int y, Color color)
     {
         if (x < 0 || x >= _bitmap.Width || y < 0 || y >= _bitmap.Height) return;
+        if (_clipStack.Count > 0 && !_clipStack.Peek().Contains(x + 0.5f, y + 0.5f)) return;
         var idx = y * _bitmap.Stride + x * 4;
         var span = _bitmap.Pixels.AsSpan(idx, 4);
         var alpha = color.A;
@@ -249,61 +265,97 @@ internal sealed class RenderContext : IRenderContext
     private void FillEllipse(Point center, float rx, float ry, Color color)
     {
         if (rx <= 0 || ry <= 0) return;
-        var x0 = (int)Math.Floor(center.X - rx);
-        var x1 = (int)Math.Ceiling(center.X + rx);
-        var y0 = (int)Math.Floor(center.Y - ry);
-        var y1 = (int)Math.Ceiling(center.Y + ry);
-        var rx2 = rx * rx;
-        var ry2 = ry * ry;
-
-        for (int y = y0; y <= y1; y++)
-        {
-            var dy = y - center.Y;
-            var dx2 = rx2 * (1 - dy * dy / ry2);
-            if (dx2 < 0) continue;
-            var dx = Math.Sqrt(dx2);
-            for (int x = (int)(center.X - dx); x <= (int)(center.X + dx); x++)
-                BlendPixel(x, y, color);
-        }
+        RasterizeEllipse(center, rx, ry, 0, color);
     }
 
     private void DrawEllipse(Point center, float rx, float ry, Pen pen)
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
-        if (rx <= 0 || ry <= 0) return;
-        var steps = Math.Max(32, (int)(2 * Math.PI * Math.Max(rx, ry)));
-        var prevX = (double)(center.X + rx);
-        var prevY = (double)center.Y;
-        for (int i = 1; i <= steps; i++)
-        {
-            var angle = 2 * Math.PI * i / steps;
-            var x = center.X + rx * Math.Cos(angle);
-            var y = center.Y + ry * Math.Sin(angle);
-            DrawLine(prevX, prevY, x, y, pen.Width, color);
-            prevX = x; prevY = y;
-        }
+        if (rx <= 0 || ry <= 0 || pen.Width <= 0) return;
+        RasterizeEllipse(center, rx, ry, pen.Width, color);
     }
 
     // ── 线段 ──
 
     private void DrawLine(double x0, double y0, double x1, double y1, float width, Color color)
     {
-        var w = Math.Max(1, (int)Math.Ceiling(width));
         var dx = x1 - x0;
         var dy = y1 - y0;
-        var len = Math.Sqrt(dx * dx + dy * dy);
-        if (len < 0.01) return;
-        var nx = -dy / len * w / 2;
-        var ny = dx / len * w / 2;
+        var lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared < 0.0001 || width <= 0) return;
 
-        var points = new List<(double x, double y)>
+        var radius = Math.Max(0.5, width / 2.0);
+        var minX = (int)Math.Floor(Math.Min(x0, x1) - radius - 1);
+        var maxX = (int)Math.Ceiling(Math.Max(x0, x1) + radius + 1);
+        var minY = (int)Math.Floor(Math.Min(y0, y1) - radius - 1);
+        var maxY = (int)Math.Ceiling(Math.Max(y0, y1) + radius + 1);
+
+        for (var y = minY; y <= maxY; y++)
         {
-            (x0 + nx, y0 + ny),
-            (x1 + nx, y1 + ny),
-            (x1 - nx, y1 - ny),
-            (x0 - nx, y0 - ny)
-        };
-        FillPolygonPoints(points, color);
+            for (var x = minX; x <= maxX; x++)
+            {
+                var covered = 0;
+                for (var sy = 0; sy < 4; sy++)
+                {
+                    for (var sx = 0; sx < 4; sx++)
+                    {
+                        var px = x + (sx + 0.5) / 4.0;
+                        var py = y + (sy + 0.5) / 4.0;
+                        var t = Math.Clamp(((px - x0) * dx + (py - y0) * dy) / lengthSquared, 0, 1);
+                        var closestX = x0 + t * dx;
+                        var closestY = y0 + t * dy;
+                        var distanceX = px - closestX;
+                        var distanceY = py - closestY;
+                        if (distanceX * distanceX + distanceY * distanceY <= radius * radius) covered++;
+                    }
+                }
+
+                BlendPixelCoverage(x, y, color, covered, 16);
+            }
+        }
+    }
+
+    private void RasterizeEllipse(Point center, float rx, float ry, float strokeWidth, Color color)
+    {
+        var halfStroke = strokeWidth / 2f;
+        var outerRx = rx + halfStroke;
+        var outerRy = ry + halfStroke;
+        var innerRx = Math.Max(0, rx - halfStroke);
+        var innerRy = Math.Max(0, ry - halfStroke);
+        var x0 = (int)Math.Floor(center.X - outerRx - 1);
+        var x1 = (int)Math.Ceiling(center.X + outerRx + 1);
+        var y0 = (int)Math.Floor(center.Y - outerRy - 1);
+        var y1 = (int)Math.Ceiling(center.Y + outerRy + 1);
+
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                var covered = 0;
+                for (var sy = 0; sy < 4; sy++)
+                {
+                    for (var sx = 0; sx < 4; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / 4f - center.X;
+                        var py = y + (sy + 0.5f) / 4f - center.Y;
+                        var insideOuter = px * px / (outerRx * outerRx) + py * py / (outerRy * outerRy) <= 1;
+                        var insideInner = strokeWidth > 0 && innerRx > 0 && innerRy > 0 &&
+                            px * px / (innerRx * innerRx) + py * py / (innerRy * innerRy) < 1;
+                        if (insideOuter && !insideInner) covered++;
+                    }
+                }
+
+                BlendPixelCoverage(x, y, color, covered, 16);
+            }
+        }
+    }
+
+    private void BlendPixelCoverage(int x, int y, Color color, int coveredSamples, int sampleCount)
+    {
+        if (coveredSamples <= 0) return;
+        var alpha = (byte)Math.Clamp(
+            (color.A * coveredSamples + sampleCount / 2) / sampleCount, 0, 255);
+        BlendPixel(x, y, new Color(color.R, color.G, color.B, alpha));
     }
 
     private void DrawPolyline(List<(double x, double y)> points, float width, Color color)
@@ -450,10 +502,17 @@ internal sealed class RenderContext : IRenderContext
 
     private void RenderText(TextLayout textLayout, Point origin, Color color)
     {
+        if (_glyphRasterizer.IsAvailable)
+        {
+            RenderSystemText(textLayout, origin, color);
+            return;
+        }
+
         var text = textLayout.Text;
         var fontSize = textLayout.Font.Size;
         var lineHeight = fontSize * textLayout.LineHeight;
-        var charWidth = fontSize * 0.6f;
+        var pixelSize = Math.Max(1, (int)MathF.Ceiling(fontSize / 8f));
+        var charWidth = pixelSize * 6;
 
         var x = (int)Math.Round(origin.X);
         var y = (int)Math.Round(origin.Y);
@@ -462,19 +521,61 @@ internal sealed class RenderContext : IRenderContext
         {
             var c = text[i];
             if (c == '\n') { x = (int)Math.Round(origin.X); y += (int)Math.Round(lineHeight); continue; }
-            if (c == ' ') { x += (int)Math.Round(charWidth); continue; }
-            DrawGlyph(c, x, y, fontSize, color);
-            x += (int)Math.Round(charWidth);
+            if (c == ' ') { x += charWidth; continue; }
+            DrawGlyph(c, x, y, pixelSize, color);
+            x += charWidth;
         }
     }
 
-    private void DrawGlyph(char c, int x, int y, float size, Color color)
+    private void RenderSystemText(TextLayout textLayout, Point origin, Color color)
+    {
+        var x = (int)MathF.Round(origin.X);
+        var y = (int)MathF.Round(origin.Y);
+        var lineStart = x;
+        var lineHeight = Math.Max(1, (int)MathF.Round(textLayout.Font.Size * textLayout.LineHeight));
+
+        foreach (var character in textLayout.Text)
+        {
+            if (character == '\n')
+            {
+                x = lineStart;
+                y += lineHeight;
+                continue;
+            }
+
+            var glyph = _glyphRasterizer.Rasterize(textLayout.Font, character);
+            if (glyph == null)
+            {
+                x += Math.Max(1, (int)MathF.Round(textLayout.Font.Size * 0.5f));
+                continue;
+            }
+
+            for (var row = 0; row < glyph.Height; row++)
+            {
+                for (var column = 0; column < glyph.Width; column++)
+                {
+                    var coverageIndex = row * glyph.Stride + column;
+                    if (coverageIndex >= glyph.Coverage.Length) continue;
+                    var coverage = glyph.Coverage[coverageIndex];
+                    if (coverage == 0) continue;
+                    var alpha = (byte)Math.Min(255, color.A * coverage / 64);
+                    BlendPixel(
+                        x + glyph.OffsetX + column,
+                        y + glyph.OffsetY + row,
+                        new Color(color.R, color.G, color.B, alpha));
+                }
+            }
+
+            x += glyph.AdvanceX;
+        }
+    }
+
+    private void DrawGlyph(char c, int x, int y, int pixelSize, Color color)
     {
         // 简易点阵字形：用字符码点生成 5x7 位图模式
         var pattern = GetGlyphPattern(c);
-        var pixelSize = Math.Max(1, (int)Math.Round(size / 8));
         var offsetX = x;
-        var offsetY = y + (int)Math.Round(size * 0.2);
+        var offsetY = y + pixelSize;
 
         for (int row = 0; row < 7; row++)
         {

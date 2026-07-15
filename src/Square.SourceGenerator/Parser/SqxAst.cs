@@ -1,6 +1,6 @@
 namespace Square.SourceGenerator.Parser
 {
-    internal enum SqxNodeKind { Element, Text, Expression, Show, For, Switch, Match }
+    internal enum SqxNodeKind { Element, Text, Expression, Show, For, Switch, Match, Slot, Router, Route }
 
     internal abstract class SqxNode
     {

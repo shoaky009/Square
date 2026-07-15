@@ -11,8 +11,8 @@
 |---|---|---|
 | **M0 脚手架** | 解决方案与全部 `Square.*` 空项目、目录规范、AOT/Trim 发布配置 | 空项目可编译 |
 | **M1 Phase 1 MVP** | 编译优先可运行 Demo：`.sqx`→C#、Props、ref、基础 CSS、flex 布局、纯 C# 软件渲染、基础控件、事件、Win32 宿主、构建层裁剪、生命周期、NativeAOT 验证 | `.sqx` 示例经 Source Generator 编译为 AOT 可执行，窗口渲染并响应交互；Props 传值校验、ref 操作、`<Show>`/`<For>` 可用 |
-| **M2 CSS 完整化 + 动画 + 主题** | 完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | CSS 测试套件通过；主题切换与 CSS 动画可运行；`el.Query<T>` 可用 |
-| **M3 扩展控件** | List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Window/Tab/Swiper/Navigator；Caret/Selection 基础 | 各控件可交互、可滚动、可组合 |
+| **M2 CSS 完整化 + 组件组合 + 动画 + 主题** | 默认/具名 Slot、fallback、嵌套组件；`Signal<T>` 跨组件/跨线程通信；完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | 插槽保持调用方作用域且不产生隐式布局容器；后台信号经 Dispatcher 安全送达 UI；CSS 测试套件通过 |
+| **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；基于 Slot 的 Tabs；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Window/Swiper | 路由可前进/后退并正确切换生命周期；Tabs 可组合页面且保留状态；各控件可交互 |
 | **M4 图形后端扩展** | Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 |
 | **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI |

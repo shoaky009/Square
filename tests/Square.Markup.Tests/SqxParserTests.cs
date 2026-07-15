@@ -7,6 +7,33 @@ namespace Square.Markup.Tests;
 public class SqxParserTests
 {
     [Fact]
+    public void ParsesSlotsAndNestedRouteDefinitionsAsStructuralNodes()
+    {
+        const string source = "<sqx><template><Router initialPath=\"/\"><Route path=\"/\" component={Shell}><Route path=\":id\" component={Page} /></Route></Router><Slot name=\"header\" /><Outlet /></template></sqx>";
+
+        var document = new SqxParser().Parse(source, "Composition.sqx");
+
+        var router = Assert.IsType<SqxElement>(document.Template.Roots[0]);
+        Assert.Equal(SqxNodeKind.Router, router.Kind);
+        var route = Assert.IsType<SqxElement>(Assert.Single(router.Children));
+        Assert.Equal(SqxNodeKind.Route, route.Kind);
+        Assert.Equal(SqxNodeKind.Route, Assert.IsType<SqxElement>(Assert.Single(route.Children)).Kind);
+        Assert.Equal(SqxNodeKind.Slot, Assert.IsType<SqxElement>(document.Template.Roots[1]).Kind);
+        Assert.Equal(SqxNodeKind.Slot, Assert.IsType<SqxElement>(document.Template.Roots[2]).Kind);
+    }
+
+    [Fact]
+    public void ParsesForLambdaTemplateAsChildElement()
+    {
+        const string source = "<sqx><template><For each={Items}>{(it)=><Text text={it} />}</For></template></sqx>";
+
+        var document = new SqxParser().Parse(source, "List.sqx");
+        var loop = Assert.IsType<SqxElement>(Assert.Single(document.Template.Roots));
+
+        Assert.Equal(SqxNodeKind.For, loop.Kind);
+        Assert.Contains(loop.Children, child => child is SqxElement element && element.TagName == "Text");
+    }
+    [Fact]
     public void ParseSimpleElement()
     {
         var parser = new SqxParser();

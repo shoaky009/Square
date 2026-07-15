@@ -21,7 +21,7 @@ public sealed class RenderTree
 
     private static void BuildChildren(RenderNode parent, Visual visual)
     {
-        foreach (var child in visual.Children)
+        foreach (var child in visual.Children.OrderBy(child => child.ZIndex))
         {
             if (!child.IsVisible) continue;
             var node = new RenderNode { Visual = child, Bounds = child.Geometry, IsDirty = true };

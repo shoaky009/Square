@@ -35,7 +35,7 @@ public sealed class LayoutEngine
     public void Measure(Visual visual, Size availableSize)
     {
         var style = GetComputedStyle(visual);
-        if (style.Display == DisplayMode.None) { visual.ClearLayoutDirty(); return; }
+        if (!visual.IsVisible || style.Display == DisplayMode.None) { visual.ClearLayoutDirty(); return; }
 
         var inner = availableSize;
         inner = new Size(
@@ -54,7 +54,7 @@ public sealed class LayoutEngine
 
     private void MeasureBlock(Visual visual, ComputedStyle style, Size available)
     {
-        foreach (var child in visual.Children)
+        foreach (var child in visual.Children.Where(child => child.IsVisible))
             Measure(child, available);
     }
 
@@ -67,9 +67,10 @@ public sealed class LayoutEngine
 
         var totalFlex = 0f;
         var totalBase = 0f;
-        var count = visual.Children.Count;
+        var children = visual.Children.Where(child => child.IsVisible).ToArray();
+        var count = children.Length;
 
-        foreach (var child in visual.Children)
+        foreach (var child in children)
         {
             var cs = GetComputedStyle(child);
             var basis = !float.IsNaN(cs.FlexBasis) ? cs.FlexBasis : 0;
@@ -80,7 +81,7 @@ public sealed class LayoutEngine
         var remaining = mainAxis - totalBase - gap * Math.Max(0, count - 1);
         var unit = totalFlex > 0 ? remaining / totalFlex : 0;
 
-        foreach (var child in visual.Children)
+        foreach (var child in children)
         {
             var cs = GetComputedStyle(child);
             var size = !float.IsNaN(cs.FlexBasis) ? cs.FlexBasis : 0;
@@ -93,7 +94,7 @@ public sealed class LayoutEngine
     public void Arrange(Visual visual, Rect finalRect)
     {
         var style = GetComputedStyle(visual);
-        if (style.Display == DisplayMode.None) return;
+        if (!visual.IsVisible || style.Display == DisplayMode.None) return;
 
         var inner = finalRect.Inflate(-style.Padding, -style.Padding);
 
@@ -110,9 +111,9 @@ public sealed class LayoutEngine
     private void ArrangeBlock(Visual visual, ComputedStyle style, Rect inner)
     {
         var y = inner.Top;
-        foreach (var child in visual.Children)
+        foreach (var child in visual.Children.Where(child => child.IsVisible))
         {
-            var size = child.Measure(inner.Size);
+            var size = MeasureWithStyle(child, inner.Size);
             Arrange(child, new Rect(inner.Left, y, size.Width, size.Height));
             y += size.Height;
         }
@@ -122,13 +123,14 @@ public sealed class LayoutEngine
     {
         var isRow = style.FlexDirection is FlexDirection.Row or FlexDirection.RowReverse;
         var gap = style.Gap;
-        var count = visual.Children.Count;
+        var children = visual.Children.Where(child => child.IsVisible).ToArray();
+        var count = children.Length;
 
         var sizes = new float[count];
         var total = 0f;
         for (int i = 0; i < count; i++)
         {
-            var s = visual.Children[i].Measure(inner.Size);
+            var s = MeasureWithStyle(children[i], inner.Size);
             sizes[i] = isRow ? s.Width : s.Height;
             total += sizes[i];
         }
@@ -148,8 +150,8 @@ public sealed class LayoutEngine
         var pos = start;
         for (int i = 0; i < count; i++)
         {
-            var child = visual.Children[i];
-            var size = child.Measure(inner.Size);
+            var child = children[i];
+            var size = MeasureWithStyle(child, inner.Size);
             float x, y, w, h;
             if (isRow)
             {
@@ -206,8 +208,7 @@ public sealed class LayoutEngine
         for (int i = 0; i < colCount; i++) effectiveCols[i] = cols.Length > i ? cols[i] : available.Width / colCount;
         for (int i = 0; i < rowCount; i++) effectiveRows[i] = rows.Length > i ? rows[i] : available.Height / rowCount;
 
-        int childIdx = 0;
-        foreach (var child in visual.Children)
+        foreach (var child in visual.Children.Where(child => child.IsVisible))
         {
             var cs = GetComputedStyle(child);
             var col = Math.Min(cs.GridColumn - 1, colCount - 1);
@@ -218,7 +219,6 @@ public sealed class LayoutEngine
             var w = 0f; for (int i = 0; i < colSpan; i++) w += effectiveCols[col + i] + gap;
             var h = 0f; for (int i = 0; i < rowSpan; i++) h += effectiveRows[row + i] + gap;
             Measure(child, new Size(w, h));
-            childIdx++;
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class LayoutEngine
         rowY[0] = inner.Top;
         for (int i = 0; i < rowCount; i++) rowY[i + 1] = rowY[i] + (rows.Length > i ? rows[i] : inner.Height / rowCount) + gap;
 
-        foreach (var child in visual.Children)
+        foreach (var child in visual.Children.Where(child => child.IsVisible))
         {
             var cs = GetComputedStyle(child);
             var col = Math.Min(Math.Max(0, cs.GridColumn - 1), colCount - 1);
@@ -294,8 +294,54 @@ public sealed class LayoutEngine
         if (display == "grid") style.Display = DisplayMode.Grid;
         if (display == "none") style.Display = DisplayMode.None;
 
+        style.FlexDirection = visual.Style.Get("flex-direction")?.Trim() switch
+        {
+            "column" => FlexDirection.Column,
+            "row-reverse" => FlexDirection.RowReverse,
+            "column-reverse" => FlexDirection.ColumnReverse,
+            _ => FlexDirection.Row
+        };
+
+        style.JustifyContent = visual.Style.Get("justify-content")?.Trim() switch
+        {
+            "center" => JustifyContent.Center,
+            "flex-end" => JustifyContent.FlexEnd,
+            "space-between" => JustifyContent.SpaceBetween,
+            "space-around" => JustifyContent.SpaceAround,
+            _ => JustifyContent.FlexStart
+        };
+
+        style.AlignItems = visual.Style.Get("align-items")?.Trim() switch
+        {
+            "center" => AlignItems.Center,
+            "flex-start" => AlignItems.FlexStart,
+            "flex-end" => AlignItems.FlexEnd,
+            _ => AlignItems.Stretch
+        };
+
         var gap = visual.Style.Get("gap");
         if (gap != null && float.TryParse(gap.TrimEnd('p', 'x'), out var gapVal)) style.Gap = gapVal;
+
+        var padding = visual.Style.Get("padding");
+        if (padding != null && TryParseLength(padding, out var paddingVal)) style.Padding = paddingVal;
+
+        var margin = visual.Style.Get("margin");
+        if (margin != null && TryParseLength(margin, out var marginVal)) style.Margin = marginVal;
+
+        var width = visual.Style.Get("width");
+        if (width != null && TryParseLength(width, out var widthVal)) style.Width = widthVal;
+
+        var height = visual.Style.Get("height");
+        if (height != null && TryParseLength(height, out var heightVal)) style.Height = heightVal;
+
+        var flexGrow = visual.Style.Get("flex-grow");
+        if (flexGrow != null && float.TryParse(flexGrow, out var grow)) style.FlexGrow = grow;
+
+        var flexShrink = visual.Style.Get("flex-shrink");
+        if (flexShrink != null && float.TryParse(flexShrink, out var shrink)) style.FlexShrink = shrink;
+
+        var flexBasis = visual.Style.Get("flex-basis");
+        if (flexBasis != null && TryParseLength(flexBasis, out var basis)) style.FlexBasis = basis;
 
         var gridCols = visual.Style.Get("grid-template-columns");
         if (gridCols != null) style.GridTemplateColumns = gridCols;
@@ -308,5 +354,17 @@ public sealed class LayoutEngine
         if (gridRow != null && int.TryParse(gridRow, out var gr)) style.GridRow = gr;
 
         return style;
+    }
+
+    private static bool TryParseLength(string value, out float result) =>
+        float.TryParse(value.Replace(" ", "").TrimEnd('p', 'x'), out result);
+
+    private static Size MeasureWithStyle(Visual visual, Size available)
+    {
+        var measured = visual.Measure(available);
+        var style = GetComputedStyle(visual);
+        return new Size(
+            float.IsNaN(style.Width) ? measured.Width : style.Width,
+            float.IsNaN(style.Height) ? measured.Height : style.Height);
     }
 }

@@ -7,6 +7,7 @@ public sealed class SqxLexer
     private int _line = 1;
     private int _column = 1;
     private bool _inTag;
+    private int _templateExpressionDepth;
 
     public SqxLexer(string source) { _source = source; }
 
@@ -55,10 +56,21 @@ public sealed class SqxLexer
             }
             else if (c == '{')
             {
+                if (!_inTag && TryReadTemplateLambda(out var lambda))
+                {
+                    tokens.Add(new SqxToken(SqxTokenType.OpenBraceExpr, lambda, _line, _column));
+                    continue;
+                }
                 _pos++; _column++;
                 var (expr, el, ec) = ReadUntilBrace();
                 _line = el; _column = ec;
                 tokens.Add(new SqxToken(SqxTokenType.OpenBraceExpr, expr, _line, _column));
+            }
+            else if (c == '}' && !_inTag && _templateExpressionDepth > 0)
+            {
+                _pos++; _column++;
+                _templateExpressionDepth--;
+                tokens.Add(new SqxToken(SqxTokenType.OpenBraceExpr, "}", _line, _column));
             }
             else if (c == '"' || c == '\'')
             {
@@ -146,10 +158,27 @@ public sealed class SqxLexer
         while (_pos < _source.Length)
         {
             var c = _source[_pos];
-            if (c == '<' || c == '{') break;
+            if (c == '<' || c == '{' || (c == '}' && _templateExpressionDepth > 0)) break;
             AdvanceChar();
         }
         return (_source[start.._pos], line, col);
+    }
+
+    private bool TryReadTemplateLambda(out string expression)
+    {
+        expression = "";
+        var start = _pos + 1;
+        var arrow = _source.IndexOf("=>", start, StringComparison.Ordinal);
+        var tag = _source.IndexOf('<', start);
+        if (arrow < 0 || tag < 0 || arrow > tag) return false;
+
+        var candidate = _source[start..(arrow + 2)].Trim();
+        if (!candidate.StartsWith('(')) return false;
+
+        while (_pos <= arrow + 1) AdvanceChar();
+        _templateExpressionDepth++;
+        expression = candidate;
+        return true;
     }
 
     private void AdvanceWhitespace()

@@ -233,6 +233,23 @@ _for0 = new ForNode<Item>(
 
 编译为互斥条件子树。
 
+### 8.4 自定义组件与 `<Slot>`
+
+未知 PascalCase 标签按自定义组件处理。生成顺序固定为：
+
+1. 构造组件实例。
+2. 写入常量 Props 与绑定 Props。
+3. 将调用处 children 按 `slot` 属性编译为调用方作用域内的 `RenderFragment`。
+4. 设置默认/具名 Slot。
+5. 调用子组件 `BuildVisualTree()`。
+6. 将子组件加入父视觉树。
+
+组件模板中的 `<Slot>` 不生成可布局 Visual，而是生成 `SlotOutlet.AttachTo(parent, slotName, fallback)`。多个根节点作为连续区域插入，不创建隐式 `View`。
+
+### 8.5 路由声明
+
+`<Router>`/`<Route>` 是生成器已知节点。`component={PageType}` 编译为静态 `Func<UIElement>`，避免 `Activator`、反射和运行时程序集扫描。嵌套路由编译为 `RouteDefinition.Children`；布局 Route 将子分支作为默认 Slot 传给父页面组件。
+
 ---
 
 ## 9. 诊断

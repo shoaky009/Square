@@ -15,7 +15,13 @@ public sealed class CssTokenizer
         {
             var c = _source[_pos];
             if (c == '/' && Peek(1) == '*') { SkipComment(); continue; }
-            if (char.IsWhiteSpace(c)) { SkipWhitespace(); continue; }
+            if (char.IsWhiteSpace(c))
+            {
+                var line = _line;
+                SkipWhitespace();
+                tokens.Add(new CssToken(CssTokenType.Whitespace, " ", line));
+                continue;
+            }
             if (c == '{') { tokens.Add(new CssToken(CssTokenType.OpenBrace, "{", _line)); _pos++; continue; }
             if (c == '}') { tokens.Add(new CssToken(CssTokenType.CloseBrace, "}", _line)); _pos++; continue; }
             if (c == '(') { tokens.Add(new CssToken(CssTokenType.OpenParen, "(", _line)); _pos++; continue; }

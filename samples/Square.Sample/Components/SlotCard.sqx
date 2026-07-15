@@ -1,0 +1,22 @@
+<sqx>
+  <template>
+    <View class="slot-card">
+      <View class="slot-card-header">
+        <Slot name="header">
+          <Text class="slot-fallback" text="Fallback header" />
+        </Slot>
+      </View>
+      <View class="slot-card-content">
+        <Slot>
+          <Text class="slot-fallback" text="Fallback content" />
+        </Slot>
+      </View>
+    </View>
+  </template>
+  <style>
+    .slot-card { display: flex; flex-direction: column; gap: 4px; padding: 6px; background: #f6f8fa; }
+    .slot-card-header { display: flex; flex-direction: row; gap: 8px; height: 24px; }
+    .slot-card-content { display: flex; flex-direction: column; gap: 4px; height: 82px; }
+    .slot-fallback { color: #667085; font-size: 13px; }
+  </style>
+</sqx>

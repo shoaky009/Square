@@ -8,7 +8,10 @@ public enum SqxNodeKind
     Show,
     For,
     Switch,
-    Match
+    Match,
+    Slot,
+    Router,
+    Route
 }
 
 public abstract record SqxNode(SqxNodeKind Kind, int Line, int Column);

@@ -8,19 +8,29 @@ public interface IPlatformHost
     Size ClientSize { get; }
     float DpiScale { get; }
     bool IsRunning { get; }
+    CursorKind Cursor { get; set; }
+    KeyModifiers Modifiers { get; }
 
     event Action<Size>? SizeChanged;
     event Action<Point, MouseAction>? MouseEvent;
     event Action<int, KeyAction>? KeyEvent;
+    event Action<string>? TextInput;
+    event Action? Tick;
 
     void Show();
     void Close();
     IRenderContext CreateRenderContext();
     void PumpEvents();
+    void SetTextInputRect(Rect rect);
+    string GetClipboardText();
+    void SetClipboardText(string text);
 }
 
 public enum MouseAction { Down, Up, Move, Wheel }
 public enum KeyAction { Down, Up }
+public enum CursorKind { Arrow, Text }
+[Flags]
+public enum KeyModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
 
 public interface IPlatformFactory
 {

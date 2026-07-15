@@ -1,5 +1,6 @@
 using Square.Graphics;
 using Square.Runtime;
+using Square.Runtime.Binding;
 using Square.UI.ElementApi;
 using Square.UI.Properties;
 
@@ -12,9 +13,21 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
     private bool _isVisible = true;
     private bool _isLayoutDirty = true;
     private bool _isVisualDirty = true;
+    private int _zIndex;
+    private readonly List<IDisposable> _bindings = [];
 
     public bool IsLayoutDirty => _isLayoutDirty;
     public bool IsVisualDirty => _isVisualDirty;
+    public virtual int ZIndex
+    {
+        get => _zIndex;
+        set
+        {
+            if (_zIndex == value) return;
+            _zIndex = value;
+            _parent?.InvalidateVisual();
+        }
+    }
 
     public PropertyStore Properties { get; } = new();
     public StyleAccessor Style { get; }
@@ -80,6 +93,7 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
     {
         Properties.SetValue(name, value);
         OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
         InvalidateVisual();
     }
 
@@ -91,19 +105,38 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
         InvalidateVisual();
     }
 
+    public void BindProperty<T>(string name, ObservableValue<T> source)
+    {
+        Properties.MarkBound(name);
+        SetBoundValue(name, source.Value);
+        _bindings.Add(source.Subscribe(value => SetBoundValue(name, value)));
+    }
+
+    private void SetBoundValue<T>(string name, T value)
+    {
+        Properties.SetValue(name, value);
+        OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
+        InvalidateVisual();
+    }
+
     public void AddEventListener(string eventName, Action handler)
     {
-        Properties.SetValue($"__event_{eventName}", handler);
+        var key = $"__event_{NormalizeEventName(eventName)}";
+        if (Properties.TryGetValue(key, out Action existing))
+            Properties.SetValue(key, existing + handler);
+        else
+            Properties.SetValue(key, handler);
     }
 
     public void RemoveEventListener(string eventName)
     {
-        Properties.RemoveValue($"__event_{eventName}");
+        Properties.RemoveValue($"__event_{NormalizeEventName(eventName)}");
     }
 
     internal bool TryGetEventListener(string eventName, out Action? handler)
     {
-        if (Properties.TryGetValue($"__event_{eventName}", out Action h))
+        if (Properties.TryGetValue($"__event_{NormalizeEventName(eventName)}", out Action h))
         {
             handler = h;
             return true;
@@ -116,6 +149,36 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
     {
         if (TryGetEventListener(eventName, out var handler)) handler?.Invoke();
     }
+
+    public void RemoveEventListener(string eventName, Action handler)
+    {
+        var key = $"__event_{NormalizeEventName(eventName)}";
+        if (!Properties.TryGetValue(key, out Action existing)) return;
+        var remaining = existing - handler;
+        if (remaining == null) Properties.RemoveValue(key);
+        else Properties.SetValue(key, remaining);
+    }
+
+    public void RouteEvent(string eventName)
+    {
+        for (Visual? current = this; current != null; current = current.Parent)
+            current.RaiseEvent(eventName);
+    }
+
+    public virtual Visual? HitTest(Point point)
+    {
+        if (!IsVisible || !Geometry.Contains(point)) return null;
+
+        foreach (var child in Children.OrderByDescending(child => child.ZIndex))
+        {
+            var hit = child.HitTest(point);
+            if (hit != null) return hit;
+        }
+
+        return this;
+    }
+
+    private static string NormalizeEventName(string eventName) => eventName.ToLowerInvariant();
 
     public T? Query<T>(string? className = null) where T : Visual
     {

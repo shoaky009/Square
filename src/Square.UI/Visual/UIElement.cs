@@ -7,6 +7,8 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 
 public abstract class UIElement : Visual
 {
+    public SlotCollection Slots { get; } = new();
+
     public HorizontalAlignment HorizontalAlign { get; set; } = HorizontalAlignment.Stretch;
     public VerticalAlignment VerticalAlign { get; set; } = VerticalAlignment.Stretch;
 
@@ -27,7 +29,17 @@ public abstract class UIElement : Visual
     public float PaddingRight { get; set; }
     public float PaddingBottom { get; set; }
 
-    public bool IsEnabled { get; set; } = true;
+    public bool IsDisabled
+    {
+        get => GetProperty<bool>(nameof(IsDisabled));
+        set => SetProperty(nameof(IsDisabled), value);
+    }
+
+    public bool IsEnabled
+    {
+        get => !IsDisabled;
+        set => IsDisabled = !value;
+    }
     public bool IsFocused { get; private set; }
 
     public string? Tooltip { get; set; }
@@ -51,6 +63,26 @@ public abstract class UIElement : Visual
         return new Size(w, h);
     }
 
-    public void Focus() { IsFocused = true; RaiseEvent("focus"); }
-    public void Unfocus() { IsFocused = false; RaiseEvent("blur"); }
+    public void Focus()
+    {
+        if (!IsEnabled || IsFocused) return;
+        IsFocused = true;
+        SetState(VisualState.Focus, true);
+        RaiseEvent("focus");
+    }
+
+    public void Unfocus()
+    {
+        if (!IsFocused) return;
+        IsFocused = false;
+        SetState(VisualState.Focus, false);
+        RaiseEvent("blur");
+    }
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(IsDisabled))
+            SetState(VisualState.Disabled, IsDisabled);
+    }
 }

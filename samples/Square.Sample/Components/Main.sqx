@@ -1,27 +1,23 @@
 <sqx>
   <template>
-    <View>
-      <Text text="Hello Square" />
-      <Button ref={MyBtn} onClick={OnClick}>
-        Click Me
-      </Button>
-      <Show when={ShowCount}>
-        <Text text="You clicked!" />
-      </Show>
+    <View class="app">
+      <Text class="app-title" text="Square Framework Samples" />
+      <Tabs>
+        <Button slot="tabs" class="tab-button">Text</Button>
+        <Button slot="tabs" class="tab-button">Controls</Button>
+        <Button slot="tabs" class="tab-button">Media</Button>
+        <Button slot="tabs" class="tab-button">Router</Button>
+        <Button slot="tabs" class="tab-button">Signals</Button>
+        <TextSamplesPage />
+        <ControlsSamplesPage />
+        <MediaSamplesPage />
+        <RouterSamplesPage />
+        <SignalsSamplesPage />
+      </Tabs>
     </View>
   </template>
-  <script lang="csharp">
-    private int _count = 0;
-    public ObservableValue<bool> ShowCount = new(false);
-
-    private void OnClick()
-    {
-      _count++;
-    }
-  </script>
   <style>
-    View { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-    Text { color: #333; font-size: 24px; }
-    Button { background: #0078d4; color: #ffffff; }
+    .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+    .app-title { color: #202124; font-size: 22px; }
   </style>
 </sqx>

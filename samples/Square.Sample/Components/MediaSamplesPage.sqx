@@ -1,0 +1,47 @@
+<sqx>
+  <template>
+    <View class="media-page sample-page">
+      <Text class="page-title" text="Image and Canvas" />
+      <Image image={PreviewImage} source="Generated image" />
+      <Canvas ref={DemoCanvas} />
+    </View>
+  </template>
+  <script lang="csharp">
+    public ObservableValue<Square.Graphics.Image?> PreviewImage = new(CreatePreviewImage());
+
+    protected override void OnAttachedCore()
+    {
+      DemoCanvas.DrawContent = DrawCanvas;
+    }
+
+    private static void DrawCanvas(IRenderContext context, Rect bounds)
+    {
+      context.FillRect(new Rect(bounds.X + 20, bounds.Y + 22, 120, 54), new SolidColorBrush(Color.FromRgb(0, 120, 212)));
+      context.FillGeometry(new EllipseGeometry(new Point(bounds.X + 195, bounds.Y + 49), 30, 30), new SolidColorBrush(Color.FromRgb(18, 155, 105)));
+      context.DrawText(new TextLayout("Canvas", new Font("Segoe UI", 16)), new Point(bounds.X + 250, bounds.Y + 38), new SolidColorBrush(Color.FromRgb(40, 45, 50)));
+    }
+
+    private static Bitmap CreatePreviewImage()
+    {
+      var bitmap = new Bitmap(320, 120);
+      for (var y = 0; y < bitmap.Height; y++)
+      {
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+          var index = y * bitmap.Stride + x * 4;
+          bitmap.Pixels[index] = (byte)(210 - y);
+          bitmap.Pixels[index + 1] = (byte)(80 + x * 120 / bitmap.Width);
+          bitmap.Pixels[index + 2] = (byte)(30 + x * 180 / bitmap.Width);
+          bitmap.Pixels[index + 3] = 255;
+        }
+      }
+      return bitmap;
+    }
+  </script>
+  <style>
+    .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
+    .page-title { color: #202124; font-size: 18px; }
+    .media-page Image { height: 120px; }
+    .media-page Canvas { height: 260px; }
+  </style>
+</sqx>
