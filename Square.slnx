@@ -1,0 +1,23 @@
+<Solution>
+  <Project Path="src/Square.Markup/Square.Markup.csproj" />
+  <Project Path="src/Square.SourceGenerator/Square.SourceGenerator.csproj" />
+  <Project Path="src/Square.Runtime/Square.Runtime.csproj" />
+  <Project Path="src/Square.UI/Square.UI.csproj" />
+  <Project Path="src/Square.Controls/Square.Controls.csproj" />
+  <Project Path="src/Square.CSS/Square.CSS.csproj" />
+  <Project Path="src/Square.Layout/Square.Layout.csproj" />
+  <Project Path="src/Square.Graphics/Square.Graphics.csproj" />
+  <Project Path="src/Square.Rendering/Square.Rendering.csproj" />
+  <Project Path="src/Square.Text/Square.Text.csproj" />
+  <Project Path="src/Square.Animation/Square.Animation.csproj" />
+  <Project Path="src/Square.Platform/Square.Platform.csproj" />
+  <Project Path="src/Square.Backends/Square.Backends.csproj" />
+  <Project Path="src/Square.Tooling/Square.Tooling.csproj" />
+  <Project Path="samples/Square.Sample/Square.Sample.csproj" />
+  <Project Path="tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj" />
+  <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />
+  <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
+  <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
+  <Project Path="tests/Square.UI.Tests/Square.UI.Tests.csproj" />
+  <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
+</Solution>

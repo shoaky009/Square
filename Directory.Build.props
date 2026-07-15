@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <NetVersion>net10.0</NetVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Authors>Square</Authors>
+    <Product>Square Framework</Product>
+    <Copyright>Copyright © Square</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants Condition="'$(Platform)' == ''">$(DefineConstants);PLATFORM_WIN32;BACKEND_SOFTWARE</DefineConstants>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,29 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.cache
+*.log
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.DotSettings
+
+## Build
+artifacts/
+publish/
+[Bb]uild/
+*.dll
+*.pdb
+*.exe
+
+## OS
+Thumbs.db
+.DS_Store
+
+## AI
+.workbuddy/
