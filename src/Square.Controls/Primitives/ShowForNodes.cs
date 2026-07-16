@@ -227,3 +227,88 @@ public sealed class ForNode<T> : IForNode
         _parent = null;
     }
 }
+
+public sealed class SwitchNode : IDisposable
+{
+    private readonly Func<int> _selector;
+    private readonly List<MatchBranch> _branches = [];
+    private Visual? _parent;
+    private int _index;
+    private int _activeBranch = -1;
+    private bool _disposed;
+
+    public SwitchNode(Func<int> selector)
+    {
+        _selector = selector;
+    }
+
+    public void AddBranch(Func<bool> condition, Func<Visual?> build)
+    {
+        _branches.Add(new MatchBranch(condition, build));
+    }
+
+    public void AddDefault(Func<Visual?> build)
+    {
+        _branches.Add(new MatchBranch(null, build));
+    }
+
+    public void AttachTo(Visual parent)
+    {
+        _parent = parent;
+        _index = parent.Children.Count;
+        Update();
+    }
+
+    public void Update()
+    {
+        if (_disposed || _parent == null) return;
+        var match = FindMatch();
+        if (match == _activeBranch) return;
+
+        if (_activeBranch >= 0 && _activeBranch < _branches.Count)
+        {
+            var child = _branches[_activeBranch].Child;
+            if (child != null) _parent.Children.Remove(child);
+        }
+
+        _activeBranch = match;
+        if (match >= 0 && match < _branches.Count)
+        {
+            var branch = _branches[match];
+            branch.Child ??= branch.Build();
+            if (branch.Child != null)
+                _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), branch.Child);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_parent != null)
+        {
+            foreach (var branch in _branches)
+                if (branch.Child != null) _parent.Children.Remove(branch.Child);
+        }
+        _branches.Clear();
+        _parent = null;
+    }
+
+    private int FindMatch()
+    {
+        for (var i = 0; i < _branches.Count; i++)
+        {
+            var branch = _branches[i];
+            if (branch.Condition == null || branch.Condition())
+                return i;
+        }
+        return -1;
+    }
+
+    private sealed class MatchBranch(Func<bool>? condition, Func<Visual?> build)
+    {
+        public Func<bool>? Condition { get; } = condition;
+        public Func<Visual?> Build { get; } = build;
+        public Visual? Child { get; set; }
+    }
+}

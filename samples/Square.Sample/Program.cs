@@ -71,6 +71,9 @@ public static class Program
             RenderFrame();
         };
 
+        Point? pointerDownPoint = null;
+        Visual? pointerDownTarget = null;
+
         host.MouseEvent += (pt, action) =>
         {
             var hit = main.HitTest(pt);
@@ -91,13 +94,23 @@ public static class Program
                 {
                     focusedEditor.HandlePointerUp(pt);
                     isSelectingText = false;
-                    RenderFrame();
                 }
+                if (pointerDownTarget != null && hit == pointerDownTarget)
+                {
+                    hit?.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+                }
+                pointerDownPoint = null;
+                pointerDownTarget = null;
+                RenderFrame();
                 return;
             }
 
             if (action == MouseAction.Down)
             {
+                pointerDownPoint = pt;
+                pointerDownTarget = hit;
+                hit?.RaiseEvent(StandardEvents.PointerDown, new RoutedEventArgs());
+
                 if (hit is ITextEditor editor && hit is UIElement editorElement)
                 {
                     if (focusedInput != editorElement)
@@ -122,13 +135,15 @@ public static class Program
                     if (hit != select) select.CloseDropDown();
 
                 if (hit is Select selected) selected.HandlePointerDown(pt);
-                else hit?.RouteEvent("click");
                 RenderFrame();
             }
         };
 
         host.KeyEvent += (keyCode, action) =>
         {
+            var keyEvent = action == KeyAction.Down ? StandardEvents.KeyDown : StandardEvents.KeyUp;
+            focusedInput?.RaiseEvent(keyEvent, new RoutedEventArgs());
+
             if (action != KeyAction.Down || focusedEditor == null) return;
             var shift = host.Modifiers.HasFlag(KeyModifiers.Shift);
             var control = host.Modifiers.HasFlag(KeyModifiers.Control);

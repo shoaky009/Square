@@ -119,15 +119,51 @@ public sealed class SqxGenerator : IIncrementalGenerator
             if (!contracts.TryGetValue(element.TagName, out var props)) continue;
             foreach (var prop in props)
             {
-                if (!prop.Required || element.Attributes.Any(attribute =>
-                    string.Equals(attribute.Name, prop.Name, StringComparison.OrdinalIgnoreCase))) continue;
-                context.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.SqxDiagnostics.SQX0003_RequiredPropMissing,
-                    CreateLocation(input, element.Line, element.Column),
-                    element.TagName,
-                    prop.Name));
+                var attr = element.Attributes.FirstOrDefault(a =>
+                    string.Equals(a.Name, prop.Name, StringComparison.OrdinalIgnoreCase));
+                if (attr == null)
+                {
+                    if (prop.Required)
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            Diagnostics.SqxDiagnostics.SQX0003_RequiredPropMissing,
+                            CreateLocation(input, element.Line, element.Column),
+                            element.TagName,
+                            prop.Name));
+                    continue;
+                }
+                if (!attr.IsExpression && !string.IsNullOrEmpty(attr.RawValue))
+                {
+                    var innerType = ExtractInnerType(prop.TypeName);
+                    if (!IsAssignableTo(innerType, attr.RawValue))
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            Diagnostics.SqxDiagnostics.SQX0007_PropTypeMismatch,
+                            CreateLocation(input, element.Line, element.Column),
+                            prop.Name));
+                }
             }
         }
+    }
+
+    private static string ExtractInnerType(string typeName)
+    {
+        var open = typeName.IndexOf('<');
+        var close = typeName.LastIndexOf('>');
+        return open >= 0 && close > open ? typeName.Substring(open + 1, close - open - 1).Trim() : typeName;
+    }
+
+    private static bool IsAssignableTo(string innerType, string value)
+    {
+        if (string.IsNullOrEmpty(innerType)) return true;
+        if (innerType == "string") return true;
+        if (innerType == "int" || innerType == "Int32")
+            return int.TryParse(value, out _);
+        if (innerType == "float" || innerType == "Single")
+            return float.TryParse(value, out _);
+        if (innerType == "double" || innerType == "Double")
+            return double.TryParse(value, out _);
+        if (innerType == "bool" || innerType == "Boolean")
+            return bool.TryParse(value, out _);
+        return true;
     }
 
     private static IEnumerable<SqxElement> EnumerateElements(IEnumerable<SqxNode> nodes)

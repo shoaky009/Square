@@ -11,6 +11,7 @@ namespace Square.SourceGenerator.Emit
         private readonly List<RefInfo> _refs = new List<RefInfo>();
         private int _showCounter;
         private int _forCounter;
+        private int _switchCounter;
         private int _showIndex;
         private int _forIndex;
         private int _varCounter;
@@ -96,6 +97,7 @@ namespace Square.SourceGenerator.Emit
                 if (node is not SqxElement element) continue;
                 if (element.Kind == SqxNodeKind.Show) _showCounter++;
                 if (element.Kind == SqxNodeKind.For) _forCounter++;
+                if (element.Kind == SqxNodeKind.Switch) _switchCounter++;
                 CountStructs(element.Children);
             }
         }
@@ -109,9 +111,11 @@ namespace Square.SourceGenerator.Emit
                 _sb.AppendLine("    private ShowNode _show" + i + " = null!;");
             for (var i = 0; i < _forCounter; i++)
                 _sb.AppendLine("    private IForNode _for" + i + " = null!;");
+            for (var i = 0; i < _switchCounter; i++)
+                _sb.AppendLine("    private SwitchNode _switch" + i + " = null!;");
             _sb.AppendLine();
 
-            if ((_refs.Count > 0 || _showCounter > 0 || _forCounter > 0) &&
+            if ((_refs.Count > 0 || _showCounter > 0 || _forCounter > 0 || _switchCounter > 0) &&
                 !ContainsOnDetachedCore(_doc.ScriptCode))
             {
                 _sb.AppendLine("    protected override void OnDetachedCore()");
@@ -122,10 +126,14 @@ namespace Square.SourceGenerator.Emit
                     _sb.AppendLine("        _show" + i + "?.Dispose();");
                 for (var i = 0; i < _forCounter; i++)
                     _sb.AppendLine("        _for" + i + "?.Dispose();");
+                for (var i = 0; i < _switchCounter; i++)
+                    _sb.AppendLine("        _switch" + i + "?.Dispose();");
                 for (var i = 0; i < _showCounter; i++)
                     _sb.AppendLine("        _show" + i + " = null!;");
                 for (var i = 0; i < _forCounter; i++)
                     _sb.AppendLine("        _for" + i + " = null!;");
+                for (var i = 0; i < _switchCounter; i++)
+                    _sb.AppendLine("        _switch" + i + " = null!;");
                 _sb.AppendLine("        base.OnDetachedCore();");
                 _sb.AppendLine("    }");
                 _sb.AppendLine();
@@ -155,6 +163,10 @@ namespace Square.SourceGenerator.Emit
                         EmitShow(element, indent, parentName, localName);
                     else if (element.Kind == SqxNodeKind.For)
                         EmitFor(element, indent, parentName);
+                    else if (element.Kind == SqxNodeKind.Switch)
+                        EmitSwitch(element, indent, parentName, localName);
+                    else if (element.Kind == SqxNodeKind.Match)
+                        continue;
                     else if (element.Kind == SqxNodeKind.Slot)
                         EmitSlot(element, indent, parentName, localName);
                     else if (element.Kind == SqxNodeKind.Router)
@@ -299,6 +311,33 @@ namespace Square.SourceGenerator.Emit
             EmitFactoryBody(element.Children, indent + "    ", "it");
             _sb.AppendLine(indent + "});");
             _sb.AppendLine(indent + "_for" + index + ".AttachTo(" + parentName + ");");
+        }
+
+        private void EmitSwitch(SqxElement element, string indent, string parentName, string localName)
+        {
+            var index = _switchCounter > 0 ? _switchCounter - 1 : 0;
+            _switchCounter = 0;
+            _sb.AppendLine(indent + "_switch" + index + " = new SwitchNode(() => 0);");
+            foreach (var child in element.Children)
+            {
+                if (child is not SqxElement matchElement || matchElement.Kind != SqxNodeKind.Match) continue;
+                var when = FindAttr(matchElement, "when")?.RawValue;
+                if (when != null)
+                {
+                    _sb.AppendLine(indent + "_switch" + index + ".AddBranch(() => " + when + ", () =>");
+                    _sb.AppendLine(indent + "{");
+                    EmitFactoryBody(matchElement.Children, indent + "    ", localName);
+                    _sb.AppendLine(indent + "});");
+                }
+                else
+                {
+                    _sb.AppendLine(indent + "_switch" + index + ".AddDefault(() =>");
+                    _sb.AppendLine(indent + "{");
+                    EmitFactoryBody(matchElement.Children, indent + "    ", localName);
+                    _sb.AppendLine(indent + "});");
+                }
+            }
+            _sb.AppendLine(indent + "_switch" + index + ".AttachTo(" + parentName + ");");
         }
 
         private void EmitSlot(SqxElement element, string indent, string parentName, string localName)

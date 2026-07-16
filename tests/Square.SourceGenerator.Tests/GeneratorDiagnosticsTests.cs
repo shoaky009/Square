@@ -67,6 +67,42 @@ public class GeneratorDiagnosticsTests
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "SQX0006");
     }
 
+    [Fact]
+    public void ReportsPropTypeMismatchForIntPropWithStringConstant()
+    {
+        const string component = """
+            <template><View /></template>
+            <script lang="csharp">
+              [Prop]
+              public ObservableValue<int> Count { get; set; } = new(0);
+            </script>
+            """;
+
+        var diagnostics = RunGenerator(
+            new InMemoryAdditionalText("TypedCard.sqx", component),
+            new InMemoryAdditionalText("Usage.sqx", "<template><TypedCard Count=\"hello\" /></template>"));
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "SQX0007");
+    }
+
+    [Fact]
+    public void AcceptsCorrectPropTypeForIntWithStringLiteral()
+    {
+        const string component = """
+            <template><View /></template>
+            <script lang="csharp">
+              [Prop]
+              public ObservableValue<int> Count { get; set; } = new(0);
+            </script>
+            """;
+
+        var diagnostics = RunGenerator(
+            new InMemoryAdditionalText("TypedCard.sqx", component),
+            new InMemoryAdditionalText("Usage.sqx", "<template><TypedCard Count=\"42\" /></template>"));
+
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "SQX0007");
+    }
+
     private static ImmutableArray<Diagnostic> RunGenerator(params AdditionalText[] files)
     {
         var compilation = CSharpCompilation.Create(
