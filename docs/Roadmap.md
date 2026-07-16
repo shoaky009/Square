@@ -33,28 +33,28 @@
 
 ## 3. M1 任务清单
 
-- [ ] M0：创建 `Square.slnx` 与 13 个 `Square.*` 项目 + 发布/AOT 配置
-- [ ] `Square.Markup`：`.sqx` 解析器 + AST + 单测（template/script/style 三段）
-- [ ] `Square.SourceGenerator`：Incremental Generator + Props 解析 + ref 生成 + 绑定编译 + 诊断映射
-- [ ] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（M1 子集）
-- [ ] `Square.Layout`：Box + Flex + 尺寸解析 + 高 DPI 对齐
-- [ ] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
-- [ ] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha/SIMD/脏区）
-- [ ] `Square.Rendering`：Visual→Render Tree→DrawCommand→提交（含子树挂卸/增量）
-- [ ] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性/元素操作 API（Style/ClassList/Children/Event）
-- [ ] `Square.Controls`：10 个第一阶段控件 + 结构原语 + 默认样式
-- [ ] `Square.Text`：FontManager/测量/绘制（基础）
-- [ ] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）
-- [ ] `Square.Animation`：Clock/Easing 最小实现
-- [ ] `Square.Tooling`：基础诊断输出
-- [ ] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定
-- [ ] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
-- [ ] Props：`[Prop]` 特性 + `ObservableValue<T>` 包装 + 编译期校验 + `OnPropChanged`
-- [ ] ref：模板标记 + 强类型字段生成 + 挂载/卸载赋值
-- [ ] 示例 + NativeAOT 发布验证 + 基线指标
-- [ ] 构建层裁剪：C# `#if` + MSBuild `DefineConstants`/条件 `ProjectReference`
-- [ ] 流程控制结构原语：`<Show>`/`<For>` + `ObservableCollection<T>`
-- [ ] 组件/应用生命周期钩子
+[x] M0：创建 `Square.slnx` 与全部 `Square.*` 项目 + 发布/AOT 配置
+[x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
+[x] `Square.SourceGenerator`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
+[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（M1 子集）
+[x] `Square.Layout`：Box + Flex + 尺寸解析（px/%/rp/vw/vh/auto）+ 高 DPI
+[x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
+[~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
+[~] `Square.Rendering`：Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[x] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性/元素操作 API（Style/ClassList/Children/Event）
+[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式
+[x] `Square.Text`：FontManager/测量/绘制（基础）
+[x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
+[x] `Square.Animation`：Clock/Easing 最小实现
+[x] `Square.Tooling`：基础诊断输出
+[x] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定 + Click 合成
+[x] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
+[x] Props：`[Prop]` 特性 + `ObservableValue<T>` 包装 + 编译期校验（必填 + 类型）+ `OnPropChanged`
+[x] ref：模板标记 + 强类型字段生成 + 挂载/卸载赋值 + 重复名称诊断
+[x] 示例 + NativeAOT 发布验证 + 基线指标（2.53 MiB EXE，512ms 启动，32 MB 内存）
+[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` ✓ / 条件 `ProjectReference` 待实现 / trim 注解待添加
+[x] 流程控制结构原语：`<Show>`/`<For>`/`<Switch>`/`<Match>` + `ObservableCollection<T>`
+[x] 组件/应用生命周期钩子（OnAttached/OnDetached/OnLoaded/OnUnloaded + Application.OnStart/OnExit）
 
 ---
 
