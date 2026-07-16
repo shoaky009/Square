@@ -214,4 +214,28 @@ public class CssParserTests
         Assert.Equal("red", t2.Style.Get("color"));
         Assert.Null(t3.Style.Get("color"));
     }
+
+    [Fact]
+    public void AttributeSelectorMatchesPropertyPresenceAndValue()
+    {
+        var css = "Button[IsDisabled] { opacity: 0.5; } Button[variant=primary] { color: blue; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+
+        var disabled = new Button();
+        disabled.IsDisabled = true;
+        var primary = new Button();
+        primary.SetProperty("variant", "primary");
+        var secondary = new Button();
+        secondary.SetProperty("variant", "secondary");
+
+        engine.ApplyStyles(disabled);
+        engine.ApplyStyles(primary);
+        engine.ApplyStyles(secondary);
+
+        Assert.Equal("0.5", disabled.Style.Get("opacity"));
+        Assert.Equal("blue", primary.Style.Get("color"));
+        Assert.Null(secondary.Style.Get("color"));
+    }
 }

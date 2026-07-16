@@ -26,6 +26,7 @@ public enum CssTokenType
     Tilde,
     Bang,
     Asterisk,
+    Equals,
     Eof
 }
 

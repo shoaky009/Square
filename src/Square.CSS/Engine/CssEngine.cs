@@ -213,9 +213,25 @@ public sealed class CssEngine
                     if (!MatchPseudoClass(visual, part.Name)) return false;
                     specificity += 10;
                     break;
+                case SimpleSelectorKind.Attribute:
+                    if (!MatchAttribute(visual, part.Name)) return false;
+                    specificity += 10;
+                    break;
             }
         }
         return true;
+    }
+
+    private static bool MatchAttribute(Visual visual, string selector)
+    {
+        var equalsIndex = selector.IndexOf('=');
+        if (equalsIndex < 0)
+            return visual.Properties.HasValue(selector);
+
+        var name = selector[..equalsIndex].Trim();
+        var expected = selector[(equalsIndex + 1)..].Trim().Trim('"', '\'');
+        var actual = visual.GetProperty<object>(name);
+        return actual != null && string.Equals(Convert.ToString(actual), expected, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchPseudoClass(Visual visual, string name)

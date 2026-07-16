@@ -125,13 +125,14 @@ Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏�
 | 内联 `style` 和 `class` | 已支持 |
 | `:hover`、`:focus`、`:active`、`:disabled`、`:checked`、位置伪类 | 基础支持 |
 | `:not(...)` | 部分支持（简单参数） |
+| 属性选择器 `[name]` / `[name=value]` | 基础支持 |
 | 颜色、背景、字体、边框、间距、尺寸 | 基础支持 |
 | `display: block` / `flex` | 基础支持 |
 | Flex 方向、对齐、伸缩、换行和 `gap` | 基础支持 |
 | `px`、`%`、`auto`、`rp`、`vw`、`vh` | 基础支持 |
 | Grid | 计划支持 |
 | CSS Animation / `@keyframes` | 计划支持 |
-| 属性选择器、伪元素 | 计划支持 |
+| 属性选择器高级操作符、伪元素 | 计划支持 |
 | Container Query、Subgrid | 长期计划 |
 
 目前不支持浏览器私有扩展、CSS Houdini、怪异模式以及完整的 `@media` / `@supports`。具体属性、单位和阶段规划见 [`docs/CSS-Spec.md`](docs/CSS-Spec.md)。

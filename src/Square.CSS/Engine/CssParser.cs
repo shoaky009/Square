@@ -149,6 +149,20 @@ public sealed class CssParser
             if (token.Type == CssTokenType.OpenBracket)
             {
                 Advance();
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                var name = Peek().Type == CssTokenType.Identifier ? Advance().Text : "";
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                if (Peek().Type == CssTokenType.Equals)
+                {
+                    Advance();
+                    while (Peek().Type == CssTokenType.Whitespace) Advance();
+                    var valueToken = Advance();
+                    parts.Add(new SimpleSelector(SimpleSelectorKind.Attribute, name + "=" + valueToken.Text));
+                }
+                else if (!string.IsNullOrWhiteSpace(name))
+                {
+                    parts.Add(new SimpleSelector(SimpleSelectorKind.Attribute, name));
+                }
                 while (Peek().Type is not (CssTokenType.CloseBracket or CssTokenType.Eof)) Advance();
                 if (Peek().Type == CssTokenType.CloseBracket) Advance();
                 continue;

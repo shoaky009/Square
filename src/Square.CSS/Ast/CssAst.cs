@@ -1,6 +1,6 @@
 namespace Square.CSS.Ast;
 
-public enum SimpleSelectorKind { Type, Class, Id, Universal, PseudoClass }
+public enum SimpleSelectorKind { Type, Class, Id, Universal, PseudoClass, Attribute }
 
 public sealed record SimpleSelector(SimpleSelectorKind Kind, string Name);
 
