@@ -42,19 +42,33 @@ public static class Program
         UIElement? focusedInput = null;
         ITextEditor? focusedEditor = null;
         var isSelectingText = false;
-        var frameRequested = false;
+        var scheduledFrames = new Dictionary<Visual, double>();
+        var appClock = System.Diagnostics.Stopwatch.StartNew();
         main.AddEventListener(StandardEvents.RequestFrame, (_, e) =>
         {
-            frameRequested = true;
+            if (e.OriginalSource is Visual target)
+            {
+                var requestedTime = appClock.Elapsed.TotalSeconds + e.IntervalSeconds;
+                if (!scheduledFrames.TryGetValue(target, out var current) || requestedTime < current)
+                    scheduledFrames[target] = requestedTime;
+            }
             e.Handled = true;
         });
 
         void RenderFrame()
         {
             var size = host.ClientSize;
-            layout.Measure(main, size);
-            layout.Arrange(main, new Rect(0, 0, size.Width, size.Height));
-            renderTree.BuildFrom(main);
+            var needsLayout = main.IsLayoutDirty || main.Geometry.Size != size;
+            if (needsLayout)
+            {
+                layout.Measure(main, size);
+                layout.Arrange(main, new Rect(0, 0, size.Width, size.Height));
+                renderTree.BuildFrom(main);
+            }
+            else
+            {
+                renderTree.UpdateDirty();
+            }
             ctx.Clear(Color.White);
             renderTree.Render(ctx);
             ctx.Flush();
@@ -188,10 +202,19 @@ public static class Program
 
         host.Tick += () =>
         {
-            var needsRender = dispatcher.HasWork || frameRequested;
-            frameRequested = false;
+            var now = appClock.Elapsed.TotalSeconds;
+            var dueTargets = scheduledFrames.Where(pair => now >= pair.Value).Select(pair => pair.Key).ToArray();
+            foreach (var target in dueTargets)
+            {
+                scheduledFrames.Remove(target);
+                target.InvalidateVisual();
+            }
+            var needsRender = dispatcher.HasWork || dueTargets.Length > 0;
             dispatcher.Run();
-            needsRender |= focusedEditor?.ToggleCaretBlink() == true;
+            if (focusedEditor?.ToggleCaretBlink() == true)
+            {
+                needsRender = true;
+            }
             if (needsRender) RenderFrame();
         };
 

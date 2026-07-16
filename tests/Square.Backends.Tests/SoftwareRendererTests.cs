@@ -135,6 +135,26 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void OverflowHiddenClipsRenderedChildrenToParentBounds()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 40, 20) };
+        root.Style.Set("overflow", "hidden");
+        var child = new View { Geometry = new Rect(30, 0, 20, 20) };
+        child.Style.Set("background", "#ff0000");
+        root.Children.Add(child);
+        var context = CreateContext(60, 30);
+        context.Clear(Color.Transparent);
+        var tree = new RenderTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 35 * 4 + 2]);
+        Assert.Equal(0, bitmap.Pixels[5 * bitmap.Stride + 45 * 4 + 3]);
+    }
+
+    [Fact]
     public void RetainedRendererDrawsFocusedTextCarets()
     {
         var controls = new UIElement[] { new Input(), new TextArea() };
@@ -241,7 +261,7 @@ public class SoftwareRendererTests
     }
 
     [Fact]
-    public void FocusedCaretCanBlinkAndResetVisible()
+    public void FocusedCaretBlinkFadesWithAnimationAndResetVisible()
     {
         var input = new Input { Value = "Blink", Geometry = new Rect(4, 4, 220, 36) };
         input.Focus();
@@ -255,11 +275,14 @@ public class SoftwareRendererTests
         Assert.Equal(0, context.GetBitmap().Pixels[caretPixel]);
         Assert.Equal(0, context.GetBitmap().Pixels[caretPixel + 1]);
 
+        Assert.False(input.ToggleCaretBlink());
+        Thread.Sleep(720);
         Assert.True(input.ToggleCaretBlink());
         context.Clear(Color.White);
         tree.BuildFrom(input);
         tree.Render(context);
-        Assert.False(context.GetBitmap().Pixels[caretPixel] == 0 && context.GetBitmap().Pixels[caretPixel + 1] == 0);
+        Assert.True(context.GetBitmap().Pixels[caretPixel] is > 0 and < 255);
+        Assert.True(context.GetBitmap().Pixels[caretPixel + 1] is > 0 and < 255);
 
         input.ResetCaretBlink();
         context.Clear(Color.White);
@@ -293,18 +316,50 @@ public class SoftwareRendererTests
             Options = ["Blue", "Green", "Orange"],
             Value = "Blue"
         };
-        var canvas = new Canvas { Geometry = new Rect(0, 48, 240, 120) };
+        var laterText = new Square.Controls.Controls.Text("For: ready")
+        {
+            Geometry = new Rect(10, 52, 220, 24)
+        };
         root.Children.Add(select);
-        root.Children.Add(canvas);
-        select.HandlePointerDown(new Point(20, 20));
+        root.Children.Add(laterText);
         var context = CreateContext(240, 170);
         context.Clear(Color.White);
         var tree = new RenderTree();
         tree.BuildFrom(root);
+        select.HandlePointerDown(new Point(20, 20));
+        tree.UpdateDirty();
 
         tree.Render(context);
 
-        Assert.True(ContainsBgra(context.GetBitmap(), 250, 247, 242, 255));
+        var expectedRoot = new View { Geometry = root.Geometry };
+        var expectedSelect = new Select
+        {
+            Geometry = select.Geometry,
+            Options = select.Options,
+            Value = select.Value
+        };
+        expectedRoot.Children.Add(expectedSelect);
+        expectedSelect.HandlePointerDown(new Point(20, 20));
+        var expectedContext = CreateContext(240, 170);
+        expectedContext.Clear(Color.White);
+        var expectedTree = new RenderTree();
+        expectedTree.BuildFrom(expectedRoot);
+        expectedTree.Render(expectedContext);
+
+        AssertRegionEqual(
+            expectedContext.GetBitmap(),
+            context.GetBitmap(),
+            new Rect(10, 48, 220, 98));
+    }
+
+    private static void AssertRegionEqual(Bitmap expected, Bitmap actual, Rect region)
+    {
+        for (var y = Math.Max(0, (int)region.Top); y < Math.Min(expected.Height, (int)region.Bottom); y++)
+        for (var x = Math.Max(0, (int)region.Left); x < Math.Min(expected.Width, (int)region.Right); x++)
+        {
+            var i = y * expected.Stride + x * 4;
+            Assert.Equal(expected.Pixels.AsSpan(i, 4).ToArray(), actual.Pixels.AsSpan(i, 4).ToArray());
+        }
     }
 
     private static bool ContainsBgra(Bitmap bitmap, byte blue, byte green, byte red, byte alpha)

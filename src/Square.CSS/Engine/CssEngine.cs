@@ -26,7 +26,7 @@ public sealed class CssEngine
     public KeyFramesRule? GetKeyFrames(string name) =>
         _keyFrames.TryGetValue(name, out var kf) ? kf : null;
 
-    public void SetTheme(string name)
+    public void SetTheme(string? name)
     {
         _activeTheme = name;
     }
@@ -75,6 +75,45 @@ public sealed class CssEngine
         foreach (var child in visual.Children)
             ApplyStylesToTree(child);
     }
+
+    public CssAnimationTimeline? CreateAnimationTimeline(Visual visual)
+    {
+        var name = visual.Style.Get("animation-name");
+        if (string.IsNullOrWhiteSpace(name) || !_keyFrames.TryGetValue(name, out var keyFrames)) return null;
+        var duration = ParseDurationSeconds(visual.Style.Get("animation-duration"));
+        var delay = ParseDurationSeconds(visual.Style.Get("animation-delay"));
+        var iterationCount = ParseIterationCount(visual.Style.Get("animation-iteration-count"));
+        var direction = visual.Style.Get("animation-direction") ?? "normal";
+        var easing = ResolveEasing(visual.Style.Get("animation-timing-function"));
+        return new CssAnimationTimeline(visual, keyFrames, duration, easing, delay, iterationCount, direction);
+    }
+
+    private static int ParseIterationCount(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return 1;
+        var text = value.Trim();
+        if (string.Equals(text, "infinite", StringComparison.OrdinalIgnoreCase)) return int.MaxValue;
+        return int.TryParse(text, out var count) ? Math.Max(1, count) : 1;
+    }
+
+    private static float ParseDurationSeconds(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return 0f;
+        var text = value.Trim();
+        if (text.EndsWith("ms", StringComparison.OrdinalIgnoreCase) && float.TryParse(text[..^2], out var ms))
+            return ms / 1000f;
+        if (text.EndsWith('s') && float.TryParse(text[..^1], out var s))
+            return s;
+        return float.TryParse(text, out var seconds) ? seconds : 0f;
+    }
+
+    private static Func<float, float> ResolveEasing(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "ease-in" => t => t * t * t,
+        "ease-out" => t => 1f - MathF.Pow(1f - t, 3),
+        "ease-in-out" => t => t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3) / 2f,
+        _ => t => t
+    };
 
     private string ResolveVariables(string value)
     {
@@ -276,6 +315,75 @@ public sealed class CssEngine
 
     private static void ApplyDeclaration(Visual visual, string property, string value, int specificity)
     {
+        if (string.Equals(property, "animation", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyAnimationShorthand(visual, value, specificity);
+            return;
+        }
+
         visual.Style.SetCascaded(property, value, specificity);
     }
+
+    private static void ApplyAnimationShorthand(Visual visual, string value, int specificity)
+    {
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) return;
+
+        var timingFunctions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end"
+        };
+        var directions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "normal", "reverse", "alternate", "alternate-reverse"
+        };
+
+        var name = "";
+        var duration = "";
+        var timingFunction = "";
+        var delay = "";
+        var iterationCount = "";
+        var direction = "";
+
+        foreach (var part in parts)
+        {
+            if (IsTime(part))
+            {
+                if (duration.Length == 0) duration = part;
+                else if (delay.Length == 0) delay = part;
+                continue;
+            }
+
+            if (timingFunction.Length == 0 && (timingFunctions.Contains(part) || part.StartsWith("cubic-bezier(", StringComparison.OrdinalIgnoreCase) || part.StartsWith("steps(", StringComparison.OrdinalIgnoreCase)))
+            {
+                timingFunction = part;
+                continue;
+            }
+
+            if (iterationCount.Length == 0 && (string.Equals(part, "infinite", StringComparison.OrdinalIgnoreCase) || float.TryParse(part, out _)))
+            {
+                iterationCount = part;
+                continue;
+            }
+
+            if (direction.Length == 0 && directions.Contains(part))
+            {
+                direction = part;
+                continue;
+            }
+
+            if (name.Length == 0) name = part;
+        }
+
+        if (name.Length > 0) visual.Style.SetCascaded("animation-name", name, specificity);
+        if (duration.Length > 0) visual.Style.SetCascaded("animation-duration", duration, specificity);
+        if (timingFunction.Length > 0) visual.Style.SetCascaded("animation-timing-function", timingFunction, specificity);
+        if (delay.Length > 0) visual.Style.SetCascaded("animation-delay", delay, specificity);
+        if (iterationCount.Length > 0) visual.Style.SetCascaded("animation-iteration-count", iterationCount, specificity);
+        if (direction.Length > 0) visual.Style.SetCascaded("animation-direction", direction, specificity);
+    }
+
+    private static bool IsTime(string value) =>
+        value.EndsWith("ms", StringComparison.OrdinalIgnoreCase) ||
+        value.EndsWith('s') && float.TryParse(value[..^1], out _);
 }

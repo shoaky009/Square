@@ -1,4 +1,5 @@
 using System.Text;
+using Square.Animation.Clock;
 using Square.Graphics;
 using Square.Text.Glyph;
 using Square.UI;
@@ -35,7 +36,11 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private bool _isDragging;
     private float _horizontalScroll;
     private float? _preferredX;
-    private bool _caretVisible = true;
+    private float _caretOpacity = 1f;
+    private float _caretBlinkTarget;
+    private double _nextCaretTransitionSeconds;
+    private Animation<float>? _caretBlinkAnimation;
+    private readonly System.Diagnostics.Stopwatch _caretClock = System.Diagnostics.Stopwatch.StartNew();
 
     protected abstract bool IsMultiline { get; }
 
@@ -110,8 +115,11 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             }
         }
 
-        if (IsFocused && SelectionLength == 0 && _caretVisible)
-            context.FillRect(CaretRect, new SolidColorBrush(ControlDrawing.GetStyledColor(this, "caret-color", textColor)));
+        if (IsFocused && SelectionLength == 0 && _caretOpacity > 0.01f)
+        {
+            var caretColor = ControlDrawing.GetStyledColor(this, "caret-color", textColor);
+            context.FillRect(CaretRect, new SolidColorBrush(Color.FromRgba(caretColor.R, caretColor.G, caretColor.B, (byte)Math.Clamp(_caretOpacity * 255f, 0f, 255f))));
+        }
 
         context.PopClip();
     }
@@ -218,16 +226,40 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     public bool ToggleCaretBlink()
     {
         if (!IsFocused || SelectionLength > 0) return false;
-        _caretVisible = !_caretVisible;
+        var now = _caretClock.Elapsed.TotalSeconds;
+        if ((_caretBlinkAnimation == null || _caretBlinkAnimation.IsComplete) && now < _nextCaretTransitionSeconds)
+            return false;
+        if (_caretBlinkAnimation == null || _caretBlinkAnimation.IsComplete)
+        {
+            _caretBlinkTarget = _caretOpacity > 0.5f ? 0f : 1f;
+            _caretBlinkAnimation = CreateCaretBlinkAnimation(_caretOpacity, _caretBlinkTarget);
+            _caretBlinkAnimation.Start();
+        }
+        _caretBlinkAnimation.Update(1f / 30f);
+        if (_caretBlinkAnimation.IsComplete)
+            _nextCaretTransitionSeconds = now + (_caretBlinkTarget <= 0.01f ? 0.45d : 0.7d);
         InvalidateVisual();
         return true;
     }
 
     public void ResetCaretBlink()
     {
-        _caretVisible = true;
+        _caretOpacity = 1f;
+        _caretBlinkTarget = 0f;
+        _nextCaretTransitionSeconds = _caretClock.Elapsed.TotalSeconds + 0.7d;
+        _caretBlinkAnimation = null;
         InvalidateVisual();
     }
+
+    private Animation<float> CreateCaretBlinkAnimation(float from, float to) => new(
+        Interpolate,
+        from,
+        to,
+        0.28f,
+        t => t,
+        value => _caretOpacity = value);
+
+    private static float Interpolate(float from, float to, float t) => from + (to - from) * t;
 
     protected override void OnPropertyChanged(string name)
     {
@@ -520,7 +552,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     {
         _selectionAnchor = _caretIndex;
         _isDragging = false;
-        _caretVisible = false;
+        _caretOpacity = 0f;
+        _caretBlinkAnimation = null;
         InvalidateVisual();
     }
 

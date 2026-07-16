@@ -43,6 +43,14 @@ public sealed class StyleAccessor
         _owner.InvalidateVisual();
     }
 
+    public void ClearCascaded()
+    {
+        if (_styles == null) return;
+        foreach (var property in _styles.Where(pair => pair.Value.Specificity < int.MaxValue).Select(pair => pair.Key).ToArray())
+            _styles.Remove(property);
+        _owner.InvalidateVisual();
+    }
+
     public IReadOnlyDictionary<string, string> GetAll() => _styles == null
         ? new Dictionary<string, string>()
         : _styles.ToDictionary(pair => pair.Key, pair => pair.Value.Value);

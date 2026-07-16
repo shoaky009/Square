@@ -58,7 +58,23 @@
 
 ---
 
-## 4. 风险与缓解
+## 4. M2 任务清单
+
+[x] 组件组合：默认/具名 Slot、fallback、嵌套组件，且 Slot 不产生隐式布局容器
+[x] `Signal<T>` + `SignalHub`：跨组件通信、跨线程发布、Dispatcher 回到 UI 线程投递
+[x] 元素查询 API：`Query<T>()` / `QueryAll<T>()` 基础类型 + 类查询
+[x] CSS Selector/Cascade：组合选择器、属性选择器、伪类、`!important`、变量、继承
+[x] CSS Animation 起步：`@keyframes` 解析 + `animation` 简写展开为 computed animation 属性
+[x] Theme 起步：注册/切换主题变量，重应用样式时覆盖样式表变量
+[x] Grid 起步：`display: grid`、`grid-template-*`、`fr`、`gap`、`grid-column`/`grid-row` span
+[x] 尺寸单位扩展：`rem` / `em`，Grid 内 `min-content` / `max-content` / `fit-content` 基础测量
+[x] Animation 运行时联动：`@keyframes` 可创建 timeline，支持 delay/iteration/direction 基础语义，`CssAnimationManager` 可自动扫描 Visual Tree 并按 tick 更新样式属性
+[x] Theme 完整体系起步：`ThemeProvider` 可切换主题、清理级联样式并自动重算整棵 Visual Tree
+[x] Grid 完整化起步：支持 `minmax()`、基础 auto-placement、`grid-template-areas` / `grid-area` 命名区域
+
+---
+
+## 5. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
@@ -71,6 +87,6 @@
 
 ---
 
-## 5. 下一步
+## 6. 下一步
 
-M0（脚手架 + 解决方案 + 13 个 `Square.*` 项目）启动实施。
+M2 增强项已完成起步覆盖。下一步进入 M3 扩展控件与路由打磨，并继续扩展 CSS Grid / Animation 到更完整规范。

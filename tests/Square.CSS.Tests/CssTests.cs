@@ -238,4 +238,43 @@ public class CssParserTests
         Assert.Equal("blue", primary.Style.Get("color"));
         Assert.Null(secondary.Style.Get("color"));
     }
+
+    [Fact]
+    public void ActiveThemeVariablesOverrideStylesheetVariablesWhenStylesAreReapplied()
+    {
+        var css = ":root { --primary: #111111; } Text { color: var(--primary); }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        engine.RegisterTheme("dark", new Dictionary<string, string> { ["--primary"] = "#eeeeee" });
+        var text = new Square.Controls.Controls.Text();
+
+        engine.ApplyStyles(text);
+        Assert.Equal("#111111", text.Style.Get("color"));
+
+        engine.SetTheme("dark");
+        engine.ApplyStyles(text);
+
+        Assert.Equal("#eeeeee", text.Style.Get("color"));
+    }
+
+    [Fact]
+    public void ThemeProviderSwitchesThemeAndReappliesStylesToTree()
+    {
+        var css = ":root { --primary: #111111; } Text { color: var(--primary); }";
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
+        engine.RegisterTheme("dark", new Dictionary<string, string> { ["--primary"] = "#eeeeee" });
+        var root = new View();
+        var text = new Square.Controls.Controls.Text("hello");
+        root.Children.Add(text);
+        var provider = new ThemeProvider(engine, root);
+
+        provider.ApplyTheme(null);
+        Assert.Equal("#111111", text.Style.Get("color"));
+
+        provider.ApplyTheme("dark");
+
+        Assert.Equal("#eeeeee", text.Style.Get("color"));
+    }
 }

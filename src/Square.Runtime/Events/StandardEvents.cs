@@ -18,7 +18,7 @@ public static class StandardEvents
     public static readonly RoutedEvent<RoutedEventArgs> Click = Register<RoutedEventArgs>("click", RoutingStrategy.Bubble);
     public static readonly RoutedEvent<RoutedEventArgs> Change = Register<RoutedEventArgs>("change", RoutingStrategy.Bubble);
     public static readonly RoutedEvent<RoutedEventArgs> Input = Register<RoutedEventArgs>("input", RoutingStrategy.Bubble);
-    public static readonly RoutedEvent<RoutedEventArgs> RequestFrame = Register<RoutedEventArgs>("requestframe", RoutingStrategy.Bubble);
+    public static readonly RoutedEvent<FrameRequestEventArgs> RequestFrame = Register<FrameRequestEventArgs>("requestframe", RoutingStrategy.Bubble);
 
     public static EventDefinition? Resolve(string eventName)
     {

@@ -205,7 +205,7 @@ public class M1IntegrationTests
         Assert.True(controlsPage.OptionB.Value);
         Assert.Equal("Green", controlsPage.SelectedValue.Value);
         Assert.NotNull(image.ImageContent);
-        Assert.NotNull(canvas.DrawContent);
+        Assert.Null(canvas.DrawContent);
         ((IComponentLifecycle)component).OnDetached();
     }
 
@@ -318,6 +318,39 @@ public class M1IntegrationTests
 
         Assert.Same(button, hit);
         Assert.Equal(1, clicks);
+    }
+
+    [Fact]
+    public void OverflowVisibleAllowsHitTestingChildrenOutsideParentBoundsAndHiddenClipsThem()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 100) };
+        var parent = new View { Geometry = new Rect(0, 0, 10, 10) };
+        var child = new Button { Geometry = new Rect(12, 0, 20, 10) };
+        root.Children.Add(parent);
+        parent.Children.Add(child);
+
+        Assert.Same(child, root.HitTest(new Point(13, 5)));
+
+        parent.Style.Set("overflow", "hidden");
+
+        Assert.Same(root, root.HitTest(new Point(13, 5)));
+    }
+
+    [Fact]
+    public void OverflowAxisClipsHitTestingOnlyOnSpecifiedAxis()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 100) };
+        var parent = new View { Geometry = new Rect(0, 0, 10, 10) };
+        var verticalOverflow = new Button { Geometry = new Rect(0, 12, 10, 10) };
+        var horizontalOverflow = new Button { Geometry = new Rect(12, 0, 10, 10) };
+        root.Children.Add(parent);
+        parent.Children.Add(verticalOverflow);
+        parent.Children.Add(horizontalOverflow);
+
+        parent.Style.Set("overflow-x", "hidden");
+
+        Assert.Same(verticalOverflow, root.HitTest(new Point(5, 13)));
+        Assert.Same(root, root.HitTest(new Point(13, 5)));
     }
 
     [Fact]
@@ -470,6 +503,39 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void CanvasRequestAnimationFrameCarriesCallbackAndFrameRate()
+    {
+        var root = new View();
+        var canvas = new Canvas();
+        root.Children.Add(canvas);
+        FrameRequestEventArgs? request = null;
+        root.AddEventListener(StandardEvents.RequestFrame, (_, e) => request = e);
+        Action<IRenderContext, Rect> draw = (_, _) => { };
+
+        canvas.RequestAnimationFrame(draw, fps: 5);
+
+        Assert.Null(canvas.DrawContent);
+        Assert.NotNull(request);
+        Assert.Equal(5, request!.FramesPerSecond);
+        Assert.Same(canvas, request.OriginalSource);
+    }
+
+    [Fact]
+    public void SelectDoesNotCloseWhenPointerUpRaisesClickAfterOpeningOnPointerDown()
+    {
+        var select = new Select
+        {
+            Geometry = new Rect(10, 10, 200, 36),
+            Options = ["Blue", "Green"]
+        };
+
+        select.HandlePointerDown(new Point(20, 20));
+        select.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+
+        Assert.True(select.IsOpen);
+    }
+
+    [Fact]
     public void SelectOpensPopupAndChoosesClickedArrayOption()
     {
         var root = new View { Geometry = new Rect(0, 0, 300, 240) };
@@ -514,6 +580,40 @@ public class M1IntegrationTests
         Assert.Equal(720, component.Geometry.Width);
         Assert.True(tabs.Geometry.Width > initialWidth);
         Assert.Equal(688, tabs.Geometry.Width);
+    }
+
+    [Fact]
+    public void TabsSelectionInvalidatesLayoutForRetainedRenderTreeRebuild()
+    {
+        var tabs = new Tabs();
+        var firstButton = new Button("First");
+        var secondButton = new Button("Second");
+        var firstPage = new View();
+        var secondPage = new View();
+        tabs.Slots.Set("tabs", parent =>
+        {
+            parent.Children.Add(firstButton);
+            parent.Children.Add(secondButton);
+        });
+        tabs.Slots.Set("", parent =>
+        {
+            parent.Children.Add(firstPage);
+            parent.Children.Add(secondPage);
+        });
+        tabs.BuildVisualTree();
+        ((IComponentLifecycle)tabs).OnAttached();
+        var layout = new LayoutEngine();
+        layout.Measure(tabs, new Size(600, 500));
+        layout.Arrange(tabs, new Rect(0, 0, 600, 500));
+
+        Assert.False(tabs.IsLayoutDirty);
+
+        secondButton.RaiseEvent("click");
+
+        Assert.True(tabs.IsLayoutDirty);
+        Assert.False(firstPage.IsVisible);
+        Assert.True(secondPage.IsVisible);
+        ((IComponentLifecycle)tabs).OnDetached();
     }
 
     [Fact]

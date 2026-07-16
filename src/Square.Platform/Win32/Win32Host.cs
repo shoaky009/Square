@@ -20,6 +20,8 @@ internal sealed class Win32Host : IPlatformHost
     private CursorKind _cursor = CursorKind.Arrow;
     private Rect _textInputRect;
 
+    private const uint FrameTimerIntervalMs = 16;
+
     private static Win32Host? s_current;
     private static WndProcDelegate? s_wndProc;
     private static bool s_classRegistered;
@@ -111,7 +113,7 @@ internal sealed class Win32Host : IPlatformHost
 
         Win32Api.ShowWindow(_hwnd, Win32Api.SW_SHOW);
         Win32Api.UpdateWindow(_hwnd);
-        Win32Api.SetTimer(_hwnd, new UIntPtr(1), 530, IntPtr.Zero);
+        Win32Api.SetTimer(_hwnd, new UIntPtr(1), FrameTimerIntervalMs, IntPtr.Zero);
         _running = true;
     }
 
@@ -255,6 +257,11 @@ internal sealed class Win32Host : IPlatformHost
                     if (host._lastFrame != null) host.PresentFrame(host._lastFrame);
                     Win32Api.EndPaint(hWnd, ref paint);
                 }
+                return IntPtr.Zero;
+            case Win32Api.WM_CLOSE:
+                Win32Api.KillTimer(hWnd, new UIntPtr(1));
+                host._running = false;
+                Win32Api.DestroyWindow(hWnd);
                 return IntPtr.Zero;
             case Win32Api.WM_DESTROY:
                 Win32Api.KillTimer(hWnd, new UIntPtr(1));

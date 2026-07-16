@@ -109,7 +109,9 @@ Button {
 | 尺寸 | `width` `height` `min-width` `max-width` `min-height` `max-height` |
 | 布局 | `display` `flex-direction` `justify-content` `align-items` `flex-grow` `flex-shrink` `flex-basis` `gap` |
 | 定位 | `position` `top` `right` `bottom` `left` |
-| 其他 | `opacity` `visibility` `overflow` |
+| 其他 | `opacity` `visibility` `overflow` `overflow-x` `overflow-y` |
+
+当前 `overflow: hidden` / `overflow: clip` 会裁剪子树渲染与命中测试；`visible` 保持子元素可溢出命中。`scroll` / `auto` 与滚动偏移由后续 ScrollViewer 实现。
 
 ---
 
@@ -186,7 +188,9 @@ Text {
 
 - `@keyframes` 定义
 - `animation` 简写：`name duration timing-function delay iteration-count direction`
-- 与 `Square.Animation` 模块联动
+- CSS 动画 timeline 可从 Visual Tree 自动收集并 tick
+- 当前支持数值属性 from/to 插值、delay、有限 iteration-count、normal/reverse/alternate/alternate-reverse 基础方向
+- 颜色、transform、复杂百分比关键帧与完整浏览器级动画模型后续扩展
 
 ---
 

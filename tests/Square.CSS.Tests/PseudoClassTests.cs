@@ -66,4 +66,98 @@ public class PseudoClassTests
         Assert.Equal("fade", sheet.KeyFrames[0].Name);
         Assert.Equal(2, sheet.KeyFrames[0].Stops.Count);
     }
+
+    [Fact]
+    public void AnimationShorthandExpandsIntoComputedAnimationProperties()
+    {
+        var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 0.3s ease-in 100ms 2 reverse; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var text = new Square.Controls.Controls.Text();
+
+        engine.ApplyStyles(text);
+
+        Assert.NotNull(engine.GetKeyFrames("fade"));
+        Assert.Equal("fade", text.Style.Get("animation-name"));
+        Assert.Equal("0.3s", text.Style.Get("animation-duration"));
+        Assert.Equal("ease-in", text.Style.Get("animation-timing-function"));
+        Assert.Equal("100ms", text.Style.Get("animation-delay"));
+        Assert.Equal("2", text.Style.Get("animation-iteration-count"));
+        Assert.Equal("reverse", text.Style.Get("animation-direction"));
+    }
+
+    [Fact]
+    public void AnimationRuntimeTicksKeyframesIntoVisualStyles()
+    {
+        var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var text = new Square.Controls.Controls.Text();
+        engine.ApplyStyles(text);
+
+        var timeline = engine.CreateAnimationTimeline(text);
+        Assert.NotNull(timeline);
+
+        timeline!.Start();
+        timeline.Tick(0.5f);
+
+        Assert.Equal("0.5", text.Style.Get("opacity"));
+
+        timeline.Tick(0.5f);
+        Assert.Equal("1", text.Style.Get("opacity"));
+        Assert.True(timeline.IsComplete);
+    }
+
+    [Fact]
+    public void AnimationTimelineHonorsDelayIterationsAndReverseDirection()
+    {
+        var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear 0.5s 2 reverse; }";
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
+        var text = new Square.Controls.Controls.Text();
+        engine.ApplyStyles(text);
+        var timeline = engine.CreateAnimationTimeline(text);
+
+        timeline!.Start();
+        Assert.Equal("1", text.Style.Get("opacity"));
+
+        timeline.Tick(0.25f);
+        Assert.Equal("1", text.Style.Get("opacity"));
+
+        timeline.Tick(0.5f);
+        Assert.Equal("0.75", text.Style.Get("opacity"));
+
+        timeline.Tick(1f);
+        Assert.Equal("0.75", text.Style.Get("opacity"));
+        Assert.False(timeline.IsComplete);
+
+        timeline.Tick(0.75f);
+        Assert.Equal("0", text.Style.Get("opacity"));
+        Assert.True(timeline.IsComplete);
+    }
+
+    [Fact]
+    public void AnimationManagerStartsAndTicksAnimationsInVisualTree()
+    {
+        var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear; }";
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
+        var root = new Square.Controls.Controls.View();
+        var text = new Square.Controls.Controls.Text("animated");
+        root.Children.Add(text);
+        engine.ApplyStylesToTree(root);
+        var manager = new CssAnimationManager(engine);
+
+        manager.Attach(root);
+        manager.Tick(0.25f);
+
+        Assert.Equal("0.25", text.Style.Get("opacity"));
+        Assert.True(manager.HasRunningAnimations);
+
+        manager.Tick(0.75f);
+        Assert.Equal("1", text.Style.Get("opacity"));
+        Assert.False(manager.HasRunningAnimations);
+    }
 }

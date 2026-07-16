@@ -9,6 +9,7 @@ internal static partial class Win32Api
     public const int WS_OVERLAPPEDWINDOW = 0x00CF0000;
     public const int WS_VISIBLE = 0x10000000;
     public const int SW_SHOW = 5;
+    public const int WM_CLOSE = 0x0010;
     public const int WM_DESTROY = 0x0002;
     public const int WM_PAINT = 0x000F;
     public const int WM_SETCURSOR = 0x0020;

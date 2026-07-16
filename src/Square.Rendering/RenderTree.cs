@@ -32,6 +32,16 @@ public sealed class RenderTree
 
     public void Invalidate(Rect rect) => _dirtyRects.Add(rect);
 
+    public void UpdateDirty() => UpdateDirty(_root);
+
+    private static void UpdateDirty(RenderNode node)
+    {
+        if (node.Visual != null && node.Visual.IsVisualDirty)
+            node.IsDirty = true;
+        foreach (var child in node.Children)
+            UpdateDirty(child);
+    }
+
     public void Render(IRenderContext ctx)
     {
         _root.Render(ctx);

@@ -177,10 +177,7 @@ public class Select : UIElement
         set => base.ZIndex = value;
     }
 
-    public Select()
-    {
-        AddEventListener("click", ToggleDropDown);
-    }
+    public Select() { }
 
     public override Size Measure(Size availableSize) => new(200, 36);
 
@@ -300,12 +297,24 @@ public class Image : UIElement
 
 public class Canvas : UIElement
 {
+    private Action<IRenderContext, Rect>? _animationFrameCallback;
+
     public Action<IRenderContext, Rect>? DrawContent { get; set; }
 
-    public void RequestFrame()
+    public void RequestFrame(double fps = 60d)
     {
         InvalidateVisual();
-        RaiseEvent(StandardEvents.RequestFrame, new RoutedEventArgs());
+        RaiseEvent(StandardEvents.RequestFrame, new FrameRequestEventArgs(fps));
+    }
+
+    public void RequestAnimationFrame(Action<IRenderContext, Rect> callback) =>
+        RequestAnimationFrame(callback, 60d);
+
+    public void RequestAnimationFrame(Action<IRenderContext, Rect> callback, double fps)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        _animationFrameCallback = callback;
+        RequestFrame(fps);
     }
 
     public override Size Measure(Size availableSize) => new(300, 140);
@@ -320,7 +329,13 @@ public class Canvas : UIElement
             ctx.DrawPath(PathGeometry.Create().MoveTo(new Point(Geometry.X, y)).LineTo(new Point(Geometry.Right, y)),
                 Pen.FromColor(Color.FromRgb(235, 238, 240)));
 
-        if (DrawContent != null)
+        var frameCallback = _animationFrameCallback;
+        _animationFrameCallback = null;
+        if (frameCallback != null)
+        {
+            frameCallback(ctx, Geometry);
+        }
+        else if (DrawContent != null)
         {
             DrawContent(ctx, Geometry);
         }

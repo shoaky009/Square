@@ -61,7 +61,7 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarg
         {
             if (_isVisible == value) return;
             _isVisible = value;
-            InvalidateVisual();
+            InvalidateLayout();
         }
     }
 
@@ -275,7 +275,9 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarg
 
     public virtual Visual? HitTest(Point point)
     {
-        if (!IsVisible || !Geometry.Contains(point)) return null;
+        if (!IsVisible) return null;
+        var inside = Geometry.Contains(point);
+        if (!inside && ClipsOverflowAt(point)) return null;
 
         foreach (var child in Children.OrderByDescending(child => child.ZIndex))
         {
@@ -283,8 +285,45 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarg
             if (hit != null) return hit;
         }
 
-        return this;
+        return inside ? this : null;
     }
+
+    public bool ClipsOverflow()
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        return clipX || clipY;
+    }
+
+    public Rect GetOverflowClipRect()
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        if (!clipX && !clipY) return Rect.Empty;
+        const float unbounded = 1_000_000f;
+        return new Rect(
+            clipX ? Geometry.X : -unbounded,
+            clipY ? Geometry.Y : -unbounded,
+            clipX ? Geometry.Width : unbounded * 2,
+            clipY ? Geometry.Height : unbounded * 2);
+    }
+
+    private bool ClipsOverflowAt(Point point)
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        return clipX && (point.X < Geometry.Left || point.X > Geometry.Right) ||
+            clipY && (point.Y < Geometry.Top || point.Y > Geometry.Bottom);
+    }
+
+    private (bool clipX, bool clipY) GetOverflowClipAxes()
+    {
+        var overflow = Style.Get("overflow");
+        var clipBoth = IsClippingOverflow(overflow);
+        return (clipBoth || IsClippingOverflow(Style.Get("overflow-x")),
+            clipBoth || IsClippingOverflow(Style.Get("overflow-y")));
+    }
+
+    private static bool IsClippingOverflow(string? value) =>
+        string.Equals(value, "hidden", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "clip", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeEventName(string eventName) => eventName.ToLowerInvariant();
 

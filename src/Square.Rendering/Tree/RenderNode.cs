@@ -16,25 +16,36 @@ public sealed class RenderNode
 
     public void Render(IRenderContext ctx)
     {
-        if (!IsDirty && Commands.Count > 0)
+        if (IsDirty || Commands.Count == 0)
         {
-            ExecuteCommands(ctx);
-            return;
+            Commands.Clear();
+            CollectCommands(Visual, Commands);
+            SortChildrenByZIndex();
+            Visual?.ClearVisualDirty();
+            IsDirty = false;
         }
 
-        Commands.Clear();
-        CollectCommands(Visual, Commands);
-        IsDirty = false;
         ExecuteCommands(ctx);
 
+        var clipRect = Visual?.GetOverflowClipRect() ?? Rect.Empty;
+        var clipsChildren = !clipRect.IsEmpty;
+        if (clipsChildren) ctx.PushClip(clipRect);
         foreach (var child in Children)
             child.Render(ctx);
+        if (clipsChildren) ctx.PopClip();
     }
 
     private static void CollectCommands(Visual? visual, List<DrawCommand> commands)
     {
         if (visual == null || !visual.IsVisible) return;
         visual.Render(new CommandCollector(commands));
+    }
+
+    private void SortChildrenByZIndex()
+    {
+        if (Children.Count < 2) return;
+        Children.Sort(static (left, right) =>
+            (left.Visual?.ZIndex ?? 0).CompareTo(right.Visual?.ZIndex ?? 0));
     }
 
     private void ExecuteCommands(IRenderContext ctx)
