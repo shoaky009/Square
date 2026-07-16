@@ -125,9 +125,9 @@ src/
 - 平台/后端裁剪**不在生成器内处理**：由 C# `#if` + MSBuild 常量/条件引用在构建层完成（见 §4.5.2）。
 - 任务：Generator 骨架、`.sqx`→AST→C# 代码发射、事件/绑定解析、结构原语编译、诊断源、增量缓存键。
 
-**Square.CSS（M1 子集）**
-- 支持：Selector（类型/类/id/后代）、Cascade、Specificity、Variables（`--x`）、Inheritance、基础属性（color/background/border/padding/margin/font-size）。
-- 暂不做：Pseudo Class、Animation、Grid 全量（M2 补）。
+**Square.CSS（当前子集）**
+- 支持：Selector（类型/类/id/后代/子代/相邻兄弟/通用兄弟/通用）、Cascade、Specificity、`!important`、Variables（`--x`）、Inheritance、基础伪类、基础属性（color/background/border/padding/margin/font-size）。
+- 暂不做：属性选择器、伪元素、Animation、Grid 全量（后续补）。
 - 任务：Tokenizer、Rule/AST、Selector 匹配、级联计算、属性应用到 Visual。
 
 **Square.Layout（M1 子集）**
@@ -211,7 +211,7 @@ src/
 [x] M0：创建 `Square.slnx` 与全部 `Square.*` 项目 + 发布/AOT 配置
 [x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
 [x] `Square.SourceGenerator`：Incremental Generator + 诊断映射（`.sqx` 行列）+ Props 校验
-[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（M1 子集）
+[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用选择器、`!important`、基础伪类）
 [x] `Square.Layout`：Box + Flex + 尺寸解析（px/%/rp/vw/vh/auto）+ 高 DPI
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
@@ -317,7 +317,7 @@ src/
 - **Source Generator 诊断映射**：解析错误携带 `.sqx` 文件路径与行列，经 `Diagnostic` 回抛，保证 IDE 友好（需求 §12、§17）。
 - **纯托管软件渲染器**：Phase 1 后端采用纯 C# CPU 渲染，纯托管、无 C++ 依赖；用 BGRA32 + 预乘 Alpha + SIMD 混合 + 脏区重绘达到可接受性能，并为后续 Skia/Blend2D/Cairo 预留同一 `IRenderContext`。
 - **高 DPI**：布局与光栅均按物理像素对齐，避免模糊。
-- **CSS 范围（M1）**：先实现静态样式与 flex 布局，Pseudo/Animation/Grid 全量延至 M2，控制 M1 复杂度。
+- **CSS 范围（M1）**：已覆盖静态样式、flex 布局、常用组合选择器、`!important` 与基础伪类；属性选择器、伪元素、Animation/Grid 全量延至后续阶段，控制复杂度。
 - **绑定模型选择**：采用 `ObservableValue<T>` 式零反射绑定，确保 AOT 安全与体积；列表用 `ObservableCollection<T>` 支撑 `<For>`。
 
 ---

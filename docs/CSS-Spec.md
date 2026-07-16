@@ -23,20 +23,24 @@ CSS 是框架的重要组成部分，与 `.sqx` 的 `<style>` 段和 `style`/`cl
 
 ---
 
-## 3. Selector（M1 子集）
+## 3. Selector（当前支持范围）
 
-| 选择器 | 示例 | M1 |
+| 选择器 | 示例 | 当前状态 |
 |---|---|---|
-| 类型 | `Button` | ✅ |
-| 类 | `.active` | ✅ |
-| ID | `#main` | ✅ |
-| 后代 | `View Text` | ✅ |
-| 子代 | `View > Text` | M2 |
-| 相邻 | `Text + Text` | M2 |
-| 通用 | `*` | M2 |
-| 属性 | `[disabled]` | M2 |
-| 伪类 | `:hover` `:focus` `:active` | M2 |
-| 伪元素 | `::before` `::after` | M3+ |
+| 类型 | `Button` | ✅ 已实现 |
+| 类 | `.active` | ✅ 已实现 |
+| ID | `#main` | ✅ 已实现 |
+| 后代 | `View Text` | ✅ 已实现 |
+| 子代 | `View > Text` | ✅ 已实现 |
+| 相邻兄弟 | `Text + Text` | ✅ 已实现 |
+| 通用兄弟 | `Text ~ Text` | ✅ 已实现 |
+| 通用 | `*` | ✅ 已实现 |
+| 属性 | `[disabled]` | ❌ 未实现 |
+| 伪类 | `:hover` `:focus` `:active` | ✅ 基础已实现 |
+| 函数式伪类 | `:nth-child(2)` `:not(.active)` | ⚠️ 部分实现 |
+| 伪元素 | `::before` `::after` | ❌ 未实现（M3+） |
+
+> 说明：组合选择器、`!important` 与 `:nth-child(n)` 已有单元测试覆盖。属性选择器目前会被解析器跳过，不参与匹配。
 
 ---
 
@@ -53,6 +57,8 @@ CSS 是框架的重要组成部分，与 `.sqx` 的 `<style>` 段和 `style`/`cl
 - Specificity 计算：`(id_count, class_count, type_count)`
 - 同 specificity 时，后定义胜出
 - Variables（`--x`）参与级联
+
+当前实现中 `!important` 已解析为 declaration 标记，并按高于普通 specificity 的优先级应用。内联样式仍通过 `Style.Set(...)` 保持高优先级。
 
 ---
 
@@ -149,17 +155,19 @@ View {
 
 ---
 
-## 11. Pseudo Class（M2）
+## 11. Pseudo Class（当前支持范围）
 
-| 伪类 | 说明 |
-|---|---|
-| `:hover` | 鼠标悬停 |
-| `:focus` | 获得焦点 |
-| `:active` | 激活（按下） |
-| `:disabled` | 禁用 |
-| `:checked` | 选中 |
-| `:empty` | 无子节点 |
-| `:first-child` / `:last-child` / `:nth-child(n)` | 位置 |
+| 伪类 | 说明 | 当前状态 |
+|---|---|---|
+| `:hover` | 鼠标悬停 | ✅ 基于 `VisualState.Hover` |
+| `:focus` | 获得焦点 | ✅ 基于 `VisualState.Focus` |
+| `:active` | 激活（按下） | ✅ 基于 `VisualState.Active` |
+| `:disabled` | 禁用 | ✅ 基于 `VisualState.Disabled` |
+| `:checked` | 选中 | ✅ 基于 `VisualState.Checked` |
+| `:empty` | 无子节点 | ✅ |
+| `:first-child` / `:last-child` / `:only-child` | 位置 | ✅ |
+| `:nth-child(n)` | 位置 | ✅ 支持整数、`odd`、`even` |
+| `:not(...)` | 否定 | ⚠️ 仅支持简单参数（类型、类、ID、`*`） |
 
 ---
 

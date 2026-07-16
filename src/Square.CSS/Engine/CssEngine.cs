@@ -63,7 +63,8 @@ public sealed class CssEngine
             {
                 if (decl.Property.StartsWith("--", StringComparison.Ordinal)) continue;
                 var value = ResolveVariables(decl.Value);
-                ApplyDeclaration(visual, decl.Property, value, specificity);
+                ApplyDeclaration(visual, decl.Property, value,
+                    decl.Important ? int.MaxValue : specificity);
             }
         }
     }
@@ -123,6 +124,43 @@ public sealed class CssEngine
         for (int i = selector.Steps.Count - 2; i >= 0; i--)
         {
             var step = selector.Steps[i];
+            var relation = selector.Steps[i + 1].Combinator;
+            Visual? candidate = relation switch
+            {
+                Combinator.Child => current.Parent,
+                Combinator.Adjacent => PreviousSibling(current),
+                _ => null
+            };
+
+            if (relation is Combinator.Child or Combinator.Adjacent)
+            {
+                var s = 0;
+                if (candidate == null || !MatchCompound(step.Selector, candidate, ref s)) return false;
+                specificity += s;
+                current = candidate;
+                continue;
+            }
+
+            if (relation == Combinator.GeneralSibling)
+            {
+                var parent = current.Parent;
+                if (parent == null) return false;
+                var currentIndex = parent.Children.IndexOf(current);
+                var matchedSibling = false;
+                for (var siblingIndex = currentIndex - 1; siblingIndex >= 0; siblingIndex--)
+                {
+                    var s = 0;
+                    var sibling = parent.Children[siblingIndex];
+                    if (!MatchCompound(step.Selector, sibling, ref s)) continue;
+                    specificity += s;
+                    current = sibling;
+                    matchedSibling = true;
+                    break;
+                }
+                if (!matchedSibling) return false;
+                continue;
+            }
+
             var matched = false;
             var p = current.Parent;
             while (p != null)
@@ -140,6 +178,14 @@ public sealed class CssEngine
             if (!matched) return false;
         }
         return true;
+    }
+
+    private static Visual? PreviousSibling(Visual visual)
+    {
+        var parent = visual.Parent;
+        if (parent == null) return null;
+        var index = parent.Children.IndexOf(visual);
+        return index > 0 ? parent.Children[index - 1] : null;
     }
 
     private static bool MatchCompound(CompoundSelector compound, Visual visual, ref int specificity)
@@ -172,19 +218,45 @@ public sealed class CssEngine
         return true;
     }
 
-    private static bool MatchPseudoClass(Visual visual, string name) => name.ToLowerInvariant() switch
+    private static bool MatchPseudoClass(Visual visual, string name)
     {
-        "hover" => visual.HasState(VisualState.Hover),
-        "focus" => visual.HasState(VisualState.Focus),
-        "active" => visual.HasState(VisualState.Active),
-        "disabled" => visual.HasState(VisualState.Disabled),
-        "checked" => visual.HasState(VisualState.Checked),
-        "empty" => visual.Children.Count == 0,
-        "first-child" => visual.Parent?.Children[0] == visual,
-        "last-child" => visual.Parent?.Children[^1] == visual,
-        "root" => visual.Parent == null,
-        _ => false
-    };
+        var lower = name.ToLowerInvariant();
+        if (lower.StartsWith("nth-child(", StringComparison.Ordinal) && lower.EndsWith(')'))
+        {
+            var argument = lower[10..^1].Trim();
+            if (visual.Parent == null) return false;
+            var index = visual.Parent.Children.IndexOf(visual) + 1;
+            if (argument == "odd") return index % 2 == 1;
+            if (argument == "even") return index % 2 == 0;
+            return int.TryParse(argument, out var expected) && index == expected;
+        }
+
+        if (lower.StartsWith("not(", StringComparison.Ordinal) && lower.EndsWith(')'))
+            return !MatchSimpleArgument(visual, name[4..^1].Trim());
+
+        return lower switch
+        {
+            "hover" => visual.HasState(VisualState.Hover),
+            "focus" => visual.HasState(VisualState.Focus),
+            "active" => visual.HasState(VisualState.Active),
+            "disabled" => visual.HasState(VisualState.Disabled),
+            "checked" => visual.HasState(VisualState.Checked),
+            "empty" => visual.Children.Count == 0,
+            "first-child" => visual.Parent?.Children[0] == visual,
+            "last-child" => visual.Parent?.Children[^1] == visual,
+            "only-child" => visual.Parent?.Children.Count == 1,
+            "root" => visual.Parent == null,
+            _ => false
+        };
+    }
+
+    private static bool MatchSimpleArgument(Visual visual, string selector)
+    {
+        if (selector.StartsWith('.')) return visual.ClassList.Contains(selector[1..]);
+        if (selector.StartsWith('#')) return visual.GetProperty<string>("id") == selector[1..];
+        if (selector == "*") return true;
+        return string.Equals(visual.GetType().Name, selector, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void ApplyDeclaration(Visual visual, string property, string value, int specificity)
     {

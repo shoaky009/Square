@@ -30,6 +30,11 @@ public sealed class CssTokenizer
             if (c == ']') { tokens.Add(new CssToken(CssTokenType.CloseBracket, "]", _line)); _pos++; continue; }
             if (c == ';') { tokens.Add(new CssToken(CssTokenType.Semicolon, ";", _line)); _pos++; continue; }
             if (c == ',') { tokens.Add(new CssToken(CssTokenType.Comma, ",", _line)); _pos++; continue; }
+            if (c == '>') { tokens.Add(new CssToken(CssTokenType.Greater, ">", _line)); _pos++; continue; }
+            if (c == '+') { tokens.Add(new CssToken(CssTokenType.Plus, "+", _line)); _pos++; continue; }
+            if (c == '~') { tokens.Add(new CssToken(CssTokenType.Tilde, "~", _line)); _pos++; continue; }
+            if (c == '!') { tokens.Add(new CssToken(CssTokenType.Bang, "!", _line)); _pos++; continue; }
+            if (c == '*') { tokens.Add(new CssToken(CssTokenType.Asterisk, "*", _line)); _pos++; continue; }
             if (c == ':') { tokens.Add(Peek(1) == ':' ? new CssToken(CssTokenType.DoubleColon, "::", _line) : new CssToken(CssTokenType.Colon, ":", _line)); _pos += Peek(1) == ':' ? 2 : 1; continue; }
             if (c == '.') { tokens.Add(new CssToken(CssTokenType.Dot, ".", _line)); _pos++; continue; }
             if (c == '#') { _pos++; var name = ReadIdent(); tokens.Add(new CssToken(CssTokenType.Hash, name, _line)); continue; }

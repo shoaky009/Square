@@ -117,19 +117,21 @@ Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏�
 
 | 功能 | 当前状态 |
 |---|---|
-| 类型、类、ID、后代选择器 | 已支持 |
+| 类型、类、ID、后代、子代、兄弟、通用选择器 | 已支持 |
 | Cascade 与 Specificity | 已支持 |
+| `!important` | 已支持 |
 | CSS Variables 与 `var()` fallback | 已支持 |
 | 样式继承 | 已支持 |
 | 内联 `style` 和 `class` | 已支持 |
-| `:hover`、`:focus`、`:active`、`:disabled`、`:checked` | 基础支持 |
+| `:hover`、`:focus`、`:active`、`:disabled`、`:checked`、位置伪类 | 基础支持 |
+| `:not(...)` | 部分支持（简单参数） |
 | 颜色、背景、字体、边框、间距、尺寸 | 基础支持 |
 | `display: block` / `flex` | 基础支持 |
 | Flex 方向、对齐、伸缩、换行和 `gap` | 基础支持 |
 | `px`、`%`、`auto`、`rp`、`vw`、`vh` | 基础支持 |
 | Grid | 计划支持 |
 | CSS Animation / `@keyframes` | 计划支持 |
-| 属性选择器、兄弟选择器、伪元素 | 计划支持 |
+| 属性选择器、伪元素 | 计划支持 |
 | Container Query、Subgrid | 长期计划 |
 
 目前不支持浏览器私有扩展、CSS Houdini、怪异模式以及完整的 `@media` / `@supports`。具体属性、单位和阶段规划见 [`docs/CSS-Spec.md`](docs/CSS-Spec.md)。
@@ -167,8 +169,7 @@ Square.SourceGenerator ──► C# Component
 |---|---|
 | `Square.Markup` | SQX 词法、语法和 AST |
 | `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
-| `Square.Runtime` | 应用生命周期、绑定、调度和信号 |
-| `Square.Events` | 平台无关的强类型路由事件协议 |
+| `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的平台无关路由事件协议 |
 | `Square.UI` | Visual Tree、属性系统和元素操作 API |
 | `Square.Controls` | 控件与结构原语运行时支持 |
 | `Square.Router` | 内存路由、历史、Link 和 RouteContext |
@@ -227,7 +228,7 @@ dotnet test Square.slnx
 运行事件或 UI 测试：
 
 ```bash
-dotnet test tests/Square.Events.Tests/Square.Events.Tests.csproj
+dotnet test tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj
 dotnet test tests/Square.UI.Tests/Square.UI.Tests.csproj
 ```
 

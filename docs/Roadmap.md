@@ -36,7 +36,7 @@
 [x] M0：创建 `Square.slnx` 与全部 `Square.*` 项目 + 发布/AOT 配置
 [x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
 [x] `Square.SourceGenerator`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
-[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（M1 子集）
+[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用选择器、`!important`、基础伪类）
 [x] `Square.Layout`：Box + Flex + 尺寸解析（px/%/rp/vw/vh/auto）+ 高 DPI
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）

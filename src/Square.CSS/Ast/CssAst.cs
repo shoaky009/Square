@@ -12,7 +12,7 @@ public sealed record CompoundStep(CompoundSelector Selector, Combinator Combinat
 
 public enum Combinator { Descendant, Child, Adjacent, GeneralSibling }
 
-public sealed record Declaration(string Property, string Value);
+public sealed record Declaration(string Property, string Value, bool Important = false);
 
 public sealed record CssRule(ComplexSelector Selector, List<Declaration> Declarations);
 

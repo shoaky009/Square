@@ -21,6 +21,11 @@ public enum CssTokenType
     Whitespace,
     AtKeyword,
     Comment,
+    Greater,
+    Plus,
+    Tilde,
+    Bang,
+    Asterisk,
     Eof
 }
 

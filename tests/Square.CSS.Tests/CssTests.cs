@@ -153,4 +153,65 @@ public class CssParserTests
 
         Assert.Equal("green", text.Style.Get("color"));
     }
+
+    [Fact]
+    public void ChildCombinatorOnlyMatchesDirectChildren()
+    {
+        var css = "View > Text { padding: 7px; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+
+        var root = new View();
+        var mid = new Square.Controls.Controls.Text("mid");
+        var directChild = new Square.Controls.Controls.Text("direct");
+        var grandChild = new Square.Controls.Controls.Text("grand");
+        root.Children.Add(mid);
+        root.Children.Add(directChild);
+        mid.Children.Add(grandChild);
+
+        engine.ApplyStylesToTree(root);
+
+        Assert.Equal("7px", directChild.Style.Get("padding"));
+        Assert.Null(grandChild.Style.Get("padding"));
+    }
+
+    [Fact]
+    public void ImportantDeclarationOverridesSpecificity()
+    {
+        var css = ".high-specificity { color: blue; } Text { color: red !important; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+
+        var text = new Square.Controls.Controls.Text();
+        text.ClassList.Add("high-specificity");
+
+        engine.ApplyStyles(text);
+
+        Assert.Equal("red", text.Style.Get("color"));
+    }
+
+    [Fact]
+    public void NthChildPseudoClassMatchesCorrectIndex()
+    {
+        var css = "View > Text:nth-child(2) { color: red; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+
+        var root = new View();
+        var t1 = new Square.Controls.Controls.Text("1");
+        var t2 = new Square.Controls.Controls.Text("2");
+        var t3 = new Square.Controls.Controls.Text("3");
+        root.Children.Add(t1);
+        root.Children.Add(t2);
+        root.Children.Add(t3);
+
+        engine.ApplyStylesToTree(root);
+
+        Assert.Null(t1.Style.Get("color"));
+        Assert.Equal("red", t2.Style.Get("color"));
+        Assert.Null(t3.Style.Get("color"));
+    }
 }
