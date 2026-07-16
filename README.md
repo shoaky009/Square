@@ -1,0 +1,283 @@
+# Square
+
+Square 是一个用纯 C# 编写的实验性跨平台 UI 框架。它借鉴 HTML 与 CSS 的开发体验，但不是浏览器，也不在运行时解析模板。
+
+UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期生成普通 C# 类型。框架以 NativeAOT、可裁剪、保留模式渲染和后端可替换为主要设计约束。
+
+> Square 仍处于早期开发阶段，API 和 SQX 语法可能调整。目前主要开发与验证环境是 Windows / Win32。
+
+## 设计目标
+
+- **Compile First**：`.sqx` 在编译期转换为 C#，运行时不解析模板。
+- **Pure C# Core**：Markup、Runtime、事件、CSS、布局、渲染树和文本等核心模块使用 C# 实现。
+- **NativeAOT First**：避免动态代码生成、`Reflection.Emit`、`dynamic` 和运行时程序集发现。
+- **Backend Independent**：UI 核心不绑定具体图形库，渲染通过 `IRenderContext` 抽象提交。
+- **Retained Rendering**：使用 Visual Tree、Layout、Render Tree 和 DrawCommand 管线。
+- **Low Coupling**：平台、渲染后端和框架核心保持明确的依赖边界。
+
+## 当前能力
+
+仓库目前包含以下基础实现：
+
+- `.sqx` 词法分析、语法分析和 Source Generator
+- `template`、C# `script`、组件级 `style`
+- 强类型属性和 `ObservableValue<T>` / `ObservableCollection<T>`
+- `<Show>`、`<For>` 编译期结构原语
+- 默认插槽、具名插槽和 fallback
+- `ref` 元素引用和命令式元素 API
+- View、Text、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
+- CSS 选择器、级联、变量、伪类及基础样式
+- Box / Flex 布局基础
+- 纯 C# Software Renderer
+- Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板基础
+- Direct / Tunnel / Bubble 路由事件及强类型事件参数
+- 内存路由、参数、通配符、嵌套布局和 Link
+- `Signal<T>`、`SignalHub` 和 Dispatcher 跨线程投递
+- 基础文本编辑、光标和选择区域
+- `Canvas.RequestFrame()` 下一帧重绘请求
+
+完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
+
+## SQX 示例
+
+```xml
+<template>
+    <View class="page">
+      <Text class="title">Hello Square</Text>
+
+      <Input
+        value={Name}
+        onInput={OnNameChanged} />
+
+      <Button
+        ref={SaveButton}
+        onClick={OnSave}>
+        Save
+      </Button>
+
+      <Show when={Saved}>
+        <Text>Saved</Text>
+      </Show>
+    </View>
+</template>
+
+<script lang="csharp">
+    public ObservableValue<string> Name = new("");
+    public ObservableValue<bool> Saved = new(false);
+
+    private void OnNameChanged(RoutedEventArgs e)
+    {
+      Name.Value = ((Input)e.OriginalSource!).Value;
+    }
+
+    private void OnSave(object? sender, RoutedEventArgs e)
+    {
+      Saved.Value = true;
+    }
+</script>
+
+<style>
+    .page {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .title {
+      color: #202124;
+      font-size: 20px;
+    }
+
+    Button {
+      background: #0078d4;
+      color: #ffffff;
+    }
+</style>
+```
+
+SQX 不需要 `<sqx>` 文件级根标签。`<template>` 必须且只能有一个；`<script>` 和 `<style>` 可选且各自最多一个。组件名默认取文件名，文件级元数据可放在唯一的 `<script>` 标签上：
+
+```xml
+<script lang="csharp" namespace="MyApp.Components" name="UserCard" access="internal">
+</script>
+```
+
+SQX 支持无参和强类型事件处理方法：
+
+```csharp
+private void OnClick() { }
+private void OnClick(RoutedEventArgs e) { }
+private void OnClick(object? sender, RoutedEventArgs e) { }
+```
+
+## CSS 支持情况
+
+Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏览器引擎。目标是兼容常用的现代 CSS 语义，而不是完整复刻 Web CSS。
+
+| 功能 | 当前状态 |
+|---|---|
+| 类型、类、ID、后代选择器 | 已支持 |
+| Cascade 与 Specificity | 已支持 |
+| CSS Variables 与 `var()` fallback | 已支持 |
+| 样式继承 | 已支持 |
+| 内联 `style` 和 `class` | 已支持 |
+| `:hover`、`:focus`、`:active`、`:disabled`、`:checked` | 基础支持 |
+| 颜色、背景、字体、边框、间距、尺寸 | 基础支持 |
+| `display: block` / `flex` | 基础支持 |
+| Flex 方向、对齐、伸缩、换行和 `gap` | 基础支持 |
+| `px`、`%`、`auto`、`rp`、`vw`、`vh` | 基础支持 |
+| Grid | 计划支持 |
+| CSS Animation / `@keyframes` | 计划支持 |
+| 属性选择器、兄弟选择器、伪元素 | 计划支持 |
+| Container Query、Subgrid | 长期计划 |
+
+目前不支持浏览器私有扩展、CSS Houdini、怪异模式以及完整的 `@media` / `@supports`。具体属性、单位和阶段规划见 [`docs/CSS-Spec.md`](docs/CSS-Spec.md)。
+
+## 架构
+
+```text
+.sqx
+  │
+  ▼
+Square.SourceGenerator ──► C# Component
+                              │
+                              ▼
+                         Visual Tree
+                              │
+                              ▼
+                         Layout Engine
+                              │
+                              ▼
+                          Render Tree
+                              │
+                              ▼
+                         DrawCommand
+                              │
+                              ▼
+                        IRenderContext
+                              │
+                              ▼
+                     Rendering Backend
+```
+
+主要项目：
+
+| 项目 | 职责 |
+|---|---|
+| `Square.Markup` | SQX 词法、语法和 AST |
+| `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
+| `Square.Runtime` | 应用生命周期、绑定、调度和信号 |
+| `Square.Events` | 平台无关的强类型路由事件协议 |
+| `Square.UI` | Visual Tree、属性系统和元素操作 API |
+| `Square.Controls` | 控件与结构原语运行时支持 |
+| `Square.Router` | 内存路由、历史、Link 和 RouteContext |
+| `Square.CSS` | CSS 解析、选择器、级联和样式应用 |
+| `Square.Layout` | Box / Flex 布局 |
+| `Square.Graphics` | 绘图接口和基础图形类型 |
+| `Square.Rendering` | Render Tree 和 DrawCommand |
+| `Square.Text` | 字形、测量和文本布局 |
+| `Square.Platform` | 平台宿主与输入采集 |
+| `Square.Backends` | Software Renderer 及后续图形后端 |
+
+更详细的模块关系见 [`docs/Architecture.md`](docs/Architecture.md)。
+
+## 环境要求
+
+- [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
+- Windows 10 或更高版本（运行当前 Win32 示例）
+- Git
+
+检查 SDK：
+
+```bash
+dotnet --version
+```
+
+## 从源码运行
+
+克隆仓库：
+
+```bash
+git clone https://github.com/wuldas/Square.git
+cd Square
+```
+
+还原并构建：
+
+```bash
+dotnet restore Square.slnx
+dotnet build Square.slnx
+```
+
+运行示例：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj
+```
+
+## 测试
+
+运行全部测试：
+
+```bash
+dotnet test Square.slnx
+```
+
+运行事件或 UI 测试：
+
+```bash
+dotnet test tests/Square.Events.Tests/Square.Events.Tests.csproj
+dotnet test tests/Square.UI.Tests/Square.UI.Tests.csproj
+```
+
+## NativeAOT 发布
+
+当前示例项目已启用 NativeAOT。Windows x64 发布命令：
+
+```bash
+dotnet publish samples/Square.Sample/Square.Sample.csproj \
+  -c Release \
+  -r win-x64 \
+  --self-contained true
+```
+
+输出通常位于：
+
+```text
+samples/Square.Sample/bin/Release/net10.0/win-x64/publish/
+```
+
+## 文档
+
+- [总体架构](docs/Architecture.md)
+- [SQX 语言规范](docs/Sqx-Spec.md)
+- [CSS 规范](docs/CSS-Spec.md)
+- [布局](docs/Layout.md)
+- [渲染](docs/Rendering.md)
+- [图形](docs/Graphics.md)
+- [文本](docs/Text.md)
+- [组件组合与信号](docs/Composition-and-Signals.md)
+- [Source Generator](docs/Generator.md)
+- [编码规范](docs/CodingStyle.md)
+- [开发路线](docs/Roadmap.md)
+- [需求说明](docs/Requirements.md)
+
+## 项目状态
+
+Square 目前适合框架设计验证、实验和贡献开发，不建议用于生产项目。当前工作的重点是完成核心输入/事件管线、扩展 CSS 与布局能力、完善控件行为，并继续验证 NativeAOT 和模块边界。
+
+## 贡献
+
+提交改动前请确保：
+
+```bash
+dotnet build Square.slnx
+dotnet test Square.slnx
+```
+
+代码风格和模块依赖约束见 [`docs/CodingStyle.md`](docs/CodingStyle.md) 与 [`docs/Architecture.md`](docs/Architecture.md)。新增功能应附带对应测试，并避免引入运行时反射、动态代码生成或不必要的跨层依赖。
+
+## License
+
+Square 使用 [MIT License](LICENSE)。

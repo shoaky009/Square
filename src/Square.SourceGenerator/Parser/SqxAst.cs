@@ -46,5 +46,7 @@ namespace Square.SourceGenerator.Parser
         public string ScriptCode;
         public string ScriptLang;
         public string StyleCode;
+        public string Namespace;
+        public string Access = "public";
     }
 }

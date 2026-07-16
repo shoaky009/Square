@@ -60,6 +60,7 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props 解析、ref 字段生成、绑定/事件编译、结构原语特判、诊断映射 |
 | `Square.Runtime` | `Application`、组件生命周期、调度、信号 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递 |
+| `Square.Events` | 平台无关的路由事件协议与标准事件目录 | 强类型事件参数；Direct/Bubble/Tunnel；Handled/PreventDefault；NativeAOT 安全 |
 | `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码）；元素操作 API（Style/ClassList/Children/Event） |
 | `Square.Controls` | 控件 + 结构原语 | 控件 = 视觉 + 行为 + 默认样式；结构原语由生成器编译 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
@@ -73,7 +74,7 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
 | `Square.Tooling` | 诊断 | Source Generator 诊断输出、IDE 集成 |
 
-**依赖方向**：`SourceGenerator` → `Markup`；`Controls/UI/Rendering/Layout/CSS/Text/Animation` → `Runtime` + `Graphics`(抽象)；`Backends`/`Platform` → 仅依赖 `Graphics`(抽象) 与 `Runtime` 接口。核心层禁止反向依赖 Backend/Platform。
+**依赖方向**：`SourceGenerator` → `Markup`；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/Layout/CSS/Text/Animation` → `Runtime` + `Graphics`(抽象)；`Backends`/`Platform` → 仅依赖底层抽象。核心层禁止反向依赖 Backend/Platform。
 
 ---
 
@@ -81,17 +82,15 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 
 ### 4.1 组件 = 模板 + 逻辑 + 样式
 
-`.sqx` 单文件三段式：
+`.sqx` 使用无文件级根标签的顶级 section：
 
 ```
-<sqx>
-  <template>   结构 + 绑定 + 流程控制
-  <script lang="csharp">  C# 逻辑 + Props 声明
-  <style>  CSS 样式
-</sqx>
+<template>   结构 + 绑定 + 流程控制
+<script lang="csharp">  C# 逻辑 + Props 声明 + 文件级元数据
+<style>  CSS 样式
 ```
 
-Source Generator 将三段编译为同一个 `partial` 组件类。
+`<template>` 必须且只能有一个；`<script>`、`<style>` 可选且各自最多一个。Source Generator 将三个 section 编译为同一个 `partial` 组件类。组件名默认取文件名，文件级元数据声明在 `<script>` 标签属性上。
 
 ### 4.2 Props（组件输入契约）
 

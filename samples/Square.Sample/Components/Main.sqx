@@ -1,23 +1,21 @@
-<sqx>
-  <template>
-    <View class="app">
-      <Text class="app-title" text="Square Framework Samples" />
-      <Tabs>
-        <Button slot="tabs" class="tab-button">Text</Button>
-        <Button slot="tabs" class="tab-button">Controls</Button>
-        <Button slot="tabs" class="tab-button">Media</Button>
-        <Button slot="tabs" class="tab-button">Router</Button>
-        <Button slot="tabs" class="tab-button">Signals</Button>
-        <TextSamplesPage />
-        <ControlsSamplesPage />
-        <MediaSamplesPage />
-        <RouterSamplesPage />
-        <SignalsSamplesPage />
-      </Tabs>
-    </View>
-  </template>
-  <style>
-    .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
-    .app-title { color: #202124; font-size: 22px; }
-  </style>
-</sqx>
+<template>
+  <View class="app">
+    <Text class="app-title" text="Square Framework Samples" />
+    <Tabs>
+      <Button slot="tabs" class="tab-button">Text</Button>
+      <Button slot="tabs" class="tab-button">Controls</Button>
+      <Button slot="tabs" class="tab-button">Media</Button>
+      <Button slot="tabs" class="tab-button">Router</Button>
+      <Button slot="tabs" class="tab-button">Signals</Button>
+      <TextSamplesPage />
+      <ControlsSamplesPage />
+      <MediaSamplesPage />
+      <RouterSamplesPage />
+      <SignalsSamplesPage />
+    </Tabs>
+  </View>
+</template>
+<style>
+  .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .app-title { color: #202124; font-size: 22px; }
+</style>

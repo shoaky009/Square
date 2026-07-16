@@ -1,5 +1,6 @@
 using Square.Markup.Ast;
 using Square.Markup.Parser;
+using Square.Markup;
 using Xunit;
 
 namespace Square.Markup.Tests;
@@ -9,7 +10,7 @@ public class SqxParserTests
     [Fact]
     public void ParsesSlotsAndNestedRouteDefinitionsAsStructuralNodes()
     {
-        const string source = "<sqx><template><Router initialPath=\"/\"><Route path=\"/\" component={Shell}><Route path=\":id\" component={Page} /></Route></Router><Slot name=\"header\" /><Outlet /></template></sqx>";
+        const string source = "<template><Router initialPath=\"/\"><Route path=\"/\" component={Shell}><Route path=\":id\" component={Page} /></Route></Router><Slot name=\"header\" /><Outlet /></template>";
 
         var document = new SqxParser().Parse(source, "Composition.sqx");
 
@@ -25,7 +26,7 @@ public class SqxParserTests
     [Fact]
     public void ParsesForLambdaTemplateAsChildElement()
     {
-        const string source = "<sqx><template><For each={Items}>{(it)=><Text text={it} />}</For></template></sqx>";
+        const string source = "<template><For each={Items}>{(it)=><Text text={it} />}</For></template>";
 
         var document = new SqxParser().Parse(source, "List.sqx");
         var loop = Assert.IsType<SqxElement>(Assert.Single(document.Template.Roots));
@@ -88,6 +89,36 @@ public class SqxParserTests
     }
 
     [Fact]
+    public void ParsesScriptComponentMetadata()
+    {
+        const string source = "<template><View /></template><script lang=\"csharp\" namespace=\"App.Pages\" name=\"HomePage\" access=\"internal\"></script>";
+
+        var script = Assert.IsType<SqxScript>(new SqxParser().Parse(source, "View.sqx").Script);
+
+        Assert.Equal("App.Pages", script.Namespace);
+        Assert.Equal("HomePage", script.ComponentName);
+        Assert.Equal("internal", script.Access);
+    }
+
+    [Fact]
+    public void RejectsUnsupportedScriptLanguage()
+    {
+        var error = Assert.Throws<SqxParseException>(() =>
+            new SqxParser().Parse("<template><View /></template><script lang=\"javascript\"></script>", "Test.sqx"));
+
+        Assert.Contains("language", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RejectsUnknownScriptMetadata()
+    {
+        var error = Assert.Throws<SqxParseException>(() =>
+            new SqxParser().Parse("<template><View /></template><script scoped=\"true\"></script>", "Test.sqx"));
+
+        Assert.Contains("scoped", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ParseStyle()
     {
         var parser = new SqxParser();
@@ -131,5 +162,45 @@ public class SqxParserTests
         Assert.Single(text.Children);
         var expr = Assert.IsType<SqxExpression>(text.Children[0]);
         Assert.Equal("Name", expr.Expression);
+    }
+
+    [Fact]
+    public void RejectsMissingTemplateSection()
+    {
+        var error = Assert.Throws<SqxParseException>(() =>
+            new SqxParser().Parse("<script lang=\"csharp\">int x;</script>", "Missing.sqx"));
+
+        Assert.Contains("template", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RejectsDuplicateScriptSectionAtSecondTag()
+    {
+        const string source = "<template><View /></template>\n<script lang=\"csharp\"></script>\n<script lang=\"csharp\"></script>";
+
+        var error = Assert.Throws<SqxParseException>(() => new SqxParser().Parse(source, "Duplicate.sqx"));
+
+        Assert.Equal(3, error.Line);
+        Assert.Equal(1, error.Column);
+    }
+
+    [Fact]
+    public void RejectsLegacySqxDocumentRoot()
+    {
+        var error = Assert.Throws<SqxParseException>(() =>
+            new SqxParser().Parse("<sqx><template><View /></template></sqx>", "Legacy.sqx"));
+
+        Assert.Equal(1, error.Line);
+        Assert.Equal(1, error.Column);
+    }
+
+    [Fact]
+    public void RejectsNonWhitespaceOutsideSections()
+    {
+        var error = Assert.Throws<SqxParseException>(() =>
+            new SqxParser().Parse("hello\n<template><View /></template>", "Outside.sqx"));
+
+        Assert.Equal(1, error.Line);
+        Assert.Equal(1, error.Column);
     }
 }

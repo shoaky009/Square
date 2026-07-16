@@ -7,28 +7,66 @@
 
 ## 1. 文件格式
 
-`.sqx` 为单文件三段式：
+`.sqx` 是无文件级根标签的单文件组件格式。文件由三个顶级 section 组成：
 
 ```xml
-<sqx>
-  <template>
-    <!-- 结构 + 绑定 + 流程控制 -->
-  </template>
-  <script lang="csharp">
-    // C# 逻辑 + Props 声明
-  </script>
-  <style>
-    /* CSS 样式 */
-  </style>
-</sqx>
+<template>
+  <!-- 结构 + 绑定 + 流程控制 -->
+</template>
+
+<script lang="csharp">
+  // C# 逻辑 + Props 声明
+</script>
+
+<style>
+  /* CSS 样式 */
+</style>
 ```
 
-- `<template>`：结构，含绑定表达式与流程控制
-- `<script lang="csharp">`：C# 逻辑，Source Generator 发射进同一 `partial` 组件类
-- `<style>`：CSS，由 CSS 引擎消费
-- `<script>`（裸）或 `<script lang="js">`：保留给未来 JS 引擎扩展，当前不解析
+- `<template>`：必须且只能有一个；包含结构、绑定和流程控制；允许多个视觉根节点，不自动插入包装 `View`。
+- `<script>`：可选，但最多一个；包含 C# 逻辑、Props 声明和文件级组件元数据。
+- `<style>`：可选，但最多一个；CSS 由样式引擎消费。
+- 顶级 section 推荐按 `<template>` → `<script>` → `<style>` 排列。
+- 不再使用 `<sqx>` 文件级根标签。
 
 Source Generator 将三段编译为同一个 `partial` 组件类。
+
+### 1.1 `<script>` 元数据
+
+文件级组件元数据统一声明在唯一的 `<script>` 标签上：
+
+```xml
+<script
+  lang="csharp"
+  namespace="MyApp.Components"
+  name="UserCard"
+  access="internal">
+  // C# component code
+</script>
+```
+
+| 属性 | 默认值 | 说明 |
+|---|---|---|
+| `lang` | `csharp` | 脚本语言；当前只支持 `csharp` |
+| `namespace` | MSBuild `RootNamespace` | 覆盖生成组件的命名空间 |
+| `name` | `.sqx` 文件名 | 覆盖生成组件的类型名 |
+| `access` | `public` | 生成类型的可见性；支持 `public`、`internal` |
+
+通常应沿用文件名和项目命名空间，只在确有需要时覆盖。样式级元数据属于 `<style>`，例如未来的 `<style scoped>`，不放在 `<script>` 上。
+
+### 1.2 section 约束与诊断
+
+| 规则 | 建议诊断 |
+|---|---|
+| 缺少 `<template>` | `SQX0001` |
+| 重复 `<template>` | `SQX0002` |
+| 重复 `<script>` | `SQX0003` |
+| 重复 `<style>` | `SQX0004` |
+| section 未闭合 | `SQX0005` |
+| 不支持的脚本语言 | `SQX0006` |
+| 未知顶级 section | `SQX0007` |
+| section 外存在非空内容 | `SQX0008` |
+| 组件元数据无效 | `SQX0009` |
 
 ---
 
@@ -49,11 +87,13 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 | `Image` | 图片 |
 | `Canvas` | 画布 |
 
+`Canvas.RequestFrame()` 请求宿主在下一次平台 Tick 渲染新帧。请求通过 Visual Tree 冒泡并合并，同一 Tick 内的多个请求只需触发一次窗口渲染。它用于 Canvas 时钟、游戏循环和后续动画系统；该方法只请求下一帧，不会自动形成持续循环。持续绘制应在每帧完成后再次调用 `RequestFrame()`。
+
 命名：PascalCase 控件类型（C# 习惯），`.sqx` 内标签同名。
 
 ### 2.2 自定义组件
 
-任何 `.sqx` 文件即一个组件，文件名 / `<sqx name="MyComponent">` 决定组件类型名。
+任何 `.sqx` 文件即一个组件。组件类型名默认取文件名，也可由唯一 `<script name="MyComponent">` 覆盖。
 
 调用：
 
@@ -237,6 +277,16 @@ MyBtn.ClassList.Add("active");
 
 - 事件名首字母大写：click → onClick、textChanged → onTextChanged
 - 映射到 `<script lang="csharp">` 中的 C# 方法
+- handler 支持无参和强类型路由事件签名：
+
+```csharp
+private void OnClick() { }
+private void OnClick(RoutedEventArgs e) { }
+private void OnClick(object? sender, RoutedEventArgs e) { }
+```
+
+- 路由事件提供 `OriginalSource`、`CurrentTarget`、`Phase`、`Handled` 与 `PreventDefault()`。
+- `TunnelAndBubble` 事件按根→目标隧道、目标处理、目标父级→根冒泡；`Handled` 抑制后续普通 handler，仅 `handledEventsToo` 观察者仍可收到事件。
 
 ### 5.5 双向（显式）
 
@@ -496,32 +546,32 @@ Square 桌面应用默认采用内存历史。路由声明由 Source Generator �
 ## 11. 示例
 
 ```xml
-<sqx>
-  <template>
-    <View>
-      <Show when={LoggedIn}>
-        <Text>Hello {UserName}</Text>
-      </Show>
-      <Button ref={MyBtn} onClick={OnClick}>Click</Button>
-      <For each={Items}>{(it)=>
-        <Text>{it.Name}</Text>
-      }</For>
-    </View>
-  </template>
-  <script lang="csharp">
-    [Prop] public ObservableValue<bool> LoggedIn { get; set; } = new(false);
-    [Prop] public ObservableValue<string> UserName { get; set; } = new("");
+<template>
+  <View>
+    <Show when={LoggedIn}>
+      <Text>Hello {UserName}</Text>
+    </Show>
+    <Button ref={MyBtn} onClick={OnClick}>Click</Button>
+    <For each={Items}>{(it)=>
+      <Text>{it.Name}</Text>
+    }</For>
+  </View>
+</template>
 
-    public ObservableCollection<Item> Items = new();
+<script lang="csharp">
+  [Prop] public ObservableValue<bool> LoggedIn { get; set; } = new(false);
+  [Prop] public ObservableValue<string> UserName { get; set; } = new("");
 
-    private void OnClick()
-    {
-        MyBtn.ClassList.Add("clicked");
-    }
-  </script>
-  <style>
-    View { padding: 16px; }
-    Button.clicked { color: red; }
-  </style>
-</sqx>
+  public ObservableCollection<Item> Items = new();
+
+  private void OnClick()
+  {
+      MyBtn.ClassList.Add("clicked");
+  }
+</script>
+
+<style>
+  View { padding: 16px; }
+  Button.clicked { color: red; }
+</style>
 ```

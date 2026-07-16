@@ -17,6 +17,7 @@
   <Project Path="samples/Square.Sample/Square.Sample.csproj" />
   <Project Path="tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj" />
   <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />
+  <Project Path="tests/Square.SourceGenerator.Tests/Square.SourceGenerator.Tests.csproj" />
   <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
   <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
   <Project Path="tests/Square.UI.Tests/Square.UI.Tests.csproj" />

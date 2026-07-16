@@ -1,47 +1,78 @@
-<sqx>
-  <template>
-    <View class="media-page sample-page">
-      <Text class="page-title" text="Image and Canvas" />
-      <Image image={PreviewImage} source="Generated image" />
-      <Canvas ref={DemoCanvas} />
-    </View>
-  </template>
-  <script lang="csharp">
-    public ObservableValue<Square.Graphics.Image?> PreviewImage = new(CreatePreviewImage());
+<template>
+  <View class="media-page sample-page">
+    <Text class="page-title" text="Image and Canvas" />
+    <Image image={PreviewImage} source="Generated image" />
+    <Canvas ref={DemoCanvas} />
+  </View>
+</template>
+<script lang="csharp">
+  public ObservableValue<Square.Graphics.Image?> PreviewImage = new(CreatePreviewImage());
 
-    protected override void OnAttachedCore()
+  protected override void OnAttachedCore()
+  {
+    DemoCanvas.DrawContent = DrawClock;
+  }
+
+  private void DrawClock(IRenderContext context, Rect bounds)
+  {
+    var center = new Point(bounds.X + bounds.Width / 2f, bounds.Y + bounds.Height / 2f);
+    var radius = MathF.Max(20f, MathF.Min(bounds.Width, bounds.Height) / 2f - 18f);
+    var face = new EllipseGeometry(center, radius, radius);
+    context.FillGeometry(face, new SolidColorBrush(Color.FromRgb(248, 250, 252)));
+    context.DrawGeometry(face, Pen.FromColor(Color.FromRgb(60, 67, 74), 2f));
+
+    for (var i = 0; i < 60; i++)
     {
-      DemoCanvas.DrawContent = DrawCanvas;
+      var angle = i * MathF.Tau / 60f - MathF.PI / 2f;
+      var major = i % 5 == 0;
+      var outer = PointOnClock(center, radius - 5f, angle);
+      var inner = PointOnClock(center, radius - (major ? 17f : 10f), angle);
+      context.DrawPath(
+        PathGeometry.Create().MoveTo(inner).LineTo(outer),
+        Pen.FromColor(major ? Color.FromRgb(45, 52, 59) : Color.FromRgb(145, 151, 157), major ? 2f : 1f));
     }
 
-    private static void DrawCanvas(IRenderContext context, Rect bounds)
-    {
-      context.FillRect(new Rect(bounds.X + 20, bounds.Y + 22, 120, 54), new SolidColorBrush(Color.FromRgb(0, 120, 212)));
-      context.FillGeometry(new EllipseGeometry(new Point(bounds.X + 195, bounds.Y + 49), 30, 30), new SolidColorBrush(Color.FromRgb(18, 155, 105)));
-      context.DrawText(new TextLayout("Canvas", new Font("Segoe UI", 16)), new Point(bounds.X + 250, bounds.Y + 38), new SolidColorBrush(Color.FromRgb(40, 45, 50)));
-    }
+    var now = DateTime.Now;
+    var secondAngle = (float)(now.TimeOfDay.TotalSeconds % 60d / 60d * Math.Tau - Math.PI / 2d);
+    var minuteAngle = (float)((now.Minute + now.Second / 60d) / 60d * Math.Tau - Math.PI / 2d);
+    var hourAngle = (float)(((now.Hour % 12) + now.Minute / 60d) / 12d * Math.Tau - Math.PI / 2d);
 
-    private static Bitmap CreatePreviewImage()
+    DrawHand(context, center, radius * 0.52f, hourAngle, Color.FromRgb(35, 42, 48), 5f);
+    DrawHand(context, center, radius * 0.72f, minuteAngle, Color.FromRgb(35, 42, 48), 3f);
+    DrawHand(context, center, radius * 0.82f, secondAngle, Color.FromRgb(210, 48, 58), 1.5f);
+    context.FillGeometry(new EllipseGeometry(center, 5f, 5f), new SolidColorBrush(Color.FromRgb(210, 48, 58)));
+
+    DemoCanvas.RequestFrame();
+  }
+
+  private static void DrawHand(IRenderContext context, Point center, float length, float angle, Color color, float width)
+  {
+    context.DrawPath(PathGeometry.Create().MoveTo(center).LineTo(PointOnClock(center, length, angle)), Pen.FromColor(color, width));
+  }
+
+  private static Point PointOnClock(Point center, float radius, float angle) =>
+    new(center.X + MathF.Cos(angle) * radius, center.Y + MathF.Sin(angle) * radius);
+
+  private static Bitmap CreatePreviewImage()
+  {
+    var bitmap = new Bitmap(320, 120);
+    for (var y = 0; y < bitmap.Height; y++)
     {
-      var bitmap = new Bitmap(320, 120);
-      for (var y = 0; y < bitmap.Height; y++)
+      for (var x = 0; x < bitmap.Width; x++)
       {
-        for (var x = 0; x < bitmap.Width; x++)
-        {
-          var index = y * bitmap.Stride + x * 4;
-          bitmap.Pixels[index] = (byte)(210 - y);
-          bitmap.Pixels[index + 1] = (byte)(80 + x * 120 / bitmap.Width);
-          bitmap.Pixels[index + 2] = (byte)(30 + x * 180 / bitmap.Width);
-          bitmap.Pixels[index + 3] = 255;
-        }
+        var index = y * bitmap.Stride + x * 4;
+        bitmap.Pixels[index] = (byte)(210 - y);
+        bitmap.Pixels[index + 1] = (byte)(80 + x * 120 / bitmap.Width);
+        bitmap.Pixels[index + 2] = (byte)(30 + x * 180 / bitmap.Width);
+        bitmap.Pixels[index + 3] = 255;
       }
-      return bitmap;
     }
-  </script>
-  <style>
-    .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
-    .page-title { color: #202124; font-size: 18px; }
-    .media-page Image { height: 120px; }
-    .media-page Canvas { height: 260px; }
-  </style>
-</sqx>
+    return bitmap;
+  }
+</script>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
+  .page-title { color: #202124; font-size: 18px; }
+  .media-page Image { height: 120px; }
+  .media-page Canvas { height: 260px; }
+</style>

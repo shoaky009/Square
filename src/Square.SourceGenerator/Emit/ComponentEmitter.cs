@@ -19,7 +19,9 @@ namespace Square.SourceGenerator.Emit
         public ComponentEmitter(SqxDocument doc, string namespaceName = "Square.Sample")
         {
             _doc = doc;
-            _namespace = string.IsNullOrWhiteSpace(namespaceName) ? "Square.Sample" : namespaceName;
+            _namespace = !string.IsNullOrWhiteSpace(doc.Namespace)
+                ? doc.Namespace
+                : string.IsNullOrWhiteSpace(namespaceName) ? "Square.Sample" : namespaceName;
         }
 
         public string Emit()
@@ -32,6 +34,7 @@ namespace Square.SourceGenerator.Emit
             _sb.AppendLine("#nullable enable");
             _sb.AppendLine();
             _sb.AppendLine("using Square.UI;");
+            _sb.AppendLine("using Square.Events;");
             _sb.AppendLine("using Square.Runtime;");
             _sb.AppendLine("using Square.Runtime.Binding;");
             _sb.AppendLine("using Square.Graphics;");
@@ -40,7 +43,7 @@ namespace Square.SourceGenerator.Emit
             _sb.AppendLine();
             _sb.AppendLine("namespace " + _namespace + ";");
             _sb.AppendLine();
-            _sb.AppendLine("public partial class " + _doc.Name + " : UIElement");
+            _sb.AppendLine(_doc.Access + " partial class " + _doc.Name + " : UIElement");
             _sb.AppendLine("{");
 
             EmitFields();
@@ -107,6 +110,22 @@ namespace Square.SourceGenerator.Emit
             for (var i = 0; i < _forCounter; i++)
                 _sb.AppendLine("    private IForNode _for" + i + " = null!;");
             _sb.AppendLine();
+
+            if ((_refs.Count > 0 || _showCounter > 0 || _forCounter > 0) &&
+                !ContainsOnDetachedCore(_doc.ScriptCode))
+            {
+                _sb.AppendLine("    protected override void OnDetachedCore()");
+                _sb.AppendLine("    {");
+                foreach (var item in _refs)
+                    _sb.AppendLine("        " + item.Name + " = null!;");
+                for (var i = 0; i < _showCounter; i++)
+                    _sb.AppendLine("        _show" + i + " = null!;");
+                for (var i = 0; i < _forCounter; i++)
+                    _sb.AppendLine("        _for" + i + " = null!;");
+                _sb.AppendLine("        base.OnDetachedCore();");
+                _sb.AppendLine("    }");
+                _sb.AppendLine();
+            }
         }
 
         private void EmitNodes(List<SqxNode> nodes, string indent, string parentName, string localName)
@@ -463,6 +482,10 @@ namespace Square.SourceGenerator.Emit
             return value == localName || value.StartsWith(localName + ".", StringComparison.Ordinal) ||
                    value.StartsWith(localName + "[", StringComparison.Ordinal);
         }
+
+        private static bool ContainsOnDetachedCore(string script) =>
+            !string.IsNullOrEmpty(script) &&
+            script.Contains("OnDetachedCore", StringComparison.Ordinal);
 
         private static bool IsWrapperExpression(SqxNode node)
         {

@@ -21,7 +21,7 @@
 
 **设计约束**：
 - **结构化流程控制编译模型**：条件/列表/分支采用编译期细粒度命令式控制流（`<Show>`/`<For>`/`<Switch>`/`<Match>`），**无虚拟 DOM**；与 `ObservableValue` + Retained Rendering 同构（详见 §4.5.5）。
-- **脚本扩展边界**：`<script>`（无 `lang` 或 `lang="js"`）保留给未来 JavaScript 引擎；其实现**必须 AOT 编译**、属于**核心外可选扩展**，不得引入运行时 JIT/解释器，否则与 `NativeAOT First` 冲突。C# 逻辑统一写在 `<script lang="csharp">`。
+- **脚本边界**：每个 `.sqx` 最多一个 `<script>`，当前只支持 `lang="csharp"`；该标签同时承载 C# 逻辑、Props 声明和文件级组件元数据。其他脚本语言不在当前范围内。
 
 ---
 
@@ -107,7 +107,7 @@ src/
     Square.Sample/        # Phase 1 验证 Demo（含 Main.sqx）
 ```
 
-> 模板统一为单文件 **`.sqx`**（三段式 `<template>`/`<script lang="csharp">`/`<style>`），详见 §4.5.1。
+> 模板统一为无文件级根标签的单文件 **`.sqx`**：唯一 `<template>`，以及各自最多一个的 `<script lang="csharp">` / `<style>`，详见 §4.5.1。
 
 ### 4.2 各模块设计要点
 
@@ -233,25 +233,23 @@ src/
 
 #### 4.5.1 统一模板格式 `.sqx`
 
-- 模板文件**统一为 `.sqx`**，以三段式内聚：
+- 模板文件**统一为 `.sqx`**，不使用 `<sqx>` 文件级根标签，以三个顶级 section 内聚：
   - `<template>`：结构，含绑定表达式 `{expr}`/`prop={expr}`/`onClick={Method}`/`value={}+onInput={}` 与流程控制 `<Show>`/`<For>`/`<Switch>`/`<Match>`。
-  - `<script lang="csharp">`：C# 逻辑（事件处理方法、字段、`ObservableValue`/`ObservableCollection` 声明）；Source Generator 发射进同一 `partial` 组件类。
-  - `<style>`：样式，CSS 引擎消费。
-- **`<script>` 预留**：裸 `<script>` 或 `<script lang="js">` 保留给未来 JavaScript 引擎扩展，当前不解析；其实现须 AOT 编译、属于核心外可选扩展。
+  - `<script lang="csharp">`：可选且最多一个；包含 C# 逻辑、Props 声明和 `namespace`/`name`/`access` 等文件级元数据；Source Generator 发射进同一 `partial` 组件类。
+  - `<style>`：可选且最多一个；样式由 CSS 引擎消费。
+- `<template>` 必须且只能有一个，允许多个视觉根节点；生成器不自动插入包装 `View`。
 - 示例结构：
   ```xml
-  <sqx>
-    <template>
-      <View>
-        <Show when={LoggedIn}><Text>欢迎</Text></Show>
-        <For each={Items}>{(it)=><Text>{it.Name}</Text>}</For>
-      </View>
-    </template>
-    <script lang="csharp">
-      // ObservableValue<bool> LoggedIn; ObservableCollection<Item> Items;
-    </script>
-    <style>/* CSS */</style>
-  </sqx>
+  <template>
+    <View>
+      <Show when={LoggedIn}><Text>欢迎</Text></Show>
+      <For each={Items}>{(it)=><Text>{it.Name}</Text>}</For>
+    </View>
+  </template>
+  <script lang="csharp" namespace="MyApp.Components" access="public">
+    // ObservableValue<bool> LoggedIn; ObservableCollection<Item> Items;
+  </script>
+  <style>/* CSS */</style>
   ```
 - 逻辑内联于 `<script lang="csharp">`，与独立 `.cs` 功能等价（均编译为同一 `partial` 类），差异仅在编写 ergonomics。
 
@@ -315,7 +313,7 @@ src/
 ## 5. 关键技术决策与权衡
 
 - **NativeAOT/Trim 约束**：全程禁用反射式绑定、运行时代码生成；P/Invoke 用 `LibraryImport` 源生成；`ObservableValue` 委托订阅替代反射属性系统。
-- **统一模板格式 `.sqx` + 细粒度命令式流程控制**：结构/样式/逻辑三段式内聚于 `.sqx`；`<Show>`/`<For>` 编译为 `ObservableValue`/`ObservableCollection` 驱动的控制流，无 VDOM，与 Retained Rendering 同构；平台/后端裁剪下沉构建层。
+- **统一模板格式 `.sqx` + 细粒度命令式流程控制**：结构、逻辑和样式以内聚的顶级 section 组织，不使用文件级根标签；`<Show>`/`<For>` 编译为 `ObservableValue`/`ObservableCollection` 驱动的控制流，无 VDOM，与 Retained Rendering 同构；平台/后端裁剪下沉构建层。
 - **Source Generator 诊断映射**：解析错误携带 `.sqx` 文件路径与行列，经 `Diagnostic` 回抛，保证 IDE 友好（需求 §12、§17）。
 - **纯托管软件渲染器**：Phase 1 后端采用纯 C# CPU 渲染，纯托管、无 C++ 依赖；用 BGRA32 + 预乘 Alpha + SIMD 混合 + 脏区重绘达到可接受性能，并为后续 Skia/Blend2D/Cairo 预留同一 `IRenderContext`。
 - **高 DPI**：布局与光栅均按物理像素对齐，避免模糊。

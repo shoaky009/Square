@@ -1,5 +1,6 @@
 using Square.Controls.Controls;
 using Square.Controls.Primitives;
+using Square.Events;
 using Square.Graphics;
 using Square.Layout.Engine;
 using Square.Runtime;
@@ -69,6 +70,7 @@ public class M1IntegrationTests
         Assert.Equal("A", textPage.Name.Value);
 
         button.RaiseEvent("CLICK");
+        Assert.True(controlsPage.LastEventSourceWasButton.Value);
         Assert.True(controlsPage.ShowCount.Value);
         Assert.Equal(2, controlsPage.Items.Count);
         Assert.Contains(root.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Show: button clicked");
@@ -316,6 +318,155 @@ public class M1IntegrationTests
 
         Assert.Same(button, hit);
         Assert.Equal(1, clicks);
+    }
+
+    [Fact]
+    public void RoutedEventTunnelsToTargetThenBubblesToRoot()
+    {
+        var root = new View();
+        var panel = new View();
+        var button = new Button();
+        root.Children.Add(panel);
+        panel.Children.Add(button);
+        var calls = new List<string>();
+
+        root.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"root:{e.Phase}"));
+        panel.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"panel:{e.Phase}"));
+        button.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"button:{e.Phase}"));
+
+        button.RaiseEvent(StandardEvents.PointerDown, new RoutedEventArgs());
+
+        Assert.Equal([
+            "root:Tunneling",
+            "panel:Tunneling",
+            "button:AtTarget",
+            "panel:Bubbling",
+            "root:Bubbling"
+        ], calls);
+    }
+
+    [Fact]
+    public void HandledRoutedEventStopsPropagation()
+    {
+        var root = new View();
+        var button = new Button();
+        root.Children.Add(button);
+        var rootCalls = 0;
+        var buttonCalls = 0;
+        root.AddEventListener(StandardEvents.Click, (_, _) => rootCalls++);
+        button.AddEventListener(StandardEvents.Click, (_, e) =>
+        {
+            buttonCalls++;
+            e.Handled = true;
+        });
+
+        button.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+
+        Assert.Equal(1, buttonCalls);
+        Assert.Equal(0, rootCalls);
+    }
+
+    [Fact]
+    public void StringEventApiUsesStandardRoutedEvents()
+    {
+        var root = new View();
+        var button = new Button();
+        root.Children.Add(button);
+        var calls = 0;
+        root.AddEventListener("click", () => calls++);
+
+        button.RouteEvent("CLICK");
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void CustomStringEventsUseStableDefinitionsAcrossTargets()
+    {
+        var root = new View();
+        var button = new Button();
+        root.Children.Add(button);
+        var calls = 0;
+        root.AddEventListener("saved", () => calls++);
+
+        button.RouteEvent("SAVED");
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void HandledEventsTooObserversReceiveHandledEventsLaterInRoute()
+    {
+        var root = new View();
+        var panel = new View();
+        var button = new Button();
+        root.Children.Add(panel);
+        panel.Children.Add(button);
+        var calls = new List<string>();
+        panel.AddEventListener(StandardEvents.Click, (_, e) =>
+        {
+            calls.Add("panel");
+            e.Handled = true;
+        });
+        root.AddEventListener(StandardEvents.Click, (_, _) => calls.Add("root"), handledEventsToo: true);
+
+        button.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+
+        Assert.Equal(["panel", "root"], calls);
+    }
+
+    [Fact]
+    public void DuplicateLegacyHandlersCanBeRemovedOneRegistrationAtATime()
+    {
+        var button = new Button();
+        var calls = 0;
+        Action handler = () => calls++;
+        button.AddEventListener("click", handler);
+        button.AddEventListener("click", handler);
+
+        button.RemoveEventListener("click", handler);
+        button.RaiseEvent("click");
+        button.RemoveEventListener("click", handler);
+        button.RaiseEvent("click");
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void StringRoutedHandlersCanBeRemovedSymmetrically()
+    {
+        var button = new Button();
+        var calls = 0;
+        RoutedEventHandler<RoutedEventArgs> twoArgs = (_, _) => calls++;
+        Action<RoutedEventArgs> oneArg = _ => calls++;
+        button.AddEventListener("click", twoArgs);
+        button.AddEventListener("click", oneArg);
+
+        button.RemoveEventListener("click", twoArgs);
+        button.RemoveEventListener("click", oneArg);
+        button.RaiseEvent("click");
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void CanvasRequestFrameBubblesToTheVisualRoot()
+    {
+        var root = new View();
+        var canvas = new Canvas();
+        root.Children.Add(canvas);
+        var requests = 0;
+        IEventTarget? source = null;
+        root.AddEventListener(StandardEvents.RequestFrame, (_, e) =>
+        {
+            requests++;
+            source = e.OriginalSource;
+        });
+
+        canvas.RequestFrame();
+
+        Assert.Equal(1, requests);
+        Assert.Same(canvas, source);
     }
 
     [Fact]

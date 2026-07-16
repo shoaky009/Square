@@ -1,3 +1,4 @@
+using Square.Events;
 using Square.Graphics;
 using Square.UI;
 
@@ -300,6 +301,12 @@ public class Image : UIElement
 public class Canvas : UIElement
 {
     public Action<IRenderContext, Rect>? DrawContent { get; set; }
+
+    public void RequestFrame()
+    {
+        InvalidateVisual();
+        RaiseEvent(StandardEvents.RequestFrame, new RoutedEventArgs());
+    }
 
     public override Size Measure(Size availableSize) => new(300, 140);
 

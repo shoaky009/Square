@@ -1,98 +1,96 @@
-<sqx>
-  <template>
-    <View class="tabs">
-      <View ref={TabList} class="tab-list">
-        <Slot name="tabs">
-          <Text class="tabs-fallback" text="No tabs" />
-        </Slot>
-      </View>
-      <View ref={PanelHost} class="tab-panels">
-        <Slot>
-          <Text class="tabs-fallback" text="No tab pages" />
-        </Slot>
-      </View>
+<template>
+  <View class="tabs">
+    <View ref={TabList} class="tab-list">
+      <Slot name="tabs">
+        <Text class="tabs-fallback" text="No tabs" />
+      </Slot>
     </View>
-  </template>
-  <script lang="csharp">
-    private readonly List<(Button Button, Action Handler)> _tabHandlers = [];
-    private Button[] _tabButtons = [];
-    private UIElement[] _tabPages = [];
-    private bool _tabsReady;
+    <View ref={PanelHost} class="tab-panels">
+      <Slot>
+        <Text class="tabs-fallback" text="No tab pages" />
+      </Slot>
+    </View>
+  </View>
+</template>
+<script lang="csharp">
+  private readonly List<(Button Button, Action Handler)> _tabHandlers = [];
+  private Button[] _tabButtons = [];
+  private UIElement[] _tabPages = [];
+  private bool _tabsReady;
 
-    public int SelectedIndex
+  public int SelectedIndex
+  {
+    get => GetProperty<int>(nameof(SelectedIndex));
+    set => SetProperty(nameof(SelectedIndex), value);
+  }
+
+  protected override void OnAttachedCore()
+  {
+    _tabButtons = TabList.Children.OfType<Button>().ToArray();
+    _tabPages = PanelHost.Children.OfType<UIElement>().ToArray();
+
+    for (var i = 0; i < _tabButtons.Length; i++)
     {
-      get => GetProperty<int>(nameof(SelectedIndex));
-      set => SetProperty(nameof(SelectedIndex), value);
+      var index = i;
+      Action handler = () => Select(index);
+      _tabButtons[i].AddEventListener("click", handler);
+      _tabHandlers.Add((_tabButtons[i], handler));
     }
 
-    protected override void OnAttachedCore()
+    _tabsReady = true;
+    ApplySelection();
+  }
+
+  protected override void OnDetachedCore()
+  {
+    foreach (var entry in _tabHandlers)
+      entry.Button.RemoveEventListener("click", entry.Handler);
+    _tabHandlers.Clear();
+    _tabsReady = false;
+  }
+
+  protected override void OnPropertyChanged(string name)
+  {
+    base.OnPropertyChanged(name);
+    if (name == nameof(SelectedIndex) && _tabsReady) ApplySelection();
+  }
+
+  private void Select(int index)
+  {
+    if (index == SelectedIndex) return;
+    SelectedIndex = index;
+    RaiseEvent("change");
+  }
+
+  private void ApplySelection()
+  {
+    var pairCount = Math.Min(_tabButtons.Length, _tabPages.Length);
+    if (pairCount == 0)
     {
-      _tabButtons = TabList.Children.OfType<Button>().ToArray();
-      _tabPages = PanelHost.Children.OfType<UIElement>().ToArray();
-
-      for (var i = 0; i < _tabButtons.Length; i++)
-      {
-        var index = i;
-        Action handler = () => Select(index);
-        _tabButtons[i].AddEventListener("click", handler);
-        _tabHandlers.Add((_tabButtons[i], handler));
-      }
-
-      _tabsReady = true;
-      ApplySelection();
+      foreach (var button in _tabButtons) button.ClassList.Remove("selected");
+      foreach (var page in _tabPages) page.IsVisible = true;
+      return;
     }
 
-    protected override void OnDetachedCore()
+    var selected = Math.Clamp(SelectedIndex, 0, pairCount - 1);
+    if (selected != SelectedIndex) SelectedIndex = selected;
+
+    for (var i = 0; i < _tabButtons.Length; i++)
     {
-      foreach (var entry in _tabHandlers)
-        entry.Button.RemoveEventListener("click", entry.Handler);
-      _tabHandlers.Clear();
-      _tabsReady = false;
+      var isSelected = i == selected;
+      _tabButtons[i].ClassList.Toggle("selected", isSelected);
+      _tabButtons[i].Style.Set("background", isSelected ? "#ffffff" : "#eef1f4");
+      _tabButtons[i].Style.Set("color", isSelected ? "#005ea6" : "#454b52");
     }
-
-    protected override void OnPropertyChanged(string name)
-    {
-      base.OnPropertyChanged(name);
-      if (name == nameof(SelectedIndex) && _tabsReady) ApplySelection();
-    }
-
-    private void Select(int index)
-    {
-      if (index == SelectedIndex) return;
-      SelectedIndex = index;
-      RaiseEvent("change");
-    }
-
-    private void ApplySelection()
-    {
-      var pairCount = Math.Min(_tabButtons.Length, _tabPages.Length);
-      if (pairCount == 0)
-      {
-        foreach (var button in _tabButtons) button.ClassList.Remove("selected");
-        foreach (var page in _tabPages) page.IsVisible = true;
-        return;
-      }
-
-      var selected = Math.Clamp(SelectedIndex, 0, pairCount - 1);
-      if (selected != SelectedIndex) SelectedIndex = selected;
-
-      for (var i = 0; i < _tabButtons.Length; i++)
-      {
-        var isSelected = i == selected;
-        _tabButtons[i].ClassList.Toggle("selected", isSelected);
-        _tabButtons[i].Style.Set("background", isSelected ? "#ffffff" : "#eef1f4");
-        _tabButtons[i].Style.Set("color", isSelected ? "#005ea6" : "#454b52");
-      }
-      for (var i = 0; i < _tabPages.Length; i++)
-        _tabPages[i].IsVisible = i == selected;
-    }
-  </script>
-  <style>
-    .tabs { display: flex; flex-direction: column; gap: 0; padding: 0; height: 850px; }
-    .tab-list { display: flex; flex-direction: row; gap: 2px; padding: 0; height: 42px; background: #eef1f4; }
-    .tab-button { height: 42px; background: #eef1f4; color: #454b52; }
-    .tab-button.selected { background: #ffffff; color: #005ea6; }
-    .tab-panels { padding: 16px 0 0; height: 792px; }
-    .tabs-fallback { color: #667085; font-size: 14px; }
-  </style>
-</sqx>
+    for (var i = 0; i < _tabPages.Length; i++)
+      _tabPages[i].IsVisible = i == selected;
+  }
+</script>
+<style>
+  .tabs { display: flex; flex-direction: column; gap: 0; padding: 0; height: 850px; }
+  .tab-list { display: flex; flex-direction: row; gap: 2px; padding: 0; height: 42px; background: #eef1f4; }
+  .tab-button { height: 42px; background: #eef1f4; color: #454b52; }
+  .tab-button.selected { background: #ffffff; color: #005ea6; }
+  .tab-panels { padding: 16px 0 0; height: 792px; }
+  .tabs-fallback { color: #667085; font-size: 14px; }
+</style>

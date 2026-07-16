@@ -1,3 +1,4 @@
+using Square.Events;
 using Square.Graphics;
 using Square.Runtime;
 using Square.Runtime.Binding;
@@ -6,9 +7,11 @@ using Square.UI.Properties;
 
 namespace Square.UI;
 
-public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
+public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarget
 {
     private Visual? _parent;
+    private readonly Dictionary<EventDefinition, List<EventHandlerEntry>> _eventHandlers = [];
+    private readonly List<LegacyHandlerEntry> _legacyHandlers = [];
     private Rect _geometry;
     private bool _isVisible = true;
     private bool _isLayoutDirty = true;
@@ -120,49 +123,154 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle
         InvalidateVisual();
     }
 
+    public void AddEventListener<TEventArgs>(
+        RoutedEvent<TEventArgs> routedEvent,
+        RoutedEventHandler<TEventArgs> handler,
+        bool handledEventsToo = false)
+        where TEventArgs : RoutedEventArgs
+    {
+        ArgumentNullException.ThrowIfNull(routedEvent);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (!_eventHandlers.TryGetValue(routedEvent, out var handlers))
+        {
+            handlers = [];
+            _eventHandlers.Add(routedEvent, handlers);
+        }
+        handlers.Add(new EventHandlerEntry(handler, handledEventsToo));
+    }
+
+    public void RemoveEventListener<TEventArgs>(
+        RoutedEvent<TEventArgs> routedEvent,
+        RoutedEventHandler<TEventArgs> handler)
+        where TEventArgs : RoutedEventArgs
+    {
+        RemoveSingleEventListener(routedEvent, handler);
+    }
+
     public void AddEventListener(string eventName, Action handler)
     {
-        var key = $"__event_{NormalizeEventName(eventName)}";
-        if (Properties.TryGetValue(key, out Action existing))
-            Properties.SetValue(key, existing + handler);
-        else
-            Properties.SetValue(key, handler);
+        var routedEvent = ResolveEvent(eventName);
+        RoutedEventHandler<RoutedEventArgs> adapter = (_, _) => handler();
+        AddEventListener(routedEvent, adapter);
+        _legacyHandlers.Add(new LegacyHandlerEntry(routedEvent, handler, adapter));
+    }
+
+    public void AddEventListener(string eventName, RoutedEventHandler<RoutedEventArgs> handler)
+    {
+        var routedEvent = ResolveEvent(eventName);
+        AddEventListener(routedEvent, handler);
+        _legacyHandlers.Add(new LegacyHandlerEntry(routedEvent, handler, handler));
+    }
+
+    public void AddEventListener(string eventName, Action<RoutedEventArgs> handler)
+    {
+        var routedEvent = ResolveEvent(eventName);
+        RoutedEventHandler<RoutedEventArgs> adapter = (_, args) => handler(args);
+        AddEventListener(routedEvent, adapter);
+        _legacyHandlers.Add(new LegacyHandlerEntry(routedEvent, handler, adapter));
     }
 
     public void RemoveEventListener(string eventName)
     {
-        Properties.RemoveValue($"__event_{NormalizeEventName(eventName)}");
+        var routedEvent = ResolveEvent(eventName);
+        _eventHandlers.Remove(routedEvent);
+        _legacyHandlers.RemoveAll(entry => entry.Event.Equals(routedEvent));
     }
 
-    internal bool TryGetEventListener(string eventName, out Action? handler)
+    public void RemoveEventListener(string eventName, Action handler)
+        => RemoveLegacyEventListener(eventName, handler);
+
+    public void RemoveEventListener(string eventName, RoutedEventHandler<RoutedEventArgs> handler) =>
+        RemoveLegacyEventListener(eventName, handler);
+
+    public void RemoveEventListener(string eventName, Action<RoutedEventArgs> handler) =>
+        RemoveLegacyEventListener(eventName, handler);
+
+    public void RaiseEvent<TEventArgs>(RoutedEvent<TEventArgs> routedEvent, TEventArgs args)
+        where TEventArgs : RoutedEventArgs
     {
-        if (Properties.TryGetValue($"__event_{NormalizeEventName(eventName)}", out Action h))
+        ArgumentNullException.ThrowIfNull(routedEvent);
+        ArgumentNullException.ThrowIfNull(args);
+        args.Event = routedEvent;
+        args.OriginalSource ??= this;
+        args.Source ??= this;
+
+        var route = BuildRoute();
+        if (routedEvent.RoutingStrategy is RoutingStrategy.Tunnel or RoutingStrategy.TunnelAndBubble)
         {
-            handler = h;
-            return true;
+            for (var i = route.Count - 1; i > 0; i--)
+                route[i].InvokeHandlers(routedEvent, args, EventPhase.Tunneling);
         }
-        handler = null;
-        return false;
+
+        var phase = routedEvent.RoutingStrategy == RoutingStrategy.Direct ? EventPhase.Direct : EventPhase.AtTarget;
+        InvokeHandlers(routedEvent, args, phase);
+
+        if (routedEvent.RoutingStrategy is RoutingStrategy.Bubble or RoutingStrategy.TunnelAndBubble)
+        {
+            for (var i = 1; i < route.Count; i++)
+                route[i].InvokeHandlers(routedEvent, args, EventPhase.Bubbling);
+        }
     }
 
     public void RaiseEvent(string eventName)
     {
-        if (TryGetEventListener(eventName, out var handler)) handler?.Invoke();
+        RaiseEvent(ResolveEvent(eventName), new RoutedEventArgs());
     }
 
-    public void RemoveEventListener(string eventName, Action handler)
+    public void RouteEvent(string eventName) => RaiseEvent(eventName);
+
+    private static RoutedEvent<RoutedEventArgs> ResolveEvent(string eventName)
     {
-        var key = $"__event_{NormalizeEventName(eventName)}";
-        if (!Properties.TryGetValue(key, out Action existing)) return;
-        var remaining = existing - handler;
-        if (remaining == null) Properties.RemoveValue(key);
-        else Properties.SetValue(key, remaining);
+        return StandardEvents.ResolveOrCreate(eventName);
     }
 
-    public void RouteEvent(string eventName)
+    private List<Visual> BuildRoute()
     {
+        var route = new List<Visual>();
         for (Visual? current = this; current != null; current = current.Parent)
-            current.RaiseEvent(eventName);
+            route.Add(current);
+        return route;
+    }
+
+    private void InvokeHandlers<TEventArgs>(RoutedEvent<TEventArgs> routedEvent, TEventArgs args, EventPhase phase)
+        where TEventArgs : RoutedEventArgs
+    {
+        args.CurrentTarget = this;
+        args.Phase = phase;
+        if (!_eventHandlers.TryGetValue(routedEvent, out var handlers)) return;
+        foreach (var entry in handlers.ToArray())
+        {
+            if (args.Handled && !entry.HandledEventsToo) continue;
+            ((RoutedEventHandler<TEventArgs>)entry.Handler)(this, args);
+        }
+    }
+
+    private sealed record EventHandlerEntry(Delegate Handler, bool HandledEventsToo);
+    private sealed record LegacyHandlerEntry(
+        EventDefinition Event,
+        Delegate Handler,
+        RoutedEventHandler<RoutedEventArgs> Adapter);
+
+    private void RemoveLegacyEventListener(string eventName, Delegate handler)
+    {
+        var routedEvent = ResolveEvent(eventName);
+        var index = _legacyHandlers.FindLastIndex(entry =>
+            entry.Event.Equals(routedEvent) && Equals(entry.Handler, handler));
+        if (index < 0) return;
+        var adapter = _legacyHandlers[index].Adapter;
+        _legacyHandlers.RemoveAt(index);
+        RemoveSingleEventListener(routedEvent, adapter);
+    }
+
+    private void RemoveSingleEventListener<TEventArgs>(
+        RoutedEvent<TEventArgs> routedEvent,
+        RoutedEventHandler<TEventArgs> handler)
+        where TEventArgs : RoutedEventArgs
+    {
+        if (!_eventHandlers.TryGetValue(routedEvent, out var handlers)) return;
+        var index = handlers.FindLastIndex(entry => Equals(entry.Handler, handler));
+        if (index >= 0) handlers.RemoveAt(index);
+        if (handlers.Count == 0) _eventHandlers.Remove(routedEvent);
     }
 
     public virtual Visual? HitTest(Point point)

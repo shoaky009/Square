@@ -1,6 +1,8 @@
+using System.Collections.Immutable;
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
-using System.Text;
 using Square.SourceGenerator.Emit;
 using Square.SourceGenerator.Parser;
 
@@ -11,38 +13,163 @@ public sealed class SqxGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var sqxFiles = context.AdditionalTextsProvider
-            .Where(f => f.Path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase));
-
-        var parsed = sqxFiles.Combine(context.AnalyzerConfigOptionsProvider).Select((pair, ct) =>
-        {
-            var file = pair.Left;
-            var sourceText = file.GetText(ct);
-            pair.Right.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
-            return new SqxInput(file.Path, sourceText?.ToString() ?? "", rootNamespace ?? "Square.Sample");
-        });
-
-        context.RegisterSourceOutput(parsed, (spc, input) =>
-        {
-            string code;
-            try
+        var inputs = context.AdditionalTextsProvider
+            .Where(file => file.Path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase))
+            .Combine(context.AnalyzerConfigOptionsProvider)
+            .Select((pair, cancellationToken) =>
             {
-                var doc = SqxParser.Parse(input.Content, input.Path);
-                var emitter = new ComponentEmitter(doc, input.Namespace);
-                code = emitter.Emit();
-            }
-            catch (Exception ex)
-            {
-                code = $"// Generator error: {ex.Message}\n// Path: {input.Path}";
-                spc.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.SqxDiagnostics.SQX0001_SyntaxError,
-                    Location.None,
-                    ex.Message));
-            }
+                var file = pair.Left;
+                pair.Right.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+                return new SqxInput(
+                    file.Path,
+                    file.GetText(cancellationToken)?.ToString() ?? "",
+                    rootNamespace ?? "Square.Sample");
+            })
+            .Collect();
 
-            var hintName = Path.GetFileNameWithoutExtension(input.Path) + "_" + StableHash(input.Path) + ".g.cs";
-            spc.AddSource(hintName, SourceText.From(code, Encoding.UTF8));
+        context.RegisterSourceOutput(inputs, static (productionContext, files) =>
+        {
+            var contracts = BuildPropContracts(files);
+            foreach (var file in files)
+                Generate(productionContext, file, contracts);
         });
+    }
+
+    private static void Generate(
+        SourceProductionContext context,
+        SqxInput input,
+        IReadOnlyDictionary<string, PropContract[]> contracts)
+    {
+        string code;
+        try
+        {
+            var document = SqxParser.Parse(input.Content, input.Path);
+            ValidateRequiredProps(context, input, document, contracts);
+            ValidateRefNames(context, input, document);
+            code = new ComponentEmitter(document, input.Namespace).Emit();
+        }
+        catch (SqxParseException exception)
+        {
+            code = $"// Generator error: {exception.Message}\n// Path: {input.Path}";
+            var source = SourceText.From(input.Content, Encoding.UTF8);
+            var position = Math.Max(0, Math.Min(exception.Position, source.Length));
+            var span = new TextSpan(position, 0);
+            context.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.SqxDiagnostics.SQX0001_SyntaxError,
+                Location.Create(input.Path, span, source.Lines.GetLinePositionSpan(span)),
+                exception.Message));
+        }
+        catch (Exception exception)
+        {
+            code = $"// Generator error: {exception.Message}\n// Path: {input.Path}";
+            context.ReportDiagnostic(Diagnostic.Create(
+                Diagnostics.SqxDiagnostics.SQX0001_SyntaxError,
+                Location.None,
+                exception.Message));
+        }
+
+        var hintName = Path.GetFileNameWithoutExtension(input.Path) + "_" + StableHash(input.Path) + ".g.cs";
+        context.AddSource(hintName, SourceText.From(code, Encoding.UTF8));
+    }
+
+    private static IReadOnlyDictionary<string, PropContract[]> BuildPropContracts(ImmutableArray<SqxInput> inputs)
+    {
+        var contracts = new Dictionary<string, PropContract[]>(StringComparer.Ordinal);
+        foreach (var input in inputs)
+        {
+            var script = ExtractScript(input.Content);
+            if (script == null) continue;
+            var matches = Regex.Matches(
+                script,
+                @"\[Prop(?:Attribute)?\s*(?:\((?<options>[^)]*)\))?\]\s*(?:public|internal|protected|private)?\s*(?<type>[A-Za-z_][A-Za-z0-9_<>?., ]*)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{");
+            var props = new List<PropContract>();
+            foreach (Match match in matches)
+            {
+                var options = match.Groups["options"].Value;
+                props.Add(new PropContract(
+                    match.Groups["name"].Value,
+                    match.Groups["type"].Value.Trim(),
+                    options.Contains("Required", StringComparison.OrdinalIgnoreCase) &&
+                    options.Contains("true", StringComparison.OrdinalIgnoreCase)));
+            }
+            if (props.Count > 0)
+                contracts[Path.GetFileNameWithoutExtension(input.Path)] = props.ToArray();
+        }
+        return contracts;
+    }
+
+    private static string ExtractScript(string source)
+    {
+        var start = source.IndexOf("<script", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return null;
+        var openEnd = source.IndexOf('>', start);
+        if (openEnd < 0) return null;
+        var close = source.IndexOf("</script", openEnd, StringComparison.OrdinalIgnoreCase);
+        return close < 0 ? null : source.Substring(openEnd + 1, close - openEnd - 1);
+    }
+
+    private static void ValidateRequiredProps(
+        SourceProductionContext context,
+        SqxInput input,
+        SqxDocument document,
+        IReadOnlyDictionary<string, PropContract[]> contracts)
+    {
+        foreach (var element in EnumerateElements(document.Template.Roots))
+        {
+            if (!contracts.TryGetValue(element.TagName, out var props)) continue;
+            foreach (var prop in props)
+            {
+                if (!prop.Required || element.Attributes.Any(attribute =>
+                    string.Equals(attribute.Name, prop.Name, StringComparison.OrdinalIgnoreCase))) continue;
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.SqxDiagnostics.SQX0003_RequiredPropMissing,
+                    CreateLocation(input, element.Line, element.Column),
+                    element.TagName,
+                    prop.Name));
+            }
+        }
+    }
+
+    private static IEnumerable<SqxElement> EnumerateElements(IEnumerable<SqxNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node is not SqxElement element) continue;
+            yield return element;
+            foreach (var child in EnumerateElements(element.Children))
+                yield return child;
+        }
+    }
+
+    private static void ValidateRefNames(
+        SourceProductionContext context,
+        SqxInput input,
+        SqxDocument document)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var element in EnumerateElements(document.Template.Roots))
+        {
+            var refAttr = element.Attributes.FirstOrDefault(
+                a => string.Equals(a.Name, "ref", StringComparison.OrdinalIgnoreCase));
+            if (refAttr == null || string.IsNullOrWhiteSpace(refAttr.RawValue)) continue;
+            if (!seen.Add(refAttr.RawValue))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.SqxDiagnostics.SQX0006_RefNameConflict,
+                    CreateLocation(input, element.Line, element.Column),
+                    refAttr.RawValue));
+            }
+        }
+    }
+
+    private static Location CreateLocation(SqxInput input, int line, int column)
+    {
+        var source = SourceText.From(input.Content, Encoding.UTF8);
+        var lineIndex = Math.Max(0, Math.Min(line - 1, source.Lines.Count - 1));
+        var textLine = source.Lines[lineIndex];
+        var position = Math.Min(textLine.End, textLine.Start + Math.Max(0, column - 1));
+        var span = new TextSpan(position, 0);
+        return Location.Create(input.Path, span, source.Lines.GetLinePositionSpan(span));
     }
 
     private static uint StableHash(string value)
@@ -50,8 +177,8 @@ public sealed class SqxGenerator : IIncrementalGenerator
         unchecked
         {
             var hash = 2166136261u;
-            foreach (var c in value)
-                hash = (hash ^ c) * 16777619u;
+            foreach (var character in value)
+                hash = (hash ^ character) * 16777619u;
             return hash;
         }
     }
@@ -61,11 +188,26 @@ public sealed class SqxGenerator : IIncrementalGenerator
         public string Path { get; }
         public string Content { get; }
         public string Namespace { get; }
+
         public SqxInput(string path, string content, string namespaceName)
         {
             Path = path;
             Content = content;
             Namespace = namespaceName;
+        }
+    }
+
+    private sealed class PropContract
+    {
+        public string Name { get; }
+        public string TypeName { get; }
+        public bool Required { get; }
+
+        public PropContract(string name, string typeName, bool required)
+        {
+            Name = name;
+            TypeName = typeName;
+            Required = required;
         }
     }
 }

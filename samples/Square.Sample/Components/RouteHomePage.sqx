@@ -1,8 +1,6 @@
-<sqx>
-  <template>
-    <Text class="route-page" text="Current route: /" />
-  </template>
-  <style>
-    .route-page { color: #067647; font-size: 14px; }
-  </style>
-</sqx>
+<template>
+  <Text class="route-page" text="Current route: /" />
+</template>
+<style>
+  .route-page { color: #067647; font-size: 14px; }
+</style>

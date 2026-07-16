@@ -9,7 +9,7 @@
 
 ## 0. 范围与边界说明
 
-Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲染后端可插拔** 的跨平台 UI 框架。UI 以单文件 `.sqx`（三段式 `<template>`/`<script lang="csharp">`/`<style>`）描述，由 Source Generator 在编译期解析并生成 C#，运行时零解析。
+Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲染后端可插拔** 的跨平台 UI 框架。UI 以无文件级根标签的单文件 `.sqx` 描述：唯一 `<template>`，以及各自最多一个的 `<script lang="csharp">` / `<style>`；由 Source Generator 在编译期解析并生成 C#，运行时零解析。
 
 六大核心约束（Compile First / Pure C# Core / NativeAOT First / Backend Independent / Retained Rendering / Low Coupling）见 `design.md` §1；完整架构与 Phase 1 详细设计见 `design.md` §2–§4。
 

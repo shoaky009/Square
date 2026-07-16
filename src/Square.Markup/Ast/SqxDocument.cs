@@ -5,6 +5,9 @@ public sealed record SqxTemplate(List<SqxNode> Roots, int Line, int Column);
 public sealed record SqxScript(
     string Language,
     string Code,
+    string? Namespace,
+    string? ComponentName,
+    string Access,
     int Line,
     int Column
 );

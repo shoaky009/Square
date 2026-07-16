@@ -1,5 +1,6 @@
 using Square.Backends;
 using Square.Controls.Controls;
+using Square.Events;
 using Square.Graphics;
 using Square.Layout.Engine;
 using Square.Platform;
@@ -41,6 +42,12 @@ public static class Program
         UIElement? focusedInput = null;
         ITextEditor? focusedEditor = null;
         var isSelectingText = false;
+        var frameRequested = false;
+        main.AddEventListener(StandardEvents.RequestFrame, (_, e) =>
+        {
+            frameRequested = true;
+            e.Handled = true;
+        });
 
         void RenderFrame()
         {
@@ -159,7 +166,8 @@ public static class Program
 
         host.Tick += () =>
         {
-            var needsRender = dispatcher.HasWork;
+            var needsRender = dispatcher.HasWork || frameRequested;
+            frameRequested = false;
             dispatcher.Run();
             needsRender |= focusedEditor?.ToggleCaretBlink() == true;
             if (needsRender) RenderFrame();
