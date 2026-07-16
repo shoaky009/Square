@@ -52,6 +52,7 @@ internal sealed class Win32Host : IPlatformHost
 
     public event Action<Size>? SizeChanged;
     public event Action<Point, MouseAction>? MouseEvent;
+    public event Action<Point, int>? WheelEvent;
     public event Action<int, KeyAction>? KeyEvent;
     public event Action<string>? TextInput;
     public event Action? Tick;
@@ -197,6 +198,17 @@ internal sealed class Win32Host : IPlatformHost
                     host.MouseEvent?.Invoke(new Point(x, y), MouseAction.Move);
                 }
                 break;
+            case Win32Api.WM_MOUSEWHEEL:
+                {
+                    var wheelDelta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+                    var lParam64 = lParam.ToInt64();
+                    var x = (short)(lParam64 & 0xFFFF);
+                    var y = (short)((lParam64 >> 16) & 0xFFFF);
+                    var screenPoint = new Win32Api.POINT { X = x, Y = y };
+                    Win32Api.ScreenToClient(hWnd, ref screenPoint);
+                    host.WheelEvent?.Invoke(new Point(screenPoint.X, screenPoint.Y), wheelDelta);
+                }
+                return IntPtr.Zero;
             case Win32Api.WM_KEYDOWN:
                 host.KeyEvent?.Invoke(wParam.ToInt32(), KeyAction.Down);
                 break;

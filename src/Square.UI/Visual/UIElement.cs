@@ -1,3 +1,4 @@
+using Square.Events;
 using Square.Graphics;
 
 namespace Square.UI;
@@ -68,7 +69,9 @@ public abstract class UIElement : Visual
         if (!IsEnabled || IsFocused) return;
         IsFocused = true;
         SetState(VisualState.Focus, true);
-        RaiseEvent("focus");
+        RaiseEvent(StandardEvents.Focus, new RoutedEventArgs());
+        for (var node = Parent; node != null; node = node.Parent)
+            node.RaiseEvent(StandardEvents.FocusIn, new RoutedEventArgs());
     }
 
     public void Unfocus()
@@ -76,7 +79,9 @@ public abstract class UIElement : Visual
         if (!IsFocused) return;
         IsFocused = false;
         SetState(VisualState.Focus, false);
-        RaiseEvent("blur");
+        RaiseEvent(StandardEvents.Blur, new RoutedEventArgs());
+        for (var node = Parent; node != null; node = node.Parent)
+            node.RaiseEvent(StandardEvents.FocusOut, new RoutedEventArgs());
     }
 
     protected override void OnPropertyChanged(string name)

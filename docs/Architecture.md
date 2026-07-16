@@ -59,8 +59,7 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 |---|---|---|
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props 解析、ref 字段生成、绑定/事件编译、结构原语特判、诊断映射 |
-| `Square.Runtime` | `Application`、组件生命周期、调度、信号 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递 |
-| `Square.Events` | 平台无关的路由事件协议与标准事件目录 | 强类型事件参数；Direct/Bubble/Tunnel；Handled/PreventDefault；NativeAOT 安全 |
+| `Square.Runtime` | `Application`、组件生命周期、调度、信号、路由事件 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递；`Square.Events` 命名空间下的路由事件协议与标准事件目录 |
 | `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码）；元素操作 API（Style/ClassList/Children/Event） |
 | `Square.Controls` | 控件 + 结构原语 | 控件 = 视觉 + 行为 + 默认样式；结构原语由生成器编译 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |

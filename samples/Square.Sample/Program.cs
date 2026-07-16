@@ -64,6 +64,13 @@ public static class Program
 
         host.SizeChanged += _ => RenderFrame();
 
+        host.WheelEvent += (pt, delta) =>
+        {
+            var hit = main.HitTest(pt);
+            hit?.RaiseEvent(StandardEvents.Wheel, new RoutedEventArgs());
+            RenderFrame();
+        };
+
         host.MouseEvent += (pt, action) =>
         {
             var hit = main.HitTest(pt);

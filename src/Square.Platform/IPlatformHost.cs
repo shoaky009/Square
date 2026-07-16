@@ -13,6 +13,7 @@ public interface IPlatformHost
 
     event Action<Size>? SizeChanged;
     event Action<Point, MouseAction>? MouseEvent;
+    event Action<Point, int>? WheelEvent;
     event Action<int, KeyAction>? KeyEvent;
     event Action<string>? TextInput;
     event Action? Tick;

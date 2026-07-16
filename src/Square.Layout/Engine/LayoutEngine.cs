@@ -286,7 +286,10 @@ public sealed class LayoutEngine
         return result;
     }
 
-    private static ComputedStyle GetComputedStyle(Visual visual)
+    private static ComputedStyle GetComputedStyle(Visual visual) =>
+        GetComputedStyle(visual, float.NaN, float.NaN);
+
+    private static ComputedStyle GetComputedStyle(Visual visual, float parentWidth, float parentHeight)
     {
         var style = new ComputedStyle();
         var display = visual.Style.Get("display");
@@ -323,16 +326,16 @@ public sealed class LayoutEngine
         if (gap != null && float.TryParse(gap.TrimEnd('p', 'x'), out var gapVal)) style.Gap = gapVal;
 
         var padding = visual.Style.Get("padding");
-        if (padding != null && TryParseLength(padding, out var paddingVal)) style.Padding = paddingVal;
+        if (padding != null && TryParseLength(padding, parentWidth, parentHeight, out var paddingVal)) style.Padding = paddingVal;
 
         var margin = visual.Style.Get("margin");
-        if (margin != null && TryParseLength(margin, out var marginVal)) style.Margin = marginVal;
+        if (margin != null && TryParseLength(margin, parentWidth, parentHeight, out var marginVal)) style.Margin = marginVal;
 
         var width = visual.Style.Get("width");
-        if (width != null && TryParseLength(width, out var widthVal)) style.Width = widthVal;
+        if (width != null && TryParseLength(width, parentWidth, parentHeight, out var widthVal)) style.Width = widthVal;
 
         var height = visual.Style.Get("height");
-        if (height != null && TryParseLength(height, out var heightVal)) style.Height = heightVal;
+        if (height != null && TryParseLength(height, parentWidth, parentHeight, out var heightVal)) style.Height = heightVal;
 
         var flexGrow = visual.Style.Get("flex-grow");
         if (flexGrow != null && float.TryParse(flexGrow, out var grow)) style.FlexGrow = grow;
@@ -357,7 +360,46 @@ public sealed class LayoutEngine
     }
 
     private static bool TryParseLength(string value, out float result) =>
-        float.TryParse(value.Replace(" ", "").TrimEnd('p', 'x'), out result);
+        TryParseLength(value, float.NaN, float.NaN, out result);
+
+    private static bool TryParseLength(string value, float parentSize, float viewportSize, out float result)
+    {
+        result = 0;
+        if (string.IsNullOrEmpty(value)) return false;
+        var text = value.Replace(" ", "").Trim();
+        if (text.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+            return float.TryParse(text[..^2], out result);
+        if (text.EndsWith('%') && !float.IsNaN(parentSize))
+        {
+            if (!float.TryParse(text[..^1], out var percent)) return false;
+            result = parentSize * percent / 100f;
+            return true;
+        }
+        if (text.EndsWith("vw", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(viewportSize))
+        {
+            if (!float.TryParse(text[..^2], out var vw)) return false;
+            result = viewportSize * vw / 100f;
+            return true;
+        }
+        if (text.EndsWith("vh", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(viewportSize))
+        {
+            if (!float.TryParse(text[..^2], out var vh)) return false;
+            result = viewportSize * vh / 100f;
+            return true;
+        }
+        if (text.EndsWith("rp", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(parentSize))
+        {
+            if (!float.TryParse(text[..^2], out var rp)) return false;
+            result = parentSize * rp / 100f;
+            return true;
+        }
+        if (text == "auto")
+        {
+            result = float.NaN;
+            return true;
+        }
+        return float.TryParse(text, out result);
+    }
 
     private static Size MeasureWithStyle(Visual visual, Size available)
     {

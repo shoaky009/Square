@@ -4,16 +4,17 @@ using Square.UI;
 
 namespace Square.Controls.Primitives;
 
-public sealed class ShowNode
+public sealed class ShowNode : IDisposable
 {
     private readonly ObservableValue<bool>? _source;
     private readonly Func<bool> _condition;
     private readonly Func<Visual?> _build;
-    private readonly IDisposable? _subscription;
+    private IDisposable? _subscription;
     private bool _lastValue;
     private Visual? _child;
     private Visual? _parent;
     private int _index;
+    private bool _disposed;
 
     public ShowNode(ObservableValue<bool> source, Func<Visual?> build)
         : this(() => source.Value, build)
@@ -54,9 +55,20 @@ public sealed class ShowNode
             if (_child != null && _parent != null) _parent.Children.Remove(_child);
         }
     }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _subscription?.Dispose();
+        _subscription = null;
+        if (_child != null && _parent != null) _parent.Children.Remove(_child);
+        _child = null;
+        _parent = null;
+    }
 }
 
-public interface IForNode
+public interface IForNode : IDisposable
 {
     void AttachTo(Visual parent);
     void Update();
@@ -200,5 +212,18 @@ public sealed class ForNode<T> : IForNode
         _nodes.RemoveAt(oldIndex);
         _nodes.Insert(newIndex, entry);
         InsertNode(newIndex);
+    }
+
+    public void Dispose()
+    {
+        if (_observableSource != null)
+            _observableSource.CollectionChanged -= OnCollectionChanged;
+        if (_parent != null)
+        {
+            foreach (var (_, node) in _nodes)
+                if (node != null) _parent.Children.Remove(node);
+        }
+        _nodes.Clear();
+        _parent = null;
     }
 }

@@ -119,6 +119,10 @@ namespace Square.SourceGenerator.Emit
                 foreach (var item in _refs)
                     _sb.AppendLine("        " + item.Name + " = null!;");
                 for (var i = 0; i < _showCounter; i++)
+                    _sb.AppendLine("        _show" + i + "?.Dispose();");
+                for (var i = 0; i < _forCounter; i++)
+                    _sb.AppendLine("        _for" + i + "?.Dispose();");
+                for (var i = 0; i < _showCounter; i++)
                     _sb.AppendLine("        _show" + i + " = null!;");
                 for (var i = 0; i < _forCounter; i++)
                     _sb.AppendLine("        _for" + i + " = null!;");
