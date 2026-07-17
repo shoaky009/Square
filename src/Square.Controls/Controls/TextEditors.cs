@@ -1,5 +1,5 @@
 using System.Text;
-using Square.Animation.Clock;
+using Square.Controls.Animation;
 using Square.Graphics;
 using Square.Text.Glyph;
 using Square.UI;

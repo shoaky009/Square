@@ -7,7 +7,7 @@
 
 ## 1. 定位
 
-`Square.Layout` 负责 Visual Tree 的几何计算。
+`Square.Rendering` 程序集中的 `LayoutEngine` 负责 Visual Tree 的几何计算。
 
 采用 CSS 盒模型思想。
 

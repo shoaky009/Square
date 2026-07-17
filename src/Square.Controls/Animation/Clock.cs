@@ -1,4 +1,4 @@
-namespace Square.Animation.Clock;
+namespace Square.Controls.Animation;
 
 public sealed class Clock
 {

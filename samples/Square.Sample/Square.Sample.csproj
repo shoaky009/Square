@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType Condition="'$(IsWindowsBuild)' != 'false'">WinExe</OutputType>
+    <OutputType Condition="'$(IsWindowsBuild)' == 'false'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Description>Square Sample Application</Description>
     <PublishAot>true</PublishAot>
@@ -14,14 +15,13 @@
     <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
     <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
     <ProjectReference Include="..\..\src\Square.CSS\Square.CSS.csproj" />
-    <ProjectReference Include="..\..\src\Square.Layout\Square.Layout.csproj" />
     <ProjectReference Include="..\..\src\Square.Graphics\Square.Graphics.csproj" />
     <ProjectReference Include="..\..\src\Square.Rendering\Square.Rendering.csproj" />
     <ProjectReference Include="..\..\src\Square.Router\Square.Router.csproj" />
     <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
-    <ProjectReference Include="..\..\src\Square.Animation\Square.Animation.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
+    <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

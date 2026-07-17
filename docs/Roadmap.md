@@ -13,7 +13,7 @@
 | **M1 Phase 1 MVP** | 编译优先可运行 Demo：`.sqx`→C#、Props、ref、基础 CSS、flex 布局、纯 C# 软件渲染、基础控件、事件、Win32 宿主、构建层裁剪、生命周期、NativeAOT 验证 | `.sqx` 示例经 Source Generator 编译为 AOT 可执行，窗口渲染并响应交互；Props 传值校验、ref 操作、`<Show>`/`<For>` 可用 |
 | **M2 CSS 完整化 + 组件组合 + 动画 + 主题** | 默认/具名 Slot、fallback、嵌套组件；`Signal<T>` 跨组件/跨线程通信；完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | 插槽保持调用方作用域且不产生隐式布局容器；后台信号经 Dispatcher 安全送达 UI；CSS 测试套件通过 |
 | **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；基于 Slot 的 Tabs；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Window/Swiper | 路由可前进/后退并正确切换生命周期；Tabs 可组合页面且保留状态；各控件可交互 |
-| **M4 图形后端扩展** | Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 |
+| **M4 图形后端扩展** | Impeller / Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 |
 | **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI |
 | **M7 文本与 Canvas 完整** | BiDi、Font Fallback、Caret/Selection/HitTest 完整、Canvas `CanvasRenderingContext2D` 兼容层→DrawCommand | 复杂文本/编辑与 Canvas 绘图可运行 |
@@ -37,16 +37,14 @@
 [x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
 [x] `Square.SourceGenerator`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
-[x] `Square.Layout`：Box + Flex + 尺寸解析（px/%/rp/vw/vh/auto）+ 高 DPI
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[~] `Square.Rendering`：Box/Flex/Grid 布局 + Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
 [x] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性/元素操作 API（Style/ClassList/Children/Event）
-[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式
+[x] `Square.Hosting`：`DesktopApplication` 聚合层——提取窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环
+[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画时钟/缓动
 [x] `Square.Text`：FontManager/测量/绘制（基础）
 [x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
-[x] `Square.Animation`：Clock/Easing 最小实现
-[x] `Square.Tooling`：基础诊断输出
 [x] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定 + Click 合成
 [x] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
 [x] Props：`[Prop]` 特性 + `ObservableValue<T>` 包装 + 编译期校验（必填 + 类型）+ `OnPropChanged`
@@ -90,3 +88,12 @@
 ## 6. 下一步
 
 M2 增强项已完成起步覆盖。下一步进入 M3 扩展控件与路由打磨，并继续扩展 CSS Grid / Animation 到更完整规范。
+
+---
+
+## 7. M5 跨平台桌面进度
+
+[~] Linux / X11 平台宿主：窗口、消息循环、鼠标/键盘/滚轮、剪贴板（CLIPBOARD + PRIMARY 中键粘贴）、Software Renderer 通过 `XPutImage` 上屏、构建层 `PLATFORM_X11` 裁剪 ✓ / IME 待实现 / 高 DPI 待实现
+[~] 跨平台字形栅格化：Windows 走 GDI `GetGlyphOutline` ✓ / Linux 与 macOS 走 StbTrueTypeSharp（纯 C#，无 native 依赖）✓ / 字体回退按脚本（CJK/日/韩）映射到 Noto/Source Han ✓ / Fontconfig 集成待实现
+[ ] macOS 平台宿主
+[ ] 高 DPI / 高刷新率打磨

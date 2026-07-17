@@ -6,14 +6,12 @@
   <Project Path="src/Square.UI/Square.UI.csproj" />
   <Project Path="src/Square.Controls/Square.Controls.csproj" />
   <Project Path="src/Square.CSS/Square.CSS.csproj" />
-  <Project Path="src/Square.Layout/Square.Layout.csproj" />
   <Project Path="src/Square.Graphics/Square.Graphics.csproj" />
+  <Project Path="src/Square.Hosting/Square.Hosting.csproj" />
   <Project Path="src/Square.Rendering/Square.Rendering.csproj" />
   <Project Path="src/Square.Text/Square.Text.csproj" />
-  <Project Path="src/Square.Animation/Square.Animation.csproj" />
   <Project Path="src/Square.Platform/Square.Platform.csproj" />
   <Project Path="src/Square.Backends/Square.Backends.csproj" />
-  <Project Path="src/Square.Tooling/Square.Tooling.csproj" />
   <Project Path="samples/Square.Sample/Square.Sample.csproj" />
   <Project Path="tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj" />
   <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />

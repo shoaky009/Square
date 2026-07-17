@@ -21,7 +21,7 @@ SQX
 Component (C#)
   ↓ (组件构建)
 Visual Tree
-  ↓ (Square.Layout)
+  ↓ (Square.Rendering.Layout)
 Layout (几何计算)
   ↓ (Square.Rendering)
 Render Tree (DrawCommand 列表)
@@ -58,7 +58,7 @@ Backend (Software / Skia / ...)
 
 ## 4. Layout 阶段
 
-- 调用 `Square.Layout` 计算几何
+- 调用 `Square.Rendering` 程序集中的 `LayoutEngine` 计算几何
 - 测量（Measure）→ 排列（Arrange）
 - 高 DPI 物理像素对齐
 - 详见 `Layout.md`

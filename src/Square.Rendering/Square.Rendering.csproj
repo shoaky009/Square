@@ -3,14 +3,12 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
-    <Description>Square Rendering: Visual→Render Tree→DrawCommand</Description>
+    <Description>Square layout and retained rendering pipeline</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Square.UI\Square.UI.csproj" />
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
-    <ProjectReference Include="..\Square.Layout\Square.Layout.csproj" />
-    <ProjectReference Include="..\Square.CSS\Square.CSS.csproj" />
   </ItemGroup>
 
 </Project>

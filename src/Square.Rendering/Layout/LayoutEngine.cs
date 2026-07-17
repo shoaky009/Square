@@ -1,7 +1,7 @@
 using Square.Graphics;
 using Square.UI;
 
-namespace Square.Layout.Engine;
+namespace Square.Rendering;
 
 public enum DisplayMode { Block, Flex, Grid, None }
 public enum FlexDirection { Row, Column, RowReverse, ColumnReverse }

@@ -20,7 +20,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <DefineConstants Condition="'$(Platform)' == ''">$(DefineConstants);PLATFORM_WIN32;BACKEND_SOFTWARE</DefineConstants>
+    <IsWindowsBuild Condition="'$(OS)' == 'Windows_NT'">true</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux'))">false</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">false</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(IsWindowsBuild)' == ''">false</IsWindowsBuild>
+
+    <DefineConstants Condition="'$(IsWindowsBuild)' == 'true'">$(DefineConstants);PLATFORM_WIN32;BACKEND_SOFTWARE</DefineConstants>
+    <DefineConstants Condition="'$(IsWindowsBuild)' != 'true'">$(DefineConstants);PLATFORM_X11;BACKEND_SOFTWARE</DefineConstants>
   </PropertyGroup>
 
 </Project>

@@ -17,8 +17,9 @@ public sealed class RasterizedGlyph
 public sealed partial class SystemGlyphRasterizer
 {
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
+    private readonly StbGlyphRasterizer _stbRasterizer = new();
 
-    public bool IsAvailable => OperatingSystem.IsWindows();
+    public bool IsAvailable => OperatingSystem.IsWindows() || _stbRasterizer.IsAvailable;
 
     public RasterizedGlyph? Rasterize(Font font, char character)
     {
@@ -30,7 +31,9 @@ public sealed partial class SystemGlyphRasterizer
         var key = new GlyphKey(effectiveFont.Family, effectiveFont.Size, effectiveFont.Weight, effectiveFont.Style, character);
         if (_cache.TryGetValue(key, out var cached)) return cached;
 
-        var glyph = RasterizeWin32(effectiveFont, character);
+        var glyph = OperatingSystem.IsWindows()
+            ? RasterizeWin32(effectiveFont, character)
+            : _stbRasterizer.Rasterize(effectiveFont, character);
         _cache[key] = glyph;
         return glyph;
     }
@@ -49,6 +52,7 @@ public sealed partial class SystemGlyphRasterizer
 
     private static RasterizedGlyph? RasterizeWin32(Font font, char character)
     {
+#if PLATFORM_WIN32
         var dc = NativeMethods.CreateCompatibleDC(IntPtr.Zero);
         if (dc == IntPtr.Zero) return null;
 
@@ -89,6 +93,10 @@ public sealed partial class SystemGlyphRasterizer
                 {
                     handle.Free();
                 }
+
+                // GDI GGO_GRAY8_BITMAP coverage is 0..64; normalize to 0..255.
+                for (var i = 0; i < coverage.Length; i++)
+                    coverage[i] = (byte)Math.Min(255, coverage[i] * 255 / 64);
             }
 
             var width = (int)metrics.BlackBoxX;
@@ -111,6 +119,9 @@ public sealed partial class SystemGlyphRasterizer
             NativeMethods.DeleteObject(fontHandle);
             NativeMethods.DeleteDC(dc);
         }
+#else
+        return null;
+#endif
     }
 
     private readonly record struct GlyphKey(
@@ -120,6 +131,7 @@ public sealed partial class SystemGlyphRasterizer
         FontStyle Style,
         char Character);
 
+#if PLATFORM_WIN32
     private static partial class NativeMethods
     {
         internal const uint DefaultCharset = 1;
@@ -219,4 +231,5 @@ public sealed partial class SystemGlyphRasterizer
             internal byte CharSet;
         }
     }
+#endif
 }

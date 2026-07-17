@@ -7,9 +7,23 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <IsWindowsBuild Condition="'$(OS)' == 'Windows_NT'">true</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux'))">false</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">false</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(IsWindowsBuild)' == ''">false</IsWindowsBuild>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\Square.Runtime\Square.Runtime.csproj" />
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsWindowsBuild)' == 'true'">
+    <Compile Remove="X11\**" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsWindowsBuild)' != 'true'">
+    <Compile Remove="Win32\**" />
   </ItemGroup>
 
 </Project>

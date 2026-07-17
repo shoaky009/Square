@@ -535,14 +535,12 @@ Square.Runtime
 Square.UI
 Square.Controls
 Square.CSS
-Square.Layout
 Square.Rendering
 Square.Graphics
 Square.Text
-Square.Animation
 Square.Platform
 Square.Backends
-Square.Tooling
+Square.Hosting
 ```
 
 ---

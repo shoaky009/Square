@@ -40,7 +40,7 @@
  Visual Tree   (Square.UI / Runtime)
       │
       ▼
-Layout Engine  (Square.Layout, CSS 盒/flex/grid)
+Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
       │
       ▼
  Render Tree   (Square.Rendering, DrawCommand 列表)
@@ -66,18 +66,15 @@ Backend  (Square.Backends: Software → Skia/Blend2D/Cairo)
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | 缓存键严格设计（IDE 诊断不滞后）；结构原语特判编译；诊断映射回 `.sqx` 行列 |
 | `Square.Runtime` | `Application`、组件生命周期、调度 | 消息循环调度；组件树挂载 |
 | `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码，无反射依赖属性） |
-| `Square.Controls` | 第一阶段控件 + 结构原语（Show/For/Switch/Match） | 控件 = 视觉 + 行为 + 默认样式；结构原语由生成器编译为非运行时实例 |
+| `Square.Controls` | 第一阶段控件 + 结构原语 + 基础动画 | 控件 = 视觉 + 行为 + 默认样式；包含时钟、缓动和属性动画 |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
-| `Square.Layout` | CSS 布局引擎（盒/flex/grid） | 高 DPI 物理像素对齐；M1 子集（block/flex + rp/vw/vh） |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语类型 | 工厂 `IRenderBackendFactory` 创建上下文；原语 Geometry/Brush/Pen/Image/Bitmap/Font/Path/Transform/Clip |
-| `Square.Rendering` | Visual Tree→Layout→Render Tree→DrawCommand | 保留模式、脏区/增量；子树挂卸、keyed 增量增删 |
+| `Square.Rendering` | Visual Tree→Layout→Render Tree→DrawCommand | 包含 Box/Flex/Grid 布局；保留模式、脏区/增量 |
 | `Square.Text` | 文本引擎 | Unicode/Paragraph/Glyph/Font Manager/Layout/Caret/Selection/HitTest/LineBreak/Fallback/BiDi；M1 基础 |
-| `Square.Animation` | 时间线/缓动 | 与 CSS Animation 联动；M1 最小 |
 | `Square.Platform` | 平台宿主抽象（M1: Win32） | `IPlatformHost`：窗口/消息循环/输入泵；P/Invoke 用 `LibraryImport` 源生成 |
 | `Square.Backends` | 渲染后端（M1: Software 纯 C#） | 纯托管、无 C++ 依赖；后续 Skia/Blend2D/Cairo 同接 `IRenderContext` |
-| `Square.Tooling` | 诊断 | Source Generator 诊断输出、IDE 集成 |
 
-依赖方向：`SourceGenerator` → `Markup`；`Controls/UI/Rendering/Layout/CSS/Text/Animation` → `Runtime` + `Graphics`(抽象)；`Backends`/`Platform` → 仅依赖 `Graphics`(抽象) 与 `Runtime` 接口。核心层禁止反向依赖 Backend/Platform。
+依赖方向：`SourceGenerator` → `Markup`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（按实际需要引用）；`Backends`/`Platform` → 底层图形抽象。核心层禁止反向依赖 Backend/Platform。
 
 ---
 
@@ -93,16 +90,13 @@ src/
   Square.SourceGenerator/ # Roslyn Incremental Generator（.sqx → C#）
   Square.Runtime/         # Application、组件生命周期、调度
   Square.UI/              # 视觉基类型、属性、Visual Tree 节点
-  Square.Controls/        # 第一阶段控件 + 结构原语（Show/For/Switch/Match）
+  Square.Controls/        # 第一阶段控件 + 结构原语 + 基础动画
   Square.CSS/             # CSS 引擎（M1 子集）
-  Square.Layout/          # CSS 布局引擎（M1 子集）
   Square.Graphics/        # IRenderContext 抽象 + 绘图原语类型
-  Square.Rendering/       # Visual Tree→Layout→Render Tree→DrawCommand
+  Square.Rendering/       # 布局 + Visual Tree→Render Tree→DrawCommand
   Square.Text/            # 基础文本（字形、简单排版）
-  Square.Animation/       # 时间线/缓动（M1 最小）
   Square.Platform/        # 平台宿主抽象（M1: Win32）
   Square.Backends/        # 渲染后端（M1: Software 纯 C#）
-  Square.Tooling/         # 诊断（M1: 基础）
   samples/
     Square.Sample/        # Phase 1 验证 Demo（含 Main.sqx）
 ```
@@ -130,7 +124,7 @@ src/
 - 暂不做：属性选择器高级操作符、伪元素、Animation、Grid 全量（后续补）。
 - 任务：Tokenizer、Rule/AST、Selector 匹配、级联计算、属性应用到 Visual。
 
-**Square.Layout（M1 子集）**
+**Square.Rendering 布局子系统（M1 子集）**
 - 支持：`display:block/flex`、`flex-direction`、`justify-content`、`align-items`、`flex-grow/shrink`、`width/height`（px/%/auto/rp/vw/vh）、`padding/margin`。
 - 高 DPI：**物理像素对齐**（避免模糊）。
 - 任务：Box 模型测量/排列、Flex 算法、尺寸解析（px/%/auto/rp/vw/vh）。
@@ -151,7 +145,7 @@ src/
 
 **Square.Rendering（Visual Tree → Render Tree → DrawCommand）**
 - Visual Tree：由 Source Generator 生成的组件构建；`<Show>` 条件子树需支持**挂卸**，`<For>` 列表需支持**增量增删**（keyed）。
-- Layout 阶段调用 `Square.Layout` 计算几何。
+- Layout 阶段调用 `Square.Rendering` 程序集中的 `LayoutEngine` 计算几何。
 - Render Tree：生成 `DrawCommand` 列表（FillRect/DrawText/DrawPath/...）。
 - 保留模式：脏标记驱动增量重绘。
 - 任务：RenderTree 构建、DrawCommand 定义、脏区/增量机制（含子树挂卸）、调用 IRenderContext 提交。
@@ -178,13 +172,9 @@ src/
 - M1 实现 Win32（P/Invoke 用 `LibraryImport` 源生成以兼容 AOT）。
 - 任务：Win32 宿主、消息循环、输入事件采集并派发到 Runtime 事件系统。
 
-**Square.Animation（M1 最小）**
+**Square.Controls 动画子系统（M1 最小）**
 - 时间线 + 缓动函数骨架，供后续 CSS Animation 接入。
 - 任务：Clock、Easing、属性动画最小实现。
-
-**Square.Tooling（M1 基础）**
-- Source Generator 诊断输出（错误映射 `.sqx` 行列）。
-- 任务：诊断描述、示例项目配置。
 
 **事件系统（贯穿 M1）**
 - 支持 Mouse、Keyboard、Touch、Focus、Wheel（需求 §7）。
@@ -212,16 +202,13 @@ src/
 [x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
 [x] `Square.SourceGenerator`：Incremental Generator + 诊断映射（`.sqx` 行列）+ Props 校验
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
-[x] `Square.Layout`：Box + Flex + 尺寸解析（px/%/rp/vw/vh/auto）+ 高 DPI
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[~] `Square.Rendering`：Box/Flex/Grid 布局 + Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
 [x] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性 + 路由事件
-[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式
+[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画
 [x] `Square.Text`：FontManager/测量/绘制（基础）
 [x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
-[x] `Square.Animation`：Clock/Easing 最小实现
-[x] `Square.Tooling`：基础诊断输出
 [x] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定 + Click 合成
 [x] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
 [x] 示例 + NativeAOT 发布验证 + 基线指标（2.53 MiB EXE，512ms 启动，32 MB 内存）

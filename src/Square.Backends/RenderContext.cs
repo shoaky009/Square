@@ -558,7 +558,8 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                     if (coverageIndex >= glyph.Coverage.Length) continue;
                     var coverage = glyph.Coverage[coverageIndex];
                     if (coverage == 0) continue;
-                    var alpha = (byte)Math.Min(255, color.A * coverage / 64);
+                    // Coverage is normalized to 0..255 (Win32 Gray8 converted at rasterize time; STB is already 0..255).
+                    var alpha = (byte)(color.A * coverage / 255);
                     BlendPixel(
                         x + glyph.OffsetX + column,
                         y + glyph.OffsetY + row,

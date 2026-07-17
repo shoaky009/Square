@@ -35,7 +35,7 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
  Visual Tree   (Square.UI / Runtime)
       │
       ▼
-Layout Engine  (Square.Layout, CSS 盒/flex/grid)
+Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
       │
       ▼
  Render Tree   (Square.Rendering, DrawCommand 列表)
@@ -61,19 +61,17 @@ Layout Engine  (Square.Layout, CSS 盒/flex/grid)
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props 解析、ref 字段生成、绑定/事件编译、结构原语特判、诊断映射 |
 | `Square.Runtime` | `Application`、组件生命周期、调度、信号、路由事件 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递；`Square.Events` 命名空间下的路由事件协议与标准事件目录 |
 | `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码）；元素操作 API（Style/ClassList/Children/Event） |
-| `Square.Controls` | 控件 + 结构原语 | 控件 = 视觉 + 行为 + 默认样式；结构原语由生成器编译 |
+| `Square.Controls` | 控件 + 结构原语 + 基础动画 | 控件 = 视觉 + 行为 + 默认样式；`Square.Controls.Animation` 命名空间下的时钟、缓动和属性动画 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
-| `Square.Layout` | CSS 布局引擎 | 高 DPI 物理像素对齐；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
-| `Square.Rendering` | Visual→Layout→Render Tree→DrawCommand | 保留模式、脏区/增量；子树挂卸、keyed 增删 |
+| `Square.Rendering` | Visual→Layout→Render Tree→DrawCommand | `Square.Rendering` 命名空间下的 Box/Flex/Grid 布局；保留模式、脏区/增量 |
 | `Square.Text` | 文本引擎 | Unicode/Glyph/Font/Layout/Caret/Selection/HitTest/BiDi |
-| `Square.Animation` | 时间线/缓动 | 与 CSS Animation 联动 |
-| `Square.Platform` | 平台宿主抽象 | `IPlatformHost`：窗口/消息循环/输入泵；`LibraryImport` 源生成 |
+| `Square.Platform` | 平台宿主抽象 | `IPlatformHost`：窗口/消息循环/输入泵；`LibraryImport` 源生成；现含 Win32 与 X11 两个实现，按构建层 `PLATFORM_*` 裁剪 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
-| `Square.Tooling` | 诊断 | Source Generator 诊断输出、IDE 集成 |
+| `Square.Hosting` | 桌面应用宿主 | `DesktopApplication`：聚合 Runtime/UI/Controls/Rendering/Platform/Backends，统一处理窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环 |
 
-**依赖方向**：`SourceGenerator` → `Markup`；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/Layout/CSS/Text/Animation` → `Runtime` + `Graphics`(抽象)；`Backends`/`Platform` → 仅依赖底层抽象。核心层禁止反向依赖 Backend/Platform。
+**依赖方向**：`SourceGenerator` → `Markup`；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（按实际需要引用）；`Backends`/`Platform` → 底层图形抽象。核心层禁止反向依赖 Backend/Platform。`Square.Hosting` 是聚合层，为应用提供开箱即用的桌面输入、调度、布局和渲染管线。
 
 ---
 

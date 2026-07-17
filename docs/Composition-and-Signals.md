@@ -143,20 +143,21 @@ protected override void OnDetachedCore()
 
 ## 6. 前后台线程通信
 
-UI 线程创建 Dispatcher，并在平台消息循环的 Tick 中排空队列：
+应用使用 `DesktopApplication` 时，Dispatcher 队列在平台消息循环的 Tick 中自动排空。应用只需将自己的 Signal 初始化指向 `app.Dispatcher`：
 
 ```csharp
-var dispatcher = new Dispatcher();
-
-host.Tick += () =>
+var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 {
-    var needsRender = dispatcher.HasWork;
-    dispatcher.Run();
-    if (needsRender) RenderFrame();
-};
+    Title = "Square Framework",
+    Width = 900,
+    Height = 980
+});
+
+SampleSignals.Initialize(app.Dispatcher);
+app.Run();
 ```
 
-后台任务只负责发布：
+`DesktopApplication` 在每个 Tick 内执行 `Dispatcher.Run()` 排空队列并按需触发渲染。后台任务只负责发布：
 
 ```csharp
 _ = Task.Run(async () =>

@@ -1,6 +1,4 @@
 using Square.Graphics;
-using Square.Runtime;
-
 namespace Square.Platform;
 
 public static class PlatformRegistry

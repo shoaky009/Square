@@ -11,4 +11,8 @@
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="StbTrueTypeSharp" />
+  </ItemGroup>
+
 </Project>

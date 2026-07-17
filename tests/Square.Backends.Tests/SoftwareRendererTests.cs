@@ -66,8 +66,8 @@ public class SoftwareRendererTests
     [Fact]
     public void SystemRasterizerDistinguishesLowercaseAndDigits()
     {
-        if (!OperatingSystem.IsWindows()) return;
         var rasterizer = new SystemGlyphRasterizer();
+        if (!rasterizer.IsAvailable) return;
         var font = new Font("Segoe UI", 20);
 
         var upper = Assert.IsType<RasterizedGlyph>(rasterizer.Rasterize(font, 'H'));
@@ -84,8 +84,8 @@ public class SoftwareRendererTests
     [Fact]
     public void SystemRasterizerSupportsChineseAndJapaneseGlyphs()
     {
-        if (!OperatingSystem.IsWindows()) return;
         var rasterizer = new SystemGlyphRasterizer();
+        if (!rasterizer.IsAvailable) return;
         var font = new Font("Segoe UI", 20);
 
         var chinese = Assert.IsType<RasterizedGlyph>(rasterizer.Rasterize(font, '中'));

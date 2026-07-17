@@ -4,7 +4,7 @@ Square 是一个用纯 C# 编写的实验性跨平台 UI 框架。它借鉴 HTML
 
 UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期生成普通 C# 类型。框架以 NativeAOT、可裁剪、保留模式渲染和后端可替换为主要设计约束。
 
-> Square 仍处于早期开发阶段，API 和 SQX 语法可能调整。目前主要开发与验证环境是 Windows / Win32。
+> Square 仍处于早期开发阶段，API 和 SQX 语法可能调整。目前支持 Windows / Win32 与 Linux / X11 两个桌面平台宿主。
 
 ## 设计目标
 
@@ -30,6 +30,7 @@ UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期�
 - Box / Flex 布局基础
 - 纯 C# Software Renderer
 - Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板基础
+- X11 窗口宿主（Linux）、键盘、鼠标、滚轮、剪贴板（CLIPBOARD + PRIMARY）和 Software Renderer 上屏
 - Direct / Tunnel / Bubble 路由事件及强类型事件参数
 - 内存路由、参数、通配符、嵌套布局和 Link
 - `Signal<T>`、`SignalHub` 和 Dispatcher 跨线程投递
@@ -172,22 +173,23 @@ Square.SourceGenerator ──► C# Component
 | `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
 | `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的平台无关路由事件协议 |
 | `Square.UI` | Visual Tree、属性系统和元素操作 API |
-| `Square.Controls` | 控件与结构原语运行时支持 |
+| `Square.Controls` | 控件、结构原语和基础动画时钟 |
 | `Square.Router` | 内存路由、历史、Link 和 RouteContext |
 | `Square.CSS` | CSS 解析、选择器、级联和样式应用 |
-| `Square.Layout` | Box / Flex 布局 |
 | `Square.Graphics` | 绘图接口和基础图形类型 |
-| `Square.Rendering` | Render Tree 和 DrawCommand |
+| `Square.Rendering` | Box / Flex / Grid 布局、Render Tree 和 DrawCommand |
 | `Square.Text` | 字形、测量和文本布局 |
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer 及后续图形后端 |
+| `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
 
 更详细的模块关系见 [`docs/Architecture.md`](docs/Architecture.md)。
 
 ## 环境要求
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Windows 10 或更高版本（运行当前 Win32 示例）
+- Windows 10 或更高版本（运行 Win32 示例）
+- Linux 桌面（X11，运行 X11 示例；需安装 `libX11`，Debian/Ubuntu 系可用 `sudo apt install libx11-6`）
 - Git
 
 检查 SDK：
@@ -196,7 +198,30 @@ Square.SourceGenerator ──► C# Component
 dotnet --version
 ```
 
-## 从源码运行
+## 快速开始
+
+完整的入门指南见 [`docs/Getting-Started.md`](docs/Getting-Started.md)。API 参考见 [`docs/API-Reference.md`](docs/API-Reference.md)。
+
+### 创建第一个 Square 应用
+
+一个最小桌面应用只需根组件和 `DesktopApplication`：
+
+```csharp
+using Square.Hosting;
+using Square.Platform;
+
+var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
+{
+    Title = "My App",
+    Width = 800,
+    Height = 600
+});
+app.Run();
+```
+
+`Main` 是由 `.sqx` 文件在编译期生成的组件。`DesktopApplication` 自动处理窗口创建、鼠标命中测试、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环。
+
+### 从源码运行
 
 克隆仓库：
 
@@ -250,9 +275,35 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj \
 samples/Square.Sample/bin/Release/net10.0/win-x64/publish/
 ```
 
+Linux x64 发布命令：
+
+```bash
+dotnet publish samples/Square.Sample/Square.Sample.csproj \
+  -c Release \
+  -r linux-x64 \
+  --self-contained true
+```
+
+输出通常位于：
+
+```text
+samples/Square.Sample/bin/Release/net10.0/linux-x64/publish/
+```
+
+### 平台裁剪
+
+Square 通过构建层 `DefineConstants`（`PLATFORM_WIN32` / `PLATFORM_X11`）和按 OS / RuntimeIdentifier 条件包含源文件来裁剪平台代码：
+
+- 在 Windows 上构建 → 编译 `Square.Platform/Win32/`，注册 Win32 宿主
+- 在 Linux 上构建（或 `-r linux-x64` 交叉编译）→ 编译 `Square.Platform/X11/`，注册 X11 宿主
+
+无需运行时平台判断；未包含的平台代码不会被 trim 误删。
+
 ## 文档
 
 - [总体架构](docs/Architecture.md)
+- [入门指南](docs/Getting-Started.md)
+- [API 参考](docs/API-Reference.md)
 - [SQX 语言规范](docs/Sqx-Spec.md)
 - [CSS 规范](docs/CSS-Spec.md)
 - [布局](docs/Layout.md)

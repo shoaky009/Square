@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <IsPackable>true</IsPackable>
-    <Description>Square Tooling: diagnostics, IDE integration</Description>
-  </PropertyGroup>
-
-</Project>

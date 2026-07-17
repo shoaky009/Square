@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Square.Runtime\Square.Runtime.csproj" />
     <ProjectReference Include="..\Square.UI\Square.UI.csproj" />
     <ProjectReference Include="..\Square.Controls\Square.Controls.csproj" />
   </ItemGroup>

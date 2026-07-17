@@ -66,8 +66,9 @@
 
 ```
 SourceGenerator → Markup
-Controls/UI/Rendering/Layout/CSS/Text/Animation → Runtime + Graphics(抽象)
+Controls/UI/Rendering/CSS/Text → Runtime + Graphics(抽象，按实际需要引用)
 Backends/Platform → Graphics(抽象) + Runtime 接口
+Hosting → 聚合上述全部模块（应用入口层）
 ```
 
 ### 3.2 禁止

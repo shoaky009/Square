@@ -7,9 +7,9 @@
 </template>
 <script lang="csharp">
   public ObservableValue<Square.Graphics.Image?> PreviewImage = new(CreatePreviewImage());
-  private readonly Square.Animation.Clock.Clock _clock = new();
-  private Square.Animation.Clock.Animation<float>? _introAnimation;
-  private Square.Animation.Clock.Animation<float>? _secondSweepAnimation;
+  private readonly Square.Controls.Animation.Clock _clock = new();
+  private Square.Controls.Animation.Animation<float>? _introAnimation;
+  private Square.Controls.Animation.Animation<float>? _secondSweepAnimation;
   private float _introProgress;
   private float _secondSweep;
   private int _animatedSecond = -1;
@@ -22,7 +22,7 @@
     _introProgress = 0;
     _secondSweep = 0;
     _animatedSecond = -1;
-    _introAnimation = new Square.Animation.Clock.Animation<float>(
+    _introAnimation = new Square.Controls.Animation.Animation<float>(
       Interpolate,
       0f,
       1f,
@@ -73,7 +73,7 @@
       _animatedSecond = second;
       _secondSweep = 0;
       _secondSweepAnimation?.Stop();
-      _secondSweepAnimation = new Square.Animation.Clock.Animation<float>(
+      _secondSweepAnimation = new Square.Controls.Animation.Animation<float>(
         Interpolate,
         0f,
         1f,
