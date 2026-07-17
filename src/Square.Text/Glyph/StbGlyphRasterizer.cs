@@ -34,7 +34,11 @@ internal sealed class StbGlyphRasterizer
         var info = entry.AcquireFontInfo();
         if (info == null) return null;
 
-        var scale = StbTrueType.stbtt_ScaleForPixelHeight(info, font.Size);
+        // GDI CreateFont(-size) uses character height; ScaleForPixelHeight matches that
+        // for most fonts, but UI fonts can look slightly smaller than Segoe UI optically.
+        // A modest boost keeps Linux text closer to Windows without changing layout CSS.
+        var pixelHeight = font.Size * 1.12f;
+        var scale = StbTrueType.stbtt_ScaleForPixelHeight(info, pixelHeight);
         if (scale <= 0) return null;
 
         var codepoint = (int)character;
@@ -250,6 +254,15 @@ internal sealed class FontCollection
             }
         }
 
+        string FirstAvailable(params string[] candidates)
+        {
+            foreach (var c in candidates)
+            {
+                if (_byFamily.ContainsKey(Normalize(c))) return c;
+            }
+            return _fallbacks.Count > 0 ? _fallbacks[0].Family : candidates[0];
+        }
+
         if (_byFamily.Count == 0) return;
 
         if (OperatingSystem.IsWindows())
@@ -261,13 +274,17 @@ internal sealed class FontCollection
         }
         else
         {
-            Alias("Segoe UI", "DejaVuSans");
-            Alias("sans-serif", "DejaVuSans");
-            Alias("Arial", "DejaVuSans");
-            Alias("serif", "DejaVuSerif");
-            Alias("Times New Roman", "DejaVuSerif");
-            Alias("monospace", "DejaVuSansMono");
-            Alias("Consolas", "DejaVuSansMono");
+            // Prefer modern UI fonts with metrics closer to Segoe UI when available.
+            var sans = FirstAvailable("Ubuntu", "UbuntuSans", "NotoSans", "DejaVuSans");
+            var serif = FirstAvailable("NotoSerif", "DejaVuSerif");
+            var mono = FirstAvailable("UbuntuMono", "UbuntuSansMono", "NotoSansMono", "DejaVuSansMono");
+            Alias("Segoe UI", sans);
+            Alias("sans-serif", sans);
+            Alias("Arial", sans);
+            Alias("serif", serif);
+            Alias("Times New Roman", serif);
+            Alias("monospace", mono);
+            Alias("Consolas", mono);
         }
     }
 

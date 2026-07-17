@@ -102,20 +102,48 @@ internal static partial class X11Api
     public const int XK_BackSpace = 0xFF08;
     public const int XK_Tab = 0xFF09;
     public const int XK_Return = 0xFF0D;
+    public const int XK_Escape = 0xFF1B;
+    public const int XK_Home = 0xFF50;
     public const int XK_Left = 0xFF51;
     public const int XK_Up = 0xFF52;
     public const int XK_Right = 0xFF53;
     public const int XK_Down = 0xFF54;
-    public const int XK_Home = 0xFF50;
     public const int XK_End = 0xFF57;
     public const int XK_Insert = 0xFF63;
     public const int XK_Delete = 0xFFFF;
+    public const int XK_KP_0 = 0xFFB0;
+    public const int XK_KP_9 = 0xFFB9;
+    public const int XK_KP_Enter = 0xFF8D;
+    public const int XK_KP_Home = 0xFF95;
+    public const int XK_KP_Left = 0xFF96;
+    public const int XK_KP_Up = 0xFF97;
+    public const int XK_KP_Right = 0xFF98;
+    public const int XK_KP_Down = 0xFF99;
+    public const int XK_KP_End = 0xFF9C;
+    public const int XK_KP_Insert = 0xFF9E;
+    public const int XK_KP_Delete = 0xFF9F;
     public const int XK_Shift_L = 0xFFE1;
     public const int XK_Shift_R = 0xFFE2;
     public const int XK_Control_L = 0xFFE3;
     public const int XK_Control_R = 0xFFE4;
     public const int XK_Alt_L = 0xFFE9;
     public const int XK_Alt_R = 0xFFEA;
+    public const int XK_Num_Lock = 0xFF7F;
+    public const int XK_KP_Multiply = 0xFFAA;
+    public const int XK_KP_Add = 0xFFAB;
+    public const int XK_KP_Separator = 0xFFAC;
+    public const int XK_KP_Subtract = 0xFFAD;
+    public const int XK_KP_Decimal = 0xFFAE;
+    public const int XK_KP_Divide = 0xFFAF;
+
+    // XIM / input method
+    public const long XIMPreeditNothing = 0x0008L;
+    public const long XIMStatusNothing = 0x0400L;
+    public const int XBufferOverflow = -1;
+    public const int XLookupNone = 1;
+    public const int XLookupChars = 2;
+    public const int XLookupKeySym = 3;
+    public const int XLookupBoth = 4;
 
     public const int ZPixmap = 2;
     public const int BitmapPad = 32;
@@ -253,6 +281,46 @@ internal static partial class X11Api
 
     [DllImport("libX11.so.6", EntryPoint = "XLookupString")]
     public static extern int LookupString(ref XKeyEvent e, byte[] buffer, int bytes, ref IntPtr keysym, IntPtr status);
+
+    [DllImport("libX11.so.6", EntryPoint = "XSetLocaleModifiers", CharSet = CharSet.Ansi)]
+    public static extern IntPtr SetLocaleModifiers(string modifierList);
+
+    [DllImport("libX11.so.6", EntryPoint = "XOpenIM")]
+    public static extern IntPtr OpenIM(IntPtr display, IntPtr rdb, IntPtr resName, IntPtr resClass);
+
+    [DllImport("libX11.so.6", EntryPoint = "XCloseIM")]
+    public static extern int CloseIM(IntPtr im);
+
+    [DllImport("libX11.so.6", EntryPoint = "XCreateIC", CharSet = CharSet.Ansi)]
+    public static extern IntPtr CreateIC(
+        IntPtr im,
+        string n1, long v1,
+        string n2, IntPtr v2,
+        string n3, IntPtr v3,
+        IntPtr end);
+
+    [DllImport("libX11.so.6", EntryPoint = "XDestroyIC")]
+    public static extern void DestroyIC(IntPtr ic);
+
+    [DllImport("libX11.so.6", EntryPoint = "XSetICFocus")]
+    public static extern void SetICFocus(IntPtr ic);
+
+    [DllImport("libX11.so.6", EntryPoint = "XUnsetICFocus")]
+    public static extern void UnsetICFocus(IntPtr ic);
+
+    [DllImport("libX11.so.6", EntryPoint = "Xutf8LookupString")]
+    public static extern int Utf8LookupString(
+        IntPtr ic,
+        ref XKeyEvent keyEvent,
+        byte[] bufferReturn,
+        int bytesBuffer,
+        out IntPtr keysymReturn,
+        out int statusReturn);
+
+    [DllImport("libc.so.6", EntryPoint = "setlocale", CharSet = CharSet.Ansi)]
+    public static extern IntPtr SetLocale(int category, string? locale);
+
+    public const int LcCtype = 0;
 
     [LibraryImport("libX11.so.6", EntryPoint = "XKeysymToKeycode")]
     public static partial nuint KeysymToKeycode(IntPtr display, IntPtr keysym);

@@ -41,6 +41,9 @@ internal sealed unsafe class X11Host : IPlatformHost
     private IntPtr _imagePixmap;
     private CursorKind _cursor = CursorKind.Arrow;
     private string? _clipboardText;
+    private IntPtr _xim;
+    private IntPtr _xic;
+    private Rect _textInputRect;
 
     private static X11Api.XErrorHandler? _errorHandler;
 
@@ -133,6 +136,24 @@ internal sealed unsafe class X11Host : IPlatformHost
         _clientSize = new Size((int)w, (int)h);
 
         _imagePixmap = X11Api.CreatePixmap(_display, _window, (uint)_width, (uint)_height, _depth);
+        InitInputMethod();
+    }
+
+    private void InitInputMethod()
+    {
+        // Required for multi-byte/IME input (Chinese/Japanese/etc).
+        try { X11Api.SetLocale(X11Api.LcCtype, ""); } catch { /* optional */ }
+        try { X11Api.SetLocaleModifiers(""); } catch { /* optional */ }
+
+        _xim = X11Api.OpenIM(_display, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        if (_xim == IntPtr.Zero) return;
+
+        _xic = X11Api.CreateIC(
+            _xim,
+            "inputStyle", X11Api.XIMPreeditNothing | X11Api.XIMStatusNothing,
+            "clientWindow", _window,
+            "focusWindow", _window,
+            IntPtr.Zero);
     }
 
     public Size ClientSize => _clientSize;
@@ -173,6 +194,7 @@ internal sealed unsafe class X11Host : IPlatformHost
     public void Show()
     {
         X11Api.MapRaised(_display, _window);
+        if (_xic != IntPtr.Zero) X11Api.SetICFocus(_xic);
         X11Api.Flush(_display);
         _running = true;
     }
@@ -261,21 +283,18 @@ internal sealed unsafe class X11Host : IPlatformHost
                 break;
             case X11Api.KeyPress:
                 {
-                    var raw = (byte*)(&e);
-                    uint state = *(uint*)(raw + 80);
-                    uint keycode = *(uint*)(raw + 84);
-                    _lastModifierState = state;
-                    KeyEvent?.Invoke((int)keycode, KeyAction.Down);
-                    DispatchKeyPress(e.key);
+                    var key = e.key;
+                    _lastModifierState = key.state;
+                    DispatchKeyPress(key);
                 }
                 break;
             case X11Api.KeyRelease:
                 {
-                    var raw = (byte*)(&e);
-                    uint state = *(uint*)(raw + 80);
-                    uint keycode = *(uint*)(raw + 84);
-                    _lastModifierState = state;
-                    KeyEvent?.Invoke((int)keycode, KeyAction.Up);
+                    var key = e.key;
+                    _lastModifierState = key.state;
+                    var keysym = ResolveKeysym(key);
+                    var vk = MapXKeysymToVirtualKey(keysym);
+                    if (vk != 0) KeyEvent?.Invoke(vk, KeyAction.Up);
                 }
                 break;
             case X11Api.ButtonPress:
@@ -324,6 +343,10 @@ internal sealed unsafe class X11Host : IPlatformHost
                 break;
             case X11Api.FocusIn:
                 _lastModifierState = 0;
+                if (_xic != IntPtr.Zero) X11Api.SetICFocus(_xic);
+                break;
+            case X11Api.FocusOut:
+                if (_xic != IntPtr.Zero) X11Api.UnsetICFocus(_xic);
                 break;
             case X11Api.ClientMessage:
                 if (e.clientMessage.messageType == _wmProtocols
@@ -340,23 +363,127 @@ internal sealed unsafe class X11Host : IPlatformHost
 
     private void DispatchKeyPress(X11Api.XKeyEvent key)
     {
-        var buffer = new byte[64];
-        var keysym = IntPtr.Zero;
-        var len = X11Api.LookupString(ref key, buffer, buffer.Length, ref keysym, IntPtr.Zero);
-        if (len <= 0) return;
+        // Prefer XIM so compose/IME (e.g. Chinese) can commit text.
+        var text = LookupText(ref key, out var keysym, out var status);
+        if (keysym == IntPtr.Zero)
+            keysym = ResolveKeysym(key);
 
-        var text = System.Text.Encoding.UTF8.GetString(buffer, 0, len);
-        if (string.IsNullOrEmpty(text)) return;
+        var vk = MapXKeysymToVirtualKey(keysym);
+        var control = (key.state & (1u << X11Api.ControlMapIndex)) != 0;
+        var alt = (key.state & (1u << X11Api.Mod1MapIndex)) != 0;
+        var hasText = !string.IsNullOrEmpty(text) && text.Any(static c => !char.IsControl(c));
 
-        foreach (var ch in text)
+        // Shortcuts always go through virtual-key routing.
+        if (control || alt)
         {
-            if (!char.IsControl(ch))
-                TextInput?.Invoke(ch.ToString());
+            if (vk != 0) KeyEvent?.Invoke(vk, KeyAction.Down);
+            return;
         }
+
+        // Committed IME/compose text.
+        if (hasText && (status is X11Api.XLookupChars or X11Api.XLookupBoth or 0))
+        {
+            foreach (var ch in text!)
+            {
+                if (!char.IsControl(ch))
+                    TextInput?.Invoke(ch.ToString());
+            }
+
+            // Still emit navigation/edit keys (Backspace/Enter/arrows...) when no printable path only.
+            if (IsNavigationOrEditKey(vk) && !text!.Any(static c => !char.IsControl(c) && !char.IsWhiteSpace(c)))
+                KeyEvent?.Invoke(vk, KeyAction.Down);
+            return;
+        }
+
+        if (vk != 0) KeyEvent?.Invoke(vk, KeyAction.Down);
+    }
+
+    private string? LookupText(ref X11Api.XKeyEvent key, out IntPtr keysym, out int status)
+    {
+        keysym = IntPtr.Zero;
+        status = 0;
+        var buffer = new byte[128];
+
+        if (_xic != IntPtr.Zero)
+        {
+            var len = X11Api.Utf8LookupString(_xic, ref key, buffer, buffer.Length, out keysym, out status);
+            if (status == X11Api.XBufferOverflow)
+            {
+                buffer = new byte[Math.Max(256, len + 1)];
+                len = X11Api.Utf8LookupString(_xic, ref key, buffer, buffer.Length, out keysym, out status);
+            }
+
+            if (len > 0 && status is X11Api.XLookupChars or X11Api.XLookupBoth)
+                return System.Text.Encoding.UTF8.GetString(buffer, 0, len);
+            return null;
+        }
+
+        var n = X11Api.LookupString(ref key, buffer, buffer.Length, ref keysym, IntPtr.Zero);
+        if (n <= 0) return null;
+        status = X11Api.XLookupBoth;
+        // XLookupString returns Latin-1 bytes, not UTF-8.
+        return System.Text.Encoding.Latin1.GetString(buffer, 0, n);
+    }
+
+    private IntPtr ResolveKeysym(X11Api.XKeyEvent key)
+    {
+        // Group 0 base; shift level uses index 1. NumLock keypad needs index 0/1 carefully:
+        // Prefer XLookup/XIM keysym first (caller), then fall back to keycode map with state.
+        var shift = (key.state & (1u << X11Api.ShiftMapIndex)) != 0;
+        var index = shift ? 1 : 0;
+        var keysym = X11Api.KeycodeToKeysym(_display, key.keycode, index);
+        if (keysym != IntPtr.Zero) return keysym;
+        return X11Api.KeycodeToKeysym(_display, key.keycode, 0);
+    }
+
+    private static bool IsNavigationOrEditKey(int vk) =>
+        vk is 8 or 9 or 13 or 27 or 35 or 36 or 37 or 38 or 39 or 40 or 45 or 46;
+
+    private static int MapXKeysymToVirtualKey(IntPtr keysymPtr)
+    {
+        if (keysymPtr == IntPtr.Zero) return 0;
+        var keysym = unchecked((uint)keysymPtr.ToInt64());
+
+        // Keypad digits/operators when NumLock produces them.
+        if (keysym is >= X11Api.XK_KP_0 and <= X11Api.XK_KP_9)
+            return (int)(keysym - X11Api.XK_KP_0 + 0x30);
+        if (keysym == X11Api.XK_KP_Decimal) return 0x6E; // VK_DECIMAL (or treat as '.')
+        if (keysym == X11Api.XK_KP_Divide) return 0x6F;
+        if (keysym == X11Api.XK_KP_Multiply) return 0x6A;
+        if (keysym == X11Api.XK_KP_Subtract) return 0x6D;
+        if (keysym == X11Api.XK_KP_Add) return 0x6B;
+
+        return keysym switch
+        {
+            X11Api.XK_BackSpace => 8,
+            X11Api.XK_Tab => 9,
+            X11Api.XK_Return or X11Api.XK_KP_Enter => 13,
+            X11Api.XK_Shift_L or X11Api.XK_Shift_R => 16,
+            X11Api.XK_Control_L or X11Api.XK_Control_R => 17,
+            X11Api.XK_Alt_L or X11Api.XK_Alt_R => 18,
+            X11Api.XK_Escape => 27,
+            X11Api.XK_End or X11Api.XK_KP_End => 35,
+            X11Api.XK_Home or X11Api.XK_KP_Home => 36,
+            X11Api.XK_Left or X11Api.XK_KP_Left => 37,
+            X11Api.XK_Up or X11Api.XK_KP_Up => 38,
+            X11Api.XK_Right or X11Api.XK_KP_Right => 39,
+            X11Api.XK_Down or X11Api.XK_KP_Down => 40,
+            X11Api.XK_Insert or X11Api.XK_KP_Insert => 45,
+            X11Api.XK_Delete or X11Api.XK_KP_Delete => 46,
+            X11Api.XK_Num_Lock => 144,
+            // Latin-1 printable: only letters/digits become VK; other printable stay 0
+            // so they only arrive via TextInput (avoids intermittent double/missed input).
+            >= 0x61 and <= 0x7a => (int)(keysym - 0x20),
+            >= 0x41 and <= 0x5a => (int)keysym,
+            >= 0x30 and <= 0x39 => (int)keysym,
+            _ => 0
+        };
     }
 
     public void SetTextInputRect(Rect rect)
     {
+        _textInputRect = rect;
+        // Full spot-location preedit needs XNSpotLocation; root-window IME still works without it.
     }
 
     public string GetClipboardText() => ReadSelection(_clipboardAtom) ?? "";
@@ -552,6 +679,16 @@ internal sealed unsafe class X11Host : IPlatformHost
     public void Dispose()
     {
         DestroyXImage();
+        if (_xic != IntPtr.Zero)
+        {
+            X11Api.DestroyIC(_xic);
+            _xic = IntPtr.Zero;
+        }
+        if (_xim != IntPtr.Zero)
+        {
+            X11Api.CloseIM(_xim);
+            _xim = IntPtr.Zero;
+        }
         if (_imagePixmap != IntPtr.Zero)
         {
             X11Api.FreePixmap(_display, _imagePixmap);
