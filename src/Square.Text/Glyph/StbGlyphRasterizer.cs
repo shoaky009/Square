@@ -8,7 +8,7 @@ namespace Square.Text.Glyph;
 internal sealed class StbGlyphRasterizer
 {
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
-    private readonly FontCollection _fonts = new();
+    private readonly FontCollection _fonts = FontCollection.Shared;
 
     public bool IsAvailable => _fonts.HasAnyFont;
 
@@ -102,12 +102,14 @@ internal sealed class StbGlyphRasterizer
 
 internal sealed class FontEntry
 {
-    private readonly byte[] _data;
+    private readonly string? _path;
     private readonly int _offset;
+    private byte[]? _data;
     private StbTrueType.stbtt_fontinfo? _info;
 
     public string Family { get; }
 
+    /// <summary>已加载字节（内存中）；路径字体在首次使用时再读入。</summary>
     public FontEntry(string family, byte[] data, int offset = 0)
     {
         Family = family;
@@ -115,23 +117,59 @@ internal sealed class FontEntry
         _offset = offset;
     }
 
+    /// <summary>延迟从文件加载，避免启动时把整个系统字体目录读进内存。</summary>
+    public FontEntry(string family, string path, int offset = 0)
+    {
+        Family = family;
+        _path = path;
+        _offset = offset;
+    }
+
     public StbTrueType.stbtt_fontinfo? AcquireFontInfo()
     {
         if (_info != null) return _info;
-        _info = StbTrueType.CreateFont(_data, _offset);
+        var data = EnsureData();
+        if (data == null) return null;
+        _info = StbTrueType.CreateFont(data, _offset);
         return _info;
+    }
+
+    private byte[]? EnsureData()
+    {
+        if (_data != null) return _data;
+        if (string.IsNullOrEmpty(_path)) return null;
+        try
+        {
+            _data = File.ReadAllBytes(_path);
+            return _data;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 
+/// <summary>
+/// 系统与已注册自定义字体集合。进程内共享 <see cref="Shared"/>，供光栅与 FontFace 加载使用。
+/// </summary>
 internal sealed class FontCollection
 {
+    private static readonly Lazy<FontCollection> SharedLazy = new(() => new FontCollection());
+
+    /// <summary>进程内共享字体集合（系统字体 + FontFace 注册）。</summary>
+    public static FontCollection Shared => SharedLazy.Value;
+
+    private readonly object _gate = new();
     private readonly Dictionary<string, FontEntry> _byFamily = new(NormalizedComparer.Instance);
     private readonly List<FontEntry> _fallbacks = [];
-    private readonly Dictionary<char, string> _scriptFallbacks = [];
+    private string? _cjkFamily;
+    private string? _japaneseFamily;
+    private string? _koreanFamily;
 
     public bool HasAnyFont { get; private set; }
 
-    public FontCollection()
+    private FontCollection()
     {
         try
         {
@@ -143,23 +181,66 @@ internal sealed class FontCollection
         ConfigureScriptFallbacks();
     }
 
+    /// <summary>
+    /// 注册已加载的字体数据（FontFace.Load 成功后调用）。
+    /// 同名族覆盖为自定义面，并优先于系统回退。
+    /// </summary>
+    public void Register(string family, byte[] data, int offset = 0)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(family);
+        ArgumentNullException.ThrowIfNull(data);
+        lock (_gate)
+        {
+            var entry = new FontEntry(family, data, offset);
+            var norm = Normalize(family);
+            _byFamily[norm] = entry;
+            // 自定义面插到 fallback 前端，提高命中率
+            _fallbacks.RemoveAll(e => Normalize(e.Family) == norm);
+            _fallbacks.Insert(0, entry);
+            HasAnyFont = true;
+        }
+    }
+
+    /// <summary>是否已有该族（系统或已注册）。</summary>
+    public bool ContainsFamily(string family)
+    {
+        lock (_gate)
+            return _byFamily.ContainsKey(Normalize(family));
+    }
+
     public FontEntry? Resolve(string requestedFamily, char character)
     {
-        if (_byFamily.Count == 0) return null;
-
-        var normRequested = Normalize(requestedFamily);
-        if (_scriptFallbacks.TryGetValue(character, out var scriptFamily)
-            && _byFamily.TryGetValue(Normalize(scriptFamily), out var scriptEntry))
-            return scriptEntry;
-
-        if (!string.IsNullOrEmpty(requestedFamily) && _byFamily.TryGetValue(normRequested, out var entry))
-            return entry;
-
-        foreach (var fb in _fallbacks)
+        lock (_gate)
         {
-            if (Normalize(fb.Family) != normRequested) return fb;
+            if (_byFamily.Count == 0) return null;
+
+            var normRequested = Normalize(requestedFamily);
+            // 按 Unicode 范围选脚本回退族（不建 per-char 大字典，省内存）
+            var scriptFamily = ResolveScriptFamily(character);
+            if (scriptFamily != null
+                && _byFamily.TryGetValue(Normalize(scriptFamily), out var scriptEntry))
+                return scriptEntry;
+
+            if (!string.IsNullOrEmpty(requestedFamily) && _byFamily.TryGetValue(normRequested, out var entry))
+                return entry;
+
+            foreach (var fb in _fallbacks)
+            {
+                if (Normalize(fb.Family) != normRequested) return fb;
+            }
+            return _fallbacks.Count > 0 ? _fallbacks[0] : null;
         }
-        return _fallbacks.Count > 0 ? _fallbacks[0] : null;
+    }
+
+    private string? ResolveScriptFamily(char character)
+    {
+        if (character is >= '\u3040' and <= '\u30ff' or >= '\uff66' and <= '\uff9f')
+            return _japaneseFamily;
+        if (character is >= '\u3400' and <= '\u4dbf' or >= '\u4e00' and <= '\u9fff')
+            return _cjkFamily;
+        if (character is >= '\uac00' and <= '\ud7af')
+            return _koreanFamily;
+        return null;
     }
 
     private void ConfigureScriptFallbacks()
@@ -176,33 +257,36 @@ internal sealed class FontCollection
             return _fallbacks.Count > 0 ? _fallbacks[0].Family : _byFamily.First().Key;
         }
 
-        var cjk = Pick("NotoSansCJK", "NotoSansCJKsc", "NotoSansCJKtc", "NotoSansCJKjp",
-                       "SourceHanSansSC", "SourceHanSansCN", "WenQuanYiZenHei",
-                       "DroidSansFallback", "MicrosoftYaHeiUI", "YuGothicUI");
-        var japanese = Pick("NotoSansCJKjp", "YuGothicUI", "YuGothic", cjk);
-        var korean = Pick("NotoSansCJKkr", "MalgunGothic", cjk);
-
-        foreach (var c in EnumerateRange('\u3040', '\u30ff')) _scriptFallbacks.TryAdd(c, Normalize(japanese));
-        foreach (var c in EnumerateRange('\uff66', '\uff9f')) _scriptFallbacks.TryAdd(c, Normalize(japanese));
-        foreach (var c in EnumerateRange('\u3400', '\u4dbf')) _scriptFallbacks.TryAdd(c, Normalize(cjk));
-        foreach (var c in EnumerateRange('\u4e00', '\u9fff')) _scriptFallbacks.TryAdd(c, Normalize(cjk));
-        foreach (var c in EnumerateRange('\uac00', '\ud7af')) _scriptFallbacks.TryAdd(c, Normalize(korean));
-    }
-
-    private static IEnumerable<char> EnumerateRange(char lo, char hi)
-    {
-        for (var c = lo; c <= hi; c++) yield return c;
+        _cjkFamily = Pick("NotoSansCJK", "NotoSansCJKsc", "NotoSansCJKtc", "NotoSansCJKjp",
+                          "SourceHanSansSC", "SourceHanSansCN", "WenQuanYiZenHei",
+                          "DroidSansFallback", "Microsoft YaHei UI", "MicrosoftYaHeiUI", "Yu Gothic UI", "YuGothicUI");
+        _japaneseFamily = Pick("NotoSansCJKjp", "Yu Gothic UI", "YuGothicUI", "Yu Gothic", "YuGothic", _cjkFamily);
+        _koreanFamily = Pick("NotoSansCJKkr", "Malgun Gothic", "MalgunGothic", _cjkFamily);
     }
 
     private void LoadSystemFonts()
     {
+        // 仅索引「优先族」字体路径，按需读字节，避免 Windows Fonts 全量进内存（可达数百 MB）。
+        var preferred = GetPreferredFamilies();
         var roots = GetPlatformFontRoots();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var remaining = new HashSet<string>(preferred, StringComparer.OrdinalIgnoreCase);
 
         foreach (var root in roots)
         {
-            if (!Directory.Exists(root)) continue;
-            foreach (var file in Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories))
+            if (!Directory.Exists(root) || remaining.Count == 0) break;
+
+            IEnumerable<string> files;
+            try
+            {
+                // 只扫根目录一层，避免递归 CJK 等大字体包目录
+                files = Directory.EnumerateFiles(root, "*.*", SearchOption.TopDirectoryOnly);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var file in files)
             {
                 if (!file.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)
                     && !file.EndsWith(".ttc", StringComparison.OrdinalIgnoreCase)
@@ -210,35 +294,90 @@ internal sealed class FontCollection
                     continue;
 
                 var nameKey = Path.GetFileNameWithoutExtension(file);
-                if (!seen.Add(nameKey)) continue;
-
                 var family = GuessFamilyFromName(nameKey);
                 if (family == null) continue;
 
-                var normFamily = Normalize(family);
-                if (_byFamily.ContainsKey(normFamily)) continue;
-
-                try
+                string? matchedPreferred = null;
+                foreach (var pref in remaining)
                 {
-                    var data = File.ReadAllBytes(file);
-                    int offset = 0;
-                    if (file.EndsWith(".ttc", StringComparison.OrdinalIgnoreCase))
+                    if (family.Contains(pref, StringComparison.OrdinalIgnoreCase)
+                        || pref.Contains(family, StringComparison.OrdinalIgnoreCase)
+                        || Normalize(family) == Normalize(pref))
                     {
-                        offset = GetTtcOffset(data, 0);
-                        if (offset < 0) continue;
+                        matchedPreferred = pref;
+                        break;
                     }
-                    var entry = new FontEntry(family, data, offset);
-                    _byFamily[normFamily] = entry;
-                    _fallbacks.Add(entry);
-                    HasAnyFont = true;
                 }
-                catch
+                if (matchedPreferred == null) continue;
+
+                var normFamily = Normalize(matchedPreferred);
+                if (_byFamily.ContainsKey(normFamily))
                 {
+                    remaining.Remove(matchedPreferred);
+                    continue;
                 }
+
+                // 延迟加载：只记路径，首次绘制该族时再读文件
+                var entry = new FontEntry(matchedPreferred, file, offset: 0);
+                _byFamily[normFamily] = entry;
+                _fallbacks.Add(entry);
+                HasAnyFont = true;
+                remaining.Remove(matchedPreferred);
+                if (remaining.Count == 0) break;
             }
         }
 
         RegisterAliases();
+    }
+
+    private static string[] GetPreferredFamilies()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return
+            [
+                "Segoe UI",
+                "Microsoft YaHei UI",
+                "Yu Gothic UI",
+                "Malgun Gothic",
+                "Consolas",
+                "Times New Roman",
+                "Arial",
+                "Segoe UI Emoji"
+            ];
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return
+            [
+                "Ubuntu",
+                "Noto Sans",
+                "NotoSans",
+                "DejaVu Sans",
+                "DejaVuSans",
+                "Noto Sans CJK SC",
+                "NotoSansCJK",
+                "Noto Sans Mono",
+                "DejaVu Sans Mono"
+            ];
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return
+            [
+                "Helvetica",
+                "Helvetica Neue",
+                "PingFang SC",
+                "Hiragino Sans",
+                "Menlo",
+                "Times New Roman",
+                "Arial"
+            ];
+        }
+
+        return ["sans-serif"];
     }
 
     private void RegisterAliases()

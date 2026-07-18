@@ -112,12 +112,12 @@ Hosting → 聚合上述全部模块（应用入口层）
 ### 5.2 结构
 
 - 控件 = 视觉 + 行为 + 默认样式
-- 结构原语（Show/For/Switch/Match）由生成器编译，非运行时组件
+- 结构原语（Show/For/Switch/Match/Slot/Router）由生成器经指令 Catalog 编译，非普通 UI 控件
 
 ### 5.3 按标签即用
 
-- 免手动注册
-- Source Generator 按标签解析
+- 控件：Source Generator 内置标签表 + `UIDocument.CreateElement` 注册
+- 结构指令：`[SqxDirective]` + 编译期扫描
 
 ---
 

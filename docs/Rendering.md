@@ -20,11 +20,11 @@ SQX
   ↓ (Source Generator, 编译期)
 Component (C#)
   ↓ (组件构建)
-Visual Tree
+Element Tree
   ↓ (Square.Rendering.Layout)
 Layout (几何计算)
   ↓ (Square.Rendering)
-Render Tree (DrawCommand 列表)
+Display Tree (DrawCommand 列表)
   ↓ (Square.Graphics)
 IRenderContext
   ↓ (Square.Backends)
@@ -33,17 +33,17 @@ Backend (Software / Skia / ...)
 
 ---
 
-## 3. Visual Tree
+## 3. Element Tree
 
 ### 3.1 节点
 
-- `Visual`：基类型，持有几何、变换、可见性
+- `Element`：基类型，持有几何、变换、可见性
 - `UIElement`：带事件、输入、焦点的视觉节点
 - 控件继承 `UIElement`
 
 ### 3.2 构建
 
-- 由 Source Generator 生成的 `BuildVisualTree()` 构建
+- 由 Source Generator 生成的 `BuildElementTree()` 构建
 - `<Show>` 条件子树支持**挂卸**
 - `<For>` 列表支持**增量增删**（keyed）
 - 命令式 `AppendChild`/`RemoveChild` 操作静态区域
@@ -51,7 +51,7 @@ Backend (Software / Skia / ...)
 ### 3.3 脏标记
 
 - 属性变化 → 标记节点脏
-- 脏节点 → 触发 Layout → 触发 Render Tree 更新
+- 脏节点 → 触发 Layout → 触发 Display Tree 更新
 - 增量更新，不全量重建
 
 ---
@@ -65,7 +65,7 @@ Backend (Software / Skia / ...)
 
 ---
 
-## 5. Render Tree
+## 5. Display Tree
 
 ### 5.1 DrawCommand
 
@@ -82,7 +82,7 @@ Backend (Software / Skia / ...)
 
 ### 5.2 构建
 
-- Visual Tree → Layout → 遍历生成 DrawCommand 列表
+- Element Tree → Layout → 遍历生成 DrawCommand 列表
 - 保留模式：脏区驱动增量重绘
 
 ### 5.3 提交
@@ -103,8 +103,8 @@ Backend (Software / Skia / ...)
 ### 6.2 子树挂卸
 
 - `<Show>` 条件变化 → 子树挂载/卸载
-- 挂载：构建 Visual 子树 → Layout → 加入 Render Tree
-- 卸载：从 Render Tree 移除 → 释放资源
+- 挂载：构建 Element 子树 → Layout → 加入 Display Tree
+- 卸载：从 Display Tree 移除 → 释放资源
 
 ### 6.3 列表增量
 
@@ -126,7 +126,7 @@ IRenderContext (抽象)
 
 - 同一 `IRenderContext` 接口
 - 构建层裁剪决定装配哪个后端
-- 切换后端不影响 Render Tree 逻辑
+- 切换后端不影响 Display Tree 逻辑
 
 ---
 

@@ -14,7 +14,7 @@ public sealed class CssAnimationManager
 
     public bool HasRunningAnimations => _timelines.Any(timeline => !timeline.IsComplete);
 
-    public void Attach(Visual root)
+    public void Attach(Element root)
     {
         _timelines.Clear();
         Collect(root);
@@ -28,11 +28,11 @@ public sealed class CssAnimationManager
             timeline.Tick(deltaSeconds);
     }
 
-    private void Collect(Visual visual)
+    private void Collect(Element Element)
     {
-        var timeline = _engine.CreateAnimationTimeline(visual);
+        var timeline = _engine.CreateAnimationTimeline(Element);
         if (timeline != null) _timelines.Add(timeline);
-        foreach (var child in visual.Children)
+        foreach (var child in Element.Children)
             Collect(child);
     }
 }

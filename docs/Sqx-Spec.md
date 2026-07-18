@@ -87,7 +87,7 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 | `Image` | 图片 |
 | `Canvas` | 画布 |
 
-`Canvas.RequestFrame()` 请求宿主在下一次平台 Tick 渲染新帧。请求通过 Visual Tree 冒泡并合并，同一 Tick 内的多个请求只需触发一次窗口渲染。它用于 Canvas 时钟、游戏循环和后续动画系统；该方法只请求下一帧，不会自动形成持续循环。持续绘制应在每帧完成后再次调用 `RequestFrame()`。
+`Canvas.RequestFrame()` 请求宿主在下一次平台 Tick 渲染新帧。请求通过 Element Tree 冒泡并合并，同一 Tick 内的多个请求只需触发一次窗口渲染。它用于 Canvas 时钟、游戏循环和后续动画系统；该方法只请求下一帧，不会自动形成持续循环。持续绘制应在每帧完成后再次调用 `RequestFrame()`。
 
 命名：PascalCase 控件类型（C# 习惯），`.sqx` 内标签同名。
 
@@ -137,7 +137,7 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 - 插槽内容保持调用方的表达式、事件与绑定作用域。
 - 插槽通过延迟 `RenderFragment` 构建，每个组件实例至多解析一次。
 - 多个插槽根节点直接插入目标父节点，不额外包裹 `View`，避免改变 Flex/布局语义。
-- 组件 Props 与 Slots 必须在子组件 `BuildVisualTree()` 前完成设置。
+- 组件 Props 与 Slots 必须在子组件 `BuildElementTree()` 前完成设置。
 
 第一阶段支持默认插槽、具名插槽和 fallback；运行时替换 Slot factory、`::slotted` 样式与跨组件内容搬运后置。
 
@@ -281,11 +281,10 @@ MyBtn.ClassList.Add("active");
 
 ```csharp
 private void OnClick() { }
-private void OnClick(RoutedEventArgs e) { }
-private void OnClick(object? sender, RoutedEventArgs e) { }
+private void OnClick(Event e) { }
 ```
 
-- 路由事件提供 `OriginalSource`、`CurrentTarget`、`Phase`、`Handled` 与 `PreventDefault()`。
+- DOM 事件提供 `Target`、`CurrentTarget`、`EventPhase`、`StopPropagation()` 与 `PreventDefault()`。
 - `TunnelAndBubble` 事件按根→目标隧道、目标处理、目标父级→根冒泡；`Handled` 抑制后续普通 handler，仅 `handledEventsToo` 观察者仍可收到事件。
 
 ### 5.5 双向（显式）
@@ -324,7 +323,7 @@ _subscription = activity.Subscribe(
 - 同值默认不重复通知；需要强制通知时使用 `Publish(value, force: true)`。
 - `Update` 在信号锁内原子计算新值，在锁外通知订阅者。
 - 订阅返回 `IDisposable`，组件必须在卸载时释放。
-- Signal 只传递状态和消息，不隐式操作 Visual Tree。
+- Signal 只传递状态和消息，不隐式操作 Element Tree。
 
 Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Composition-and-Signals.md`。
 
@@ -341,7 +340,7 @@ Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Compos
 ```
 
 - `when` 绑定 `ObservableValue<bool>`
-- 条件变化时增删 Visual 子树（记忆化复用）
+- 条件变化时增删 Element 子树（记忆化复用）
 - 可选 `fallback` 属性指定条件假时的替代子树：
 
 ```xml
@@ -392,7 +391,7 @@ Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Compos
 
 ### 6.5 编译模型
 
-`<Show>`/`<For>`/`<Switch>`/`<Match>` 为 **Source Generator 已知的结构原语**（非运行时组件实例），由生成器特判编译为 Visual Tree 的挂卸/迭代。
+`<Show>`/`<For>`/`<Switch>`/`<Match>` 为 **Source Generator 已知的结构原语**（非运行时组件实例），由生成器特判编译为 Element Tree 的挂卸/迭代。
 
 ### 6.6 阶段
 

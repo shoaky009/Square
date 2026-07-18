@@ -7,9 +7,22 @@
 
 ## 1. 目标
 
-尽可能兼容现代 CSS 语义，不兼容浏览器私有扩展。
+尽可能兼容现代 CSS 语义与 **CSSOM Web API** 表面，不兼容浏览器私有扩展。
 
 CSS 是框架的重要组成部分，与 `.sqx` 的 `<style>` 段和 `style`/`class` 属性联动。
+
+### 1.1 CSSOM 对齐（`element.Style`）
+
+| Web API | Square |
+|---------|--------|
+| `style.setProperty(name, value)` | `Style.SetProperty` |
+| `style.getPropertyValue(name)` | `Style.GetPropertyValue`（未设置返回 `""`） |
+| `style.removeProperty(name)` | `Style.RemoveProperty` |
+| `style.cssText` | `Style.CssText` |
+| `style.length` / `item(i)` | `Style.Length` / `Style.Item(i)` |
+| camelCase 属性名 | 自动规范为 kebab-case（`fontSize` → `font-size`） |
+
+级联写入仍通过引擎调用 `SetCascaded`；内联 `Set`/`SetProperty` 使用最高 specificity。
 
 ---
 
@@ -78,7 +91,7 @@ Button {
 
 - 定义：`--name: value`
 - 使用：`var(--name)` / `var(--name, fallback)`
-- 继承：变量沿 Visual Tree 继承
+- 继承：变量沿 Element Tree 继承
 
 ---
 
@@ -102,7 +115,35 @@ Button {
 
 | 类别 | 属性 |
 |---|---|
-| 文本 | `color` `font-size` `font-family` `font-weight` `line-height` `text-align` |
+| 文本 | `color` `font-size` `font-family` `font-weight` `font-style` `line-height` `text-align` |
+
+### 7.1 字体解析（对齐 CSS Fonts 简化）
+
+- 控件绘制通过元素上的 CSS 读取 `font-family` / `font-size` / `font-weight` / `font-style`，不再写死单一族名。
+- `font-family` 支持逗号列表与引号：`"Segoe UI", Tahoma, sans-serif`。
+- 通用族映射：`sans-serif` / `system-ui` → Segoe UI，`serif` → Times New Roman，`monospace` → Consolas。
+- `Font.FromCss` / `FontManager.FromCss` 提供与 CSSOM 一致的解析入口；绘图原语仍为 `Square.Graphics.Font`。
+
+### 7.2 CSS Font Loading 子集
+
+| Web API | Square |
+|---------|--------|
+| `FontFace` | `Square.Text.Fonts.FontFace`（本地路径 / 字节，`LoadAsync`） |
+| `FontFaceSet` / `document.fonts` | `FontFaceSet`；`Document.Fonts` |
+| `fonts.add` / `load` / `check` / `ready` | `Add` / `LoadAsync` / `Check` / `Ready` |
+| `FontFaceSetLoadEvent` | 未实现（用 `Task` 代替） |
+| `FontData` / `queryLocalFonts` | 不实现 |
+
+示例：
+
+```csharp
+var face = new FontFace("AppBrand", @"C:\Fonts\Brand.ttf");
+document.Fonts.Add(face);
+await face.LoadAsync();
+// 之后 CSS font-family: AppBrand 可被 FontManager 匹配
+```
+
+`@font-face` 样式表解析尚未接入；当前通过命令式 `FontFace` API 注册。
 | 背景 | `background` `background-color` |
 | 边框 | `border` `border-width` `border-color` `border-radius` |
 | 间距 | `padding` `margin` |
@@ -161,11 +202,11 @@ View {
 
 | 伪类 | 说明 | 当前状态 |
 |---|---|---|
-| `:hover` | 鼠标悬停 | ✅ 基于 `VisualState.Hover` |
-| `:focus` | 获得焦点 | ✅ 基于 `VisualState.Focus` |
-| `:active` | 激活（按下） | ✅ 基于 `VisualState.Active` |
-| `:disabled` | 禁用 | ✅ 基于 `VisualState.Disabled` |
-| `:checked` | 选中 | ✅ 基于 `VisualState.Checked` |
+| `:hover` | 鼠标悬停 | ✅ 基于 `ElementState.Hover` |
+| `:focus` | 获得焦点 | ✅ 基于 `ElementState.Focus` |
+| `:active` | 激活（按下） | ✅ 基于 `ElementState.Active` |
+| `:disabled` | 禁用 | ✅ 基于 `ElementState.Disabled` |
+| `:checked` | 选中 | ✅ 基于 `ElementState.Checked` |
 | `:empty` | 无子节点 | ✅ |
 | `:first-child` / `:last-child` / `:only-child` | 位置 | ✅ |
 | `:nth-child(n)` | 位置 | ✅ 支持整数、`odd`、`even` |
@@ -188,7 +229,7 @@ Text {
 
 - `@keyframes` 定义
 - `animation` 简写：`name duration timing-function delay iteration-count direction`
-- CSS 动画 timeline 可从 Visual Tree 自动收集并 tick
+- CSS 动画 timeline 可从 Element Tree 自动收集并 tick
 - 当前支持数值属性 from/to 插值、delay、有限 iteration-count、normal/reverse/alternate/alternate-reverse 基础方向
 - 颜色、transform、复杂百分比关键帧与完整浏览器级动画模型后续扩展
 

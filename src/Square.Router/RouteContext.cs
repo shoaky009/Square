@@ -23,9 +23,9 @@ public sealed class RouteContext
     public IReadOnlyDictionary<string, string> Parameters { get; }
     public IReadOnlyDictionary<string, string> Query { get; }
 
-    public static RouteContext? Find(Visual visual)
+    public static RouteContext? Find(Element Element)
     {
-        for (Visual? current = visual; current != null; current = current.Parent)
+        for (Element? current = Element; current != null; current = current.Parent)
             if (current.Properties.TryGetValue(PropertyName, out RouteContext context)) return context;
         return null;
     }

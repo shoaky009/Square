@@ -5,47 +5,75 @@ using Square.Rendering.Commands;
 
 namespace Square.Rendering.Tree;
 
-public sealed class RenderNode
+public sealed class DisplayNode
 {
     public Rect Bounds { get; set; }
-    public Visual? Visual { get; set; }
-    public List<RenderNode> Children { get; } = [];
+    /// <summary>Source document element for this display node.</summary>
+    public Element? Source
+    {
+        get => Element;
+        set => Element = value;
+    }
+
+    public Element? Element { get; set; }
+    public List<DisplayNode> Children { get; } = [];
     public List<DrawCommand> Commands { get; } = [];
 
     public bool IsDirty { get; set; } = true;
 
-    public void Render(IRenderContext ctx)
+    public void Render(IRenderContext ctx) => Render(ctx, dirtyClip: null);
+
+    /// <summary>
+    /// 渲染本节点及子树。<paramref name="dirtyClip"/> 非 null 时跳过与脏区不相交的分支。
+    /// </summary>
+    public void Render(IRenderContext ctx, Rect? dirtyClip)
     {
+        // 使用最新 Geometry 作为 Bounds（局部 Present 依赖）
+        if (Element != null)
+            Bounds = Element.Geometry;
+
+        // 根或 Geometry 仍为空时：不要因不相交测试而丢弃整枝（layout 后首帧常见）
+        // Bounds.IsEmpty 时仍继续遍历子节点
+        if (dirtyClip is { } clip && !Bounds.IsEmpty && !Bounds.IntersectsWith(clip))
+            return;
+
         if (IsDirty || Commands.Count == 0)
         {
             Commands.Clear();
-            CollectCommands(Visual, Commands);
+            CollectCommands(Element, Commands);
             SortChildrenByZIndex();
-            Visual?.ClearVisualDirty();
+            // 帧循环：Paint 内 RequestAnimationFrame 会再 InvalidatePaint；
+            // Host Tick 在到期时也会 InvalidatePaint。此处清除本轮脏标记即可。
+            Element?.ClearPaintDirty();
             IsDirty = false;
         }
 
-        ExecuteCommands(ctx);
+        // 仅当本节点与脏区相交（或全帧）时执行自身命令
+        var executeSelf = dirtyClip is null
+            || Bounds.IsEmpty
+            || Bounds.IntersectsWith(dirtyClip.Value);
+        if (executeSelf)
+            ExecuteCommands(ctx);
 
-        var clipRect = Visual?.GetOverflowClipRect() ?? Rect.Empty;
-        var clipsChildren = !clipRect.IsEmpty;
-        if (clipsChildren) ctx.PushClip(clipRect);
+        var overflowClip = Element?.GetOverflowClipRect() ?? Rect.Empty;
+        var clipsChildren = !overflowClip.IsEmpty;
+        if (clipsChildren) ctx.PushClip(overflowClip);
         foreach (var child in Children)
-            child.Render(ctx);
+            child.Render(ctx, dirtyClip);
         if (clipsChildren) ctx.PopClip();
     }
 
-    private static void CollectCommands(Visual? visual, List<DrawCommand> commands)
+    private static void CollectCommands(Element? element, List<DrawCommand> commands)
     {
-        if (visual == null || !visual.IsVisible) return;
-        visual.Render(new CommandCollector(commands));
+        if (element == null || !element.IsVisible) return;
+        element.Paint(new CommandCollector(commands));
     }
 
     private void SortChildrenByZIndex()
     {
         if (Children.Count < 2) return;
         Children.Sort(static (left, right) =>
-            (left.Visual?.ZIndex ?? 0).CompareTo(right.Visual?.ZIndex ?? 0));
+            (left.Element?.ZIndex ?? 0).CompareTo(right.Element?.ZIndex ?? 0));
     }
 
     private void ExecuteCommands(IRenderContext ctx)
@@ -106,7 +134,9 @@ internal sealed class CommandCollector : IRenderContext
     public void PushLayer(Rect bounds, float opacity) => _commands.Add(new PushLayerCommand(bounds, opacity));
     public void PopLayer() => _commands.Add(new PopLayerCommand());
     public void Clear(Color color) => _commands.Add(new ClearCommand(color));
+    public void Clear(Color color, Rect rect) => _commands.Add(new FillRectCommand(rect, new SolidColorBrush(color)));
     public void Flush() { }
     public void Present() { }
+    public void Present(IReadOnlyList<Rect>? dirtyRects) { }
     public void Dispose() { }
 }

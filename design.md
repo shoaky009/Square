@@ -13,10 +13,10 @@
 六大核心原则（来自需求 §17）：
 
 1. **Compile First** —— 所有 UI 在编译期生成 C#，运行时零解析。
-2. **Pure C# Core** —— 框架核心（Parser / Generator / CSS / Layout / Runtime / Render Tree / Animation / Text）全部 C# 实现。
+2. **Pure C# Core** —— 框架核心（Parser / Generator / CSS / Layout / Runtime / Display Tree / Animation / Text）全部 C# 实现。
 3. **NativeAOT First** —— 禁用 `Reflection.Emit`、运行时代码生成、`Dynamic`、运行时加载程序集。
 4. **Backend Independent** —— 核心不依赖具体图形库；图形库均为可插拔 Backend。
-5. **Retained Rendering** —— Visual Tree + Render Tree，非 Immediate Mode。
+5. **Retained Rendering** —— Element Tree + Display Tree，非 Immediate Mode。
 6. **Low Coupling / IDE Friendly** —— 模块间通过抽象接口通信；`.sqx` 提供类型检查、智能补全、编译错误定位。
 
 **设计约束**：
@@ -37,13 +37,13 @@
   Component (C#)
       │
       ▼
- Visual Tree   (Square.UI / Runtime)
+ Element Tree   (Square.UI / Runtime)
       │
       ▼
 Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
       │
       ▼
- Render Tree   (Square.Rendering, DrawCommand 列表)
+ Display Tree   (Square.Rendering, DrawCommand 列表)
       │
       ▼
 IRenderContext  (Square.Graphics 抽象)
@@ -52,7 +52,7 @@ IRenderContext  (Square.Graphics 抽象)
 Backend  (Square.Backends: Software → Skia/Blend2D/Cairo)
 ```
 
-- **非 Immediate Mode**：保留 Visual Tree + Render Tree，支持脏区增量重绘。
+- **非 Immediate Mode**：保留 Element Tree + Display Tree，支持脏区增量重绘。
 - **低耦合**：除 `Square.Backends` 与 `Square.Platform` 外，所有模块仅依赖抽象接口，不依赖具体图形库或 OS。
 - **NativeAOT 合规**：组件类型在编译期生成，运行时无反射解析；属性系统使用生成代码与强类型委托。
 
@@ -65,11 +65,11 @@ Backend  (Square.Backends: Software → Skia/Blend2D/Cairo)
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST（含 template/script/style 三段） | 错误带行列号，供 Source Generator 映射诊断 |
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | 缓存键严格设计（IDE 诊断不滞后）；结构原语特判编译；诊断映射回 `.sqx` 行列 |
 | `Square.Runtime` | `Application`、组件生命周期、调度 | 消息循环调度；组件树挂载 |
-| `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码，无反射依赖属性） |
+| `Square.UI` | 视觉基类型、属性、Element Tree 节点 | 强类型属性（生成代码，无反射依赖属性） |
 | `Square.Controls` | 第一阶段控件 + 结构原语 + 基础动画 | 控件 = 视觉 + 行为 + 默认样式；包含时钟、缓动和属性动画 |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语类型 | 工厂 `IRenderBackendFactory` 创建上下文；原语 Geometry/Brush/Pen/Image/Bitmap/Font/Path/Transform/Clip |
-| `Square.Rendering` | Visual Tree→Layout→Render Tree→DrawCommand | 包含 Box/Flex/Grid 布局；保留模式、脏区/增量 |
+| `Square.Rendering` | Element Tree→Layout→Display Tree→DrawCommand | 包含 Box/Flex/Grid 布局；保留模式、脏区/增量 |
 | `Square.Text` | 文本引擎 | Unicode/Paragraph/Glyph/Font Manager/Layout/Caret/Selection/HitTest/LineBreak/Fallback/BiDi；M1 基础 |
 | `Square.Platform` | 平台宿主抽象（M1: Win32） | `IPlatformHost`：窗口/消息循环/输入泵；P/Invoke 用 `LibraryImport` 源生成 |
 | `Square.Backends` | 渲染后端（M1: Software 纯 C#） | 纯托管、无 C++ 依赖；后续 Skia/Blend2D/Cairo 同接 `IRenderContext` |
@@ -89,11 +89,11 @@ src/
   Square.Markup/          # .sqx 词法/语法解析 → AST（含 template/script/style 三段）
   Square.SourceGenerator/ # Roslyn Incremental Generator（.sqx → C#）
   Square.Runtime/         # Application、组件生命周期、调度
-  Square.UI/              # 视觉基类型、属性、Visual Tree 节点
+  Square.UI/              # 视觉基类型、属性、Element Tree 节点
   Square.Controls/        # 第一阶段控件 + 结构原语 + 基础动画
   Square.CSS/             # CSS 引擎（M1 子集）
   Square.Graphics/        # IRenderContext 抽象 + 绘图原语类型
-  Square.Rendering/       # 布局 + Visual Tree→Render Tree→DrawCommand
+  Square.Rendering/       # 布局 + Element Tree→Display Tree→DrawCommand
   Square.Text/            # 基础文本（字形、简单排版）
   Square.Platform/        # 平台宿主抽象（M1: Win32）
   Square.Backends/        # 渲染后端（M1: Software 纯 C#）
@@ -113,8 +113,8 @@ src/
 
 **Square.SourceGenerator（Incremental Generator）**
 - `IIncrementalGenerator`：以 `.sqx` 为 `AdditionalText` 输入（内含 `<template>`/`<script lang="csharp">`/`<style>` 三段）。
-- 流程：读 `.sqx` → 调 `Markup` 解析为 AST → 语义分析（绑定/事件解析到 C# 成员；`<Show>`/`<For>`/`<Switch>`/`<Match>` 识别为结构原语）→ 生成 `partial` 组件类（含 `BuildVisualTree()`）。
-- 结构原语：`<Show when>`/`<For each>`/`<Switch>`+`<Match when>` 由生成器特判，编译为 `ObservableValue`/`ObservableCollection` 驱动的 Visual 子树增删，而非运行时组件实例。
+- 流程：读 `.sqx` → 调 `Markup` 解析为 AST → 语义分析（绑定/事件解析到 C# 成员；`<Show>`/`<For>`/`<Switch>`/`<Match>` 识别为结构原语）→ 生成 `partial` 组件类（含 `BuildElementTree()`）。
+- 结构原语：`<Show when>`/`<For each>`/`<Switch>`+`<Match when>` 由生成器特判，编译为 `ObservableValue`/`ObservableCollection` 驱动的 Element 子树增删，而非运行时组件实例。
 - 诊断：将解析错误映射为带 `.sqx` 文件路径与行列的 `Diagnostic`，IDE 可定位。
 - 平台/后端裁剪**不在生成器内处理**：由 C# `#if` + MSBuild 常量/条件引用在构建层完成（见 §4.5.2）。
 - 任务：Generator 骨架、`.sqx`→AST→C# 代码发射、事件/绑定解析、结构原语编译、诊断源、增量缓存键。
@@ -122,7 +122,7 @@ src/
 **Square.CSS（当前子集）**
 - 支持：Selector（类型/类/id/后代/子代/相邻兄弟/通用兄弟/通用/基础属性选择器）、Cascade、Specificity、`!important`、Variables（`--x`）、Inheritance、基础伪类、基础属性（color/background/border/padding/margin/font-size）。
 - 暂不做：属性选择器高级操作符、伪元素、Animation、Grid 全量（后续补）。
-- 任务：Tokenizer、Rule/AST、Selector 匹配、级联计算、属性应用到 Visual。
+- 任务：Tokenizer、Rule/AST、Selector 匹配、级联计算、属性应用到 Element。
 
 **Square.Rendering 布局子系统（M1 子集）**
 - 支持：`display:block/flex`、`flex-direction`、`justify-content`、`align-items`、`flex-grow/shrink`、`width/height`（px/%/auto/rp/vw/vh）、`padding/margin`。
@@ -143,17 +143,17 @@ src/
 - 仅实现 M1 所需原语：填充矩形/文本/线条/基础路径。
 - 任务：SoftwareBackend、光栅化基础、文本光栅（接 Square.Text）、脏区管理。
 
-**Square.Rendering（Visual Tree → Render Tree → DrawCommand）**
-- Visual Tree：由 Source Generator 生成的组件构建；`<Show>` 条件子树需支持**挂卸**，`<For>` 列表需支持**增量增删**（keyed）。
+**Square.Rendering（Element Tree → Display Tree → DrawCommand）**
+- Element Tree：由 Source Generator 生成的组件构建；`<Show>` 条件子树需支持**挂卸**，`<For>` 列表需支持**增量增删**（keyed）。
 - Layout 阶段调用 `Square.Rendering` 程序集中的 `LayoutEngine` 计算几何。
-- Render Tree：生成 `DrawCommand` 列表（FillRect/DrawText/DrawPath/...）。
+- Display Tree：生成 `DrawCommand` 列表（FillRect/DrawText/DrawPath/...）。
 - 保留模式：脏标记驱动增量重绘。
-- 任务：RenderTree 构建、DrawCommand 定义、脏区/增量机制（含子树挂卸）、调用 IRenderContext 提交。
+- 任务：DisplayTree 构建、DrawCommand 定义、脏区/增量机制（含子树挂卸）、调用 IRenderContext 提交。
 
 **Square.Runtime + Square.UI**
 - `Application.Run(window)`、消息循环调度。
-- 视觉基类型 `Visual`/`UIElement`：强类型属性（生成代码，无反射依赖属性）。
-- 任务：Application、Visual 基类、属性存储、组件树挂载；组件生命周期（OnAttached/OnDetached/OnLoaded/OnUnloaded、OnMeasure/OnArrange）、应用生命周期（OnStart/OnExit）。
+- 视觉基类型 `Element`/`UIElement`：强类型属性（生成代码，无反射依赖属性）。
+- 任务：Application、Element 基类、属性存储、组件树挂载；组件生命周期（OnAttached/OnDetached/OnLoaded/OnUnloaded、OnMeasure/OnArrange）、应用生命周期（OnStart/OnExit）。
 
 **Square.Controls（M1 控件）**
 - 第一阶段视觉控件：View, Text, Button, Input, TextArea, CheckBox, Radio, Select, Image, Canvas（需求 §4）。
@@ -204,8 +204,8 @@ src/
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Box/Flex/Grid 布局 + Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
-[x] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性 + 路由事件
+[~] `Square.Rendering`：Box/Flex/Grid 布局 + Element→DisplayTree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[x] `Square.Runtime` + `Square.UI`：Application/Element 基类/属性 + 路由事件
 [x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画
 [x] `Square.Text`：FontManager/测量/绘制（基础）
 [x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
@@ -268,11 +268,11 @@ src/
 
 - 条件/列表/分支采用编译期细粒度命令式控制流、**无虚拟 DOM**，与 `ObservableValue` + Retained Rendering 同构。
 - 映射（`.sqx` 写法 → 编译产物）：
-  - `<Show when={expr}>…</Show>`：条件子树；`when` 中 `{expr}` 绑定 `ObservableValue<bool>`，条件变时增删 Visual 子树（记忆化复用）；可选 `fallback` 属性指定条件假时的替代子树。
+  - `<Show when={expr}>…</Show>`：条件子树；`when` 中 `{expr}` 绑定 `ObservableValue<bool>`，条件变时增删 Element 子树（记忆化复用）；可选 `fallback` 属性指定条件假时的替代子树。
   - `<For each={expr}>{(it)=>…}</For>`：列表；`each` 中 `{expr}` 绑定 `ObservableCollection<T>`，引用键增量更新（项移动时节点不重建）；`it` 为列表项。
   - `<Switch><Match when={expr}>…</Match></Switch>`：多分支（互斥，首项真即渲染）；`Switch` 可带 `fallback`。
   - `<Index each={expr}>…</Index>`（可选）：索引键列表。
-- `<Show>`/`<For>`/`<Switch>`/`<Match>` 为 **Source Generator 已知的结构原语**（非运行时组件实例），由生成器特判编译为 Visual Tree 的挂卸/迭代。
+- `<Show>`/`<For>`/`<Switch>`/`<Match>` 为 **Source Generator 已知的结构原语**（非运行时组件实例），由生成器特判编译为 Element Tree 的挂卸/迭代。
 - 表达式 `when=`/`each=` 中的 `{expr}` 与绑定表达式同语法，绑定到 `ObservableValue`/`ObservableCollection`，编译期解析成员引用。
 - 阶段：M1 可先支持 `<Show>`/`<For>` 基础形态；`<Switch>`/`<Match>`/`<Index>` 与 `keyed` 复用排 M2。
 

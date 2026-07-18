@@ -7,46 +7,73 @@ using Square.Rendering;
 using Square.Platform;
 using Square.Runtime;
 using Square.UI;
+using Reconciler = Square.UI.Reconciler;
 
 namespace Square.Hosting;
 
 public sealed class DesktopApplication : Application
 {
-    private readonly Visual _root;
+    private readonly UIDocument _document;
+    private readonly Element _root;
     private readonly PlatformHostCreateInfo _hostCreateInfo;
     private readonly LayoutEngine _layout = new();
-    private readonly RenderTree _renderTree = new();
-    private readonly Dictionary<Visual, double> _scheduledFrames = [];
+    private readonly DisplayTree _displayTree = new();
+    private readonly Dictionary<Element, double> _scheduledFrames = [];
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IPlatformHost? _host;
     private IRenderContext? _renderContext;
     private UIElement? _focusedInput;
     private ITextEditor? _focusedEditor;
     private bool _isSelectingText;
+    private Element? _pointerDownTarget;
+    private bool _renderRequested;
 
-    public DesktopApplication(Visual root, PlatformHostCreateInfo hostCreateInfo)
+    public DesktopApplication(UIDocument document, PlatformHostCreateInfo hostCreateInfo)
     {
-        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(hostCreateInfo);
-        _root = root;
+        _document = document;
+        _root = document.DocumentElement;
         _hostCreateInfo = hostCreateInfo;
+        if (!string.IsNullOrEmpty(document.Title))
+            hostCreateInfo.Title = document.Title;
+        else if (!string.IsNullOrEmpty(hostCreateInfo.Title))
+            document.Title = hostCreateInfo.Title;
     }
 
+    /// <summary>Compatibility: wrap a content root into a new <see cref="UIDocument"/> Body.</summary>
+    public DesktopApplication(Element contentRoot, PlatformHostCreateInfo hostCreateInfo)
+        : this(WrapContent(contentRoot), hostCreateInfo)
+    {
+    }
+
+    public UIDocument Document => _document;
     public Color Background { get; set; } = Color.White;
+
+    private static UIDocument WrapContent(Element contentRoot)
+    {
+        ArgumentNullException.ThrowIfNull(contentRoot);
+        var document = new UIDocument();
+        document.Body.Children.Add(contentRoot);
+        return document;
+    }
 
     protected override void RunCore()
     {
         BackendRegistration.RegisterDefaults();
         PlatformRegistration.RegisterDefaults();
+        Square.Controls.Registration.ControlRegistration.RegisterDefaults();
 
-        _root.BuildVisualTree();
+        _document.Build();
         var lifecycle = (IComponentLifecycle)_root;
+        // 先注册帧调度，再 OnAttached：组件在 OnAttached 里 RequestAnimationFrame 才能被调度
+        _root.AddEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
+        _document.AddEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
         lifecycle.OnAttached();
         try
         {
             _host = PlatformRegistry.Get().CreateHost(_hostCreateInfo);
             AttachHostEvents(_host);
-            _root.AddEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
 
             _host.Show();
             _renderContext = _host.CreateRenderContext();
@@ -71,51 +98,94 @@ public sealed class DesktopApplication : Application
         host.Tick += HandleTick;
     }
 
-    private void HandleFrameRequest(object? sender, FrameRequestEventArgs args)
+    private void HandleFrameRequest(Event e)
     {
-        if (args.OriginalSource is Visual target)
+        // Target 为派发源；不要用 CurrentTarget（冒泡到 root 时已是 root）。
+        // 只登记到期时间，不立刻 _renderRequested——否则会在每个 WM_TIMER(16ms)
+        // 都做全窗口软件 Clear+Present，动画 CPU 极高。
+        if (e is FrameRequestEvent args && e.Target is Element target)
         {
             var requestedTime = _clock.Elapsed.TotalSeconds + args.IntervalSeconds;
             if (!_scheduledFrames.TryGetValue(target, out var current) || requestedTime < current)
                 _scheduledFrames[target] = requestedTime;
         }
-        args.Handled = true;
+        e.StopPropagation();
     }
 
-    private bool _renderRequested;
-
-    private void RequestRender()
-    {
-        _renderRequested = true;
-    }
+    private void RequestRender() => _renderRequested = true;
 
     private void RenderFrame()
     {
         _renderRequested = false;
         if (_host == null || _renderContext == null) return;
 
+        if (!string.IsNullOrEmpty(_document.Title) && _hostCreateInfo.Title != _document.Title)
+        {
+            // Title sync for platforms that read create-info; host may already be open.
+        }
+
         var size = _host.ClientSize;
-        if (_root.IsLayoutDirty || _root.Geometry.Size != size)
+        var layoutDirty = _root.IsLayoutDirty || _root.Geometry.Size != size;
+        if (layoutDirty)
         {
             _layout.Measure(_root, size);
             _layout.Arrange(_root, new Rect(0, 0, size.Width, size.Height));
-            _renderTree.BuildFrom(_root);
+            // Body fills client area after head (height 0 this phase)
+            _document.Body.Geometry = new Rect(0, 0, size.Width, size.Height);
+            _displayTree.BuildFrom(_root);
+            RenderFullFrame();
         }
         else
         {
-            _renderTree.UpdateDirty();
+            _displayTree.UpdateDirty();
+            var dirty = _displayTree.CollectDirtyRects();
+            if (dirty.Count == 0)
+            {
+                // 无节点标脏时仍全量重绘一帧，避免“状态已变但未 InvalidatePaint”时界面卡住
+                // （与脏区优化前“每次 RenderFrame 都清屏重放命令”的行为对齐）
+                RenderFullFrame();
+            }
+            else
+            {
+                var clientArea = Math.Max(1f, size.Width * size.Height);
+                var dirtyArea = 0f;
+                foreach (var r in dirty) dirtyArea += DisplayTree.Area(r);
+                if (dirtyArea / clientArea > 0.45f)
+                {
+                    RenderFullFrame();
+                }
+                else
+                {
+                    var union = dirty[0];
+                    for (var i = 1; i < dirty.Count; i++)
+                        union = DisplayTree.Union(union, dirty[i]);
+                    // 局部绘制进软件缓冲
+                    _renderContext.Clear(Background, union);
+                    _renderContext.PushClip(union);
+                    _displayTree.Render(_renderContext, union);
+                    _renderContext.PopClip();
+                    _renderContext.Flush();
+                    // Present：优先局部；若平台忽略则仍应更新窗口。同时提交 union 保证至少一块区域。
+                    _renderContext.Present(dirty);
+                }
+            }
         }
 
-        _renderContext.Clear(Background);
-        _renderTree.Render(_renderContext);
-        _renderContext.Flush();
-        _renderContext.Present();
         if (_focusedEditor != null) _host.SetTextInputRect(_focusedEditor.CaretRect);
+    }
+
+    private void RenderFullFrame()
+    {
+        if (_renderContext == null) return;
+        _renderContext.Clear(Background);
+        _displayTree.Render(_renderContext);
+        _renderContext.Flush();
+        _renderContext.Present(null);
     }
 
     private void HandleWheel(Point point, int delta)
     {
-        _root.HitTest(point)?.RaiseEvent(StandardEvents.Wheel, new RoutedEventArgs());
+        _root.HitTest(point)?.DispatchTrusted(StandardEvents.CreateWheel());
         RenderFrame();
     }
 
@@ -143,7 +213,7 @@ public sealed class DesktopApplication : Application
                 _isSelectingText = false;
             }
             if (_pointerDownTarget != null && hit == _pointerDownTarget)
-                hit?.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+                hit?.DispatchTrusted(StandardEvents.CreateClick());
             _pointerDownTarget = null;
             RenderFrame();
             return;
@@ -152,7 +222,7 @@ public sealed class DesktopApplication : Application
         if (action != MouseAction.Down) return;
 
         _pointerDownTarget = hit;
-        hit?.RaiseEvent(StandardEvents.PointerDown, new RoutedEventArgs());
+        hit?.DispatchTrusted(StandardEvents.CreatePointerDown());
         UpdateTextFocus(hit, point);
 
         foreach (var select in _root.QueryAll<Select>())
@@ -162,9 +232,7 @@ public sealed class DesktopApplication : Application
         RenderFrame();
     }
 
-    private Visual? _pointerDownTarget;
-
-    private void UpdateTextFocus(Visual? hit, Point point)
+    private void UpdateTextFocus(Element? hit, Point point)
     {
         if (_host == null) return;
 
@@ -192,8 +260,8 @@ public sealed class DesktopApplication : Application
     {
         if (_host == null) return;
 
-        var keyEvent = action == KeyAction.Down ? StandardEvents.KeyDown : StandardEvents.KeyUp;
-        _focusedInput?.RaiseEvent(keyEvent, new RoutedEventArgs());
+        _focusedInput?.DispatchTrusted(
+            action == KeyAction.Down ? StandardEvents.CreateKeyDown() : StandardEvents.CreateKeyUp());
         if (action != KeyAction.Down || _focusedEditor == null) return;
 
         var shift = _host.Modifiers.HasFlag(KeyModifiers.Shift);
@@ -208,49 +276,57 @@ public sealed class DesktopApplication : Application
             if (_focusedEditor.SelectionLength > 0)
             {
                 _host.SetClipboardText(_focusedEditor.SelectedText);
-                _focusedEditor.DeleteSelection();
+                _focusedEditor.HandleKey(keyCode, shift, control);
             }
         }
         else if (control && keyCode == 86)
         {
-            _focusedEditor.HandleTextInput(_host.GetClipboardText());
-        }
-        else if (control && keyCode == 65)
-        {
-            _focusedEditor.SelectAll();
-        }
-        else if (control || keyCode is 8 or 13 or 35 or 36 or 37 or 38 or 39 or 40 or 46)
-        {
-            _focusedEditor.HandleKey(keyCode, shift, control);
+            var text = _host.GetClipboardText();
+            if (!string.IsNullOrEmpty(text))
+                _focusedEditor.HandleTextInput(text);
         }
         else
         {
-            return;
+            _focusedEditor.HandleKey(keyCode, shift, control);
         }
         RenderFrame();
     }
 
     private void HandleTextInput(string text)
     {
-        if (_focusedEditor == null) return;
-        _focusedEditor.HandleTextInput(text);
+        _focusedEditor?.HandleTextInput(text);
         RenderFrame();
     }
 
     private void HandleTick()
     {
         var now = _clock.Elapsed.TotalSeconds;
-        var dueTargets = _scheduledFrames
-            .Where(pair => now >= pair.Value)
-            .Select(pair => pair.Key)
-            .ToArray();
-        foreach (var target in dueTargets)
+        // 避免每 tick 分配 LINQ 数组
+        List<Element>? dueTargets = null;
+        foreach (var pair in _scheduledFrames)
         {
-            _scheduledFrames.Remove(target);
-            target.InvalidateVisual();
+            if (now < pair.Value) continue;
+            dueTargets ??= [];
+            dueTargets.Add(pair.Key);
+        }
+        if (dueTargets != null)
+        {
+            foreach (var target in dueTargets)
+            {
+                _scheduledFrames.Remove(target);
+                target.InvalidatePaint();
+            }
         }
 
-        var needsRender = Dispatcher.HasWork || dueTargets.Length > 0 || _renderRequested;
+        // Reconciler flush：在布局/绘制前统一处理批量结构更新
+        var reconcilerHadWork = Reconciler.Current.HasWork;
+        if (reconcilerHadWork)
+            Reconciler.Current.Flush();
+
+        var needsRender = (dueTargets != null && dueTargets.Count > 0)
+            || _renderRequested
+            || reconcilerHadWork
+            || Dispatcher.HasWork;
         Dispatcher.Run();
         if (_focusedEditor?.ToggleCaretBlink() == true) needsRender = true;
         if (needsRender) RenderFrame();

@@ -1,5 +1,6 @@
 using System.Text;
 using Square.Controls.Animation;
+using Square.Events;
 using Square.Graphics;
 using Square.Text.Glyph;
 using Square.UI;
@@ -80,7 +81,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         set => SetProperty(nameof(SelectionForeground), value);
     }
 
-    public override void Render(IRenderContext context)
+    public override void Paint(IRenderContext context)
     {
         ControlDrawing.DrawInputFrame(context, this);
         EnsureCaretVisible();
@@ -185,7 +186,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _isDragging = true;
         _preferredX = null;
         ResetCaretBlink();
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     public void HandlePointerMove(Point point)
@@ -194,7 +195,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _caretIndex = HitTestIndex(point);
         _preferredX = null;
         ResetCaretBlink();
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     public void HandlePointerUp(Point point)
@@ -204,7 +205,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _isDragging = false;
         _preferredX = null;
         ResetCaretBlink();
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     public void SelectAll()
@@ -213,7 +214,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _caretIndex = Value.Length;
         _preferredX = null;
         ResetCaretBlink();
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     public bool DeleteSelection()
@@ -238,7 +239,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _caretBlinkAnimation.Update(1f / 30f);
         if (_caretBlinkAnimation.IsComplete)
             _nextCaretTransitionSeconds = now + (_caretBlinkTarget <= 0.01f ? 0.45d : 0.7d);
-        InvalidateVisual();
+        InvalidatePaint();
         return true;
     }
 
@@ -248,7 +249,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _caretBlinkTarget = 0f;
         _nextCaretTransitionSeconds = _caretClock.Elapsed.TotalSeconds + 0.7d;
         _caretBlinkAnimation = null;
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     private Animation<float> CreateCaretBlinkAnimation(float from, float to) => new(
@@ -287,8 +288,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _preferredX = null;
         ResetCaretBlink();
         EnsureCaretVisible();
-        RaiseEvent("input");
-        InvalidateVisual();
+        DispatchEvent(StandardEvents.CreateInput());
+        InvalidatePaint();
     }
 
     private void Backspace()
@@ -341,7 +342,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         if (!preservePreferredX) _preferredX = null;
         ResetCaretBlink();
         EnsureCaretVisible();
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     private int HitTestIndex(Point point)
@@ -505,7 +506,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private float MeasureCharacterAdvance(ReadOnlySpan<char> character)
     {
         var fontSize = GetFontSize();
-        var editorFont = new Font("Segoe UI", fontSize);
+        var editorFont = ControlDrawing.ResolveFont(this, fontSize);
         if (character.Length == 1)
         {
             var glyph = GlyphRasterizer.Rasterize(editorFont, character[0]);
@@ -554,7 +555,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _isDragging = false;
         _caretOpacity = 0f;
         _caretBlinkAnimation = null;
-        InvalidateVisual();
+        InvalidatePaint();
     }
 
     private readonly record struct LineRange(int Start, int Length)

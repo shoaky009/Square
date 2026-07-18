@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
+using Square.SourceGenerator.Directives;
 using Square.SourceGenerator.Emit;
 using Square.SourceGenerator.Parser;
 
@@ -27,18 +28,38 @@ public sealed class SqxGenerator : IIncrementalGenerator
             })
             .Collect();
 
-        context.RegisterSourceOutput(inputs, static (productionContext, files) =>
+        // Compilation drives directive catalog refresh (metadata scan of referenced assemblies).
+        var compilationAndInputs = context.CompilationProvider.Combine(inputs);
+
+        context.RegisterSourceOutput(compilationAndInputs, static (productionContext, pair) =>
         {
+            var compilation = pair.Left;
+            var files = pair.Right;
+            DirectiveCatalog catalog;
+            try
+            {
+                catalog = DirectiveCatalog.FromCompilation(compilation);
+            }
+            catch (Exception ex)
+            {
+                productionContext.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.SqxDiagnostics.SQXD001_DuplicateDirective,
+                    Location.None,
+                    ex.Message));
+                catalog = DirectiveCatalog.BuiltIn;
+            }
+
             var contracts = BuildPropContracts(files);
             foreach (var file in files)
-                Generate(productionContext, file, contracts);
+                Generate(productionContext, file, contracts, catalog);
         });
     }
 
     private static void Generate(
         SourceProductionContext context,
         SqxInput input,
-        IReadOnlyDictionary<string, PropContract[]> contracts)
+        IReadOnlyDictionary<string, PropContract[]> contracts,
+        DirectiveCatalog catalog)
     {
         string code;
         try
@@ -46,6 +67,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
             var document = SqxParser.Parse(input.Content, input.Path);
             ValidateRequiredProps(context, input, document, contracts);
             ValidateRefNames(context, input, document);
+            DirectiveValidator.Validate(context, input.Path, input.Content, document, catalog);
             code = new ComponentEmitter(document, input.Namespace).Emit();
         }
         catch (SqxParseException exception)

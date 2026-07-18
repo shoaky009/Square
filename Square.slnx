@@ -12,12 +12,14 @@
   <Project Path="src/Square.Text/Square.Text.csproj" />
   <Project Path="src/Square.Platform/Square.Platform.csproj" />
   <Project Path="src/Square.Backends/Square.Backends.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
+    <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
+    <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
+    <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />
+    <Project Path="tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj" />
+    <Project Path="tests/Square.SourceGenerator.Tests/Square.SourceGenerator.Tests.csproj" />
+    <Project Path="tests/Square.UI.Tests/Square.UI.Tests.csproj" />
+  </Folder>
   <Project Path="samples/Square.Sample/Square.Sample.csproj" />
-  <Project Path="tests/Square.Runtime.Tests/Square.Runtime.Tests.csproj" />
-  <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />
-  <Project Path="tests/Square.SourceGenerator.Tests/Square.SourceGenerator.Tests.csproj" />
-  <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
-  <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
-  <Project Path="tests/Square.UI.Tests/Square.UI.Tests.csproj" />
-  <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
 </Solution>

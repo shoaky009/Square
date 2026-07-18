@@ -1,13 +1,28 @@
+using System.Globalization;
+using Facebook.Yoga;
 using Square.Graphics;
 using Square.UI;
+using static Facebook.Yoga.YGConfigAPI;
+using static Facebook.Yoga.YGNodeAPI;
+using static Facebook.Yoga.YGNodeLayoutAPI;
+using static Facebook.Yoga.YGNodeStyleAPI;
+using YogaNode = Facebook.Yoga.Node;
 
 namespace Square.Rendering;
 
+/// <summary>显示模式（对齐 CSS <c>display</c> 子集）。</summary>
 public enum DisplayMode { Block, Flex, Grid, None }
+
+/// <summary>Flex 主轴方向（对齐 <c>flex-direction</c>）。</summary>
 public enum FlexDirection { Row, Column, RowReverse, ColumnReverse }
+
+/// <summary>主轴对齐（对齐 <c>justify-content</c> 子集）。</summary>
 public enum JustifyContent { FlexStart, Center, FlexEnd, SpaceBetween, SpaceAround }
+
+/// <summary>交叉轴对齐（对齐 <c>align-items</c> 子集）。</summary>
 public enum AlignItems { Stretch, FlexStart, Center, FlexEnd }
 
+/// <summary>从 CSS 推导的布局样式快照。</summary>
 public sealed class ComputedStyle
 {
     public DisplayMode Display { get; set; } = DisplayMode.Block;
@@ -31,200 +46,406 @@ public sealed class ComputedStyle
     public string GridArea { get; set; } = "";
 }
 
+/// <summary>
+/// 布局引擎：Flex/Block 由 Meta Yoga（Yoga.Net）计算；Grid 使用内置实现。
+/// CSS 经 <see cref="Element.Style"/> 映射到 Yoga 样式或 Grid 算法。
+/// </summary>
 public sealed class LayoutEngine
 {
-    public void Measure(Visual visual, Size availableSize)
+    private readonly Config _yogaConfig;
+
+    public LayoutEngine()
     {
-        var style = GetComputedStyle(visual);
-        if (!visual.IsVisible || style.Display == DisplayMode.None) { visual.ClearLayoutDirty(); return; }
+        _yogaConfig = YGConfigNew();
+        YGConfigSetUseWebDefaults(_yogaConfig, true);
+    }
 
-        var inner = availableSize;
-        inner = new Size(
-            Math.Max(0, inner.Width - style.Padding * 2),
-            Math.Max(0, inner.Height - style.Padding * 2));
+    public void Measure(Element element, Size availableSize)
+    {
+        var style = GetComputedStyle(element, availableSize.Width, availableSize.Height);
+        if (!element.IsVisible || style.Display == DisplayMode.None)
+        {
+            element.ClearLayoutDirty();
+            return;
+        }
 
-        if (style.Display == DisplayMode.Flex)
-            MeasureFlex(visual, style, inner);
-        else if (style.Display == DisplayMode.Grid)
-            MeasureGrid(visual, style, inner);
+        if (style.Display == DisplayMode.Grid)
+        {
+            MeasureGrid(element, style, availableSize);
+            element.ClearLayoutDirty();
+            return;
+        }
+
+        // Flex / Block：Yoga 一次计算
+        using var session = BuildYogaTree(element, availableSize.Width, availableSize.Height);
+        element.ClearLayoutDirty();
+        foreach (var child in element.Children)
+            ClearDirtyRecursive(child);
+    }
+
+    public void Arrange(Element element, Rect finalRect)
+    {
+        var style = GetComputedStyle(element, finalRect.Width, finalRect.Height);
+        if (!element.IsVisible || style.Display == DisplayMode.None)
+        {
+            element.Arrange(finalRect);
+            return;
+        }
+
+        if (style.Display == DisplayMode.Grid)
+        {
+            var inner = finalRect.Inflate(-style.Padding, -style.Padding);
+            ArrangeGrid(element, style, inner);
+            element.Arrange(finalRect);
+            return;
+        }
+
+        using var session = BuildYogaTree(element, finalRect.Width, finalRect.Height);
+        ApplyYogaLayout(element, session.Root, finalRect.X, finalRect.Y);
+        ClearDirtyRecursive(element);
+    }
+
+    // ——— Yoga Flex/Block ———
+
+    private YogaSession BuildYogaTree(Element root, float width, float height)
+    {
+        var session = new YogaSession();
+        var yogaRoot = CreateYogaSubtree(root, session, width, height, isRoot: true);
+        session.Root = yogaRoot;
+
+        if (!float.IsNaN(width) && !float.IsInfinity(width) && width >= 0)
+            YGNodeStyleSetWidth(yogaRoot, width);
+        if (!float.IsNaN(height) && !float.IsInfinity(height) && height >= 0)
+            YGNodeStyleSetHeight(yogaRoot, height);
+
+        YGNodeCalculateLayout(
+            yogaRoot,
+            float.IsNaN(width) || float.IsInfinity(width) ? float.NaN : width,
+            float.IsNaN(height) || float.IsInfinity(height) ? float.NaN : height,
+            YGDirection.LTR);
+        return session;
+    }
+
+    private YogaNode CreateYogaSubtree(Element element, YogaSession session, float parentW, float parentH, bool isRoot)
+    {
+        var node = YGNodeNewWithConfig(_yogaConfig);
+        YGNodeSetContext(node, element);
+        session.Map[element] = node;
+
+        var em = GetFontSize(element);
+        var rem = GetRootFontSize(element);
+        var display = element.Style.Get("display")?.Trim();
+
+        if (string.Equals(display, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetDisplay(node, YGDisplay.None);
+            return node;
+        }
+
+        if (string.Equals(display, "grid", StringComparison.OrdinalIgnoreCase))
+        {
+            // Grid 子树：作为叶子，用内置 Grid 引擎在 measure 中排版
+            YGNodeStyleSetDisplay(node, YGDisplay.Flex);
+            YGNodeStyleSetFlexDirection(node, YGFlexDirection.Column);
+            ApplyBoxModel(element, node, parentW, parentH, em, rem);
+            YGNodeSetMeasureFunc(node, GridHostMeasureCallback);
+            return node;
+        }
+
+        if (string.Equals(display, "flex", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetDisplay(node, YGDisplay.Flex);
+            ApplyFlexContainer(element, node);
+        }
         else
-            MeasureBlock(visual, style, inner);
-
-        visual.ClearLayoutDirty();
-    }
-
-    private void MeasureBlock(Visual visual, ComputedStyle style, Size available)
-    {
-        foreach (var child in visual.Children.Where(child => child.IsVisible))
-            Measure(child, available);
-    }
-
-    private void MeasureFlex(Visual visual, ComputedStyle style, Size available)
-    {
-        var isRow = style.FlexDirection is FlexDirection.Row or FlexDirection.RowReverse;
-        var mainAxis = isRow ? available.Width : available.Height;
-        var crossAxis = isRow ? available.Height : available.Width;
-        var gap = style.Gap;
-
-        var totalFlex = 0f;
-        var totalBase = 0f;
-        var children = visual.Children.Where(child => child.IsVisible).ToArray();
-        var count = children.Length;
-
-        foreach (var child in children)
         {
-            var cs = GetComputedStyle(child);
-            var basis = !float.IsNaN(cs.FlexBasis) ? cs.FlexBasis : 0;
-            totalBase += basis;
-            totalFlex += cs.FlexGrow;
+            // block → column flex
+            YGNodeStyleSetDisplay(node, YGDisplay.Flex);
+            YGNodeStyleSetFlexDirection(node, YGFlexDirection.Column);
+            YGNodeStyleSetAlignItems(node, YGAlign.Stretch);
+            YGNodeStyleSetJustifyContent(node, YGJustify.FlexStart);
         }
 
-        var remaining = mainAxis - totalBase - gap * Math.Max(0, count - 1);
-        var unit = totalFlex > 0 ? remaining / totalFlex : 0;
+        ApplyFlexItem(element, node, parentW, parentH, em, rem);
+        ApplyBoxModel(element, node, parentW, parentH, em, rem);
+        ApplyGap(element, node, parentW, parentH, em, rem);
+        ApplyPosition(element, node, parentW, parentH, em, rem);
+        ApplyOverflow(element, node);
 
-        foreach (var child in children)
+        var children = element.Children.Where(c => c.IsVisible).ToArray();
+        if (children.Length == 0)
         {
-            var cs = GetComputedStyle(child);
-            var size = !float.IsNaN(cs.FlexBasis) ? cs.FlexBasis : 0;
-            size += cs.FlexGrow * unit;
-            var childAvail = isRow ? new Size(size, crossAxis) : new Size(crossAxis, size);
-            Measure(child, childAvail);
+            YGNodeSetMeasureFunc(node, LeafMeasureCallback);
         }
-    }
-
-    public void Arrange(Visual visual, Rect finalRect)
-    {
-        var style = GetComputedStyle(visual);
-        if (!visual.IsVisible || style.Display == DisplayMode.None) return;
-
-        var inner = finalRect.Inflate(-style.Padding, -style.Padding);
-
-        if (style.Display == DisplayMode.Flex)
-            ArrangeFlex(visual, style, inner);
-        else if (style.Display == DisplayMode.Grid)
-            ArrangeGrid(visual, style, inner);
         else
-            ArrangeBlock(visual, style, inner);
-
-        visual.Arrange(finalRect);
-    }
-
-    private void ArrangeBlock(Visual visual, ComputedStyle style, Rect inner)
-    {
-        var y = inner.Top;
-        foreach (var child in visual.Children.Where(child => child.IsVisible))
         {
-            var size = MeasureWithStyle(child, inner.Size);
-            Arrange(child, new Rect(inner.Left, y, size.Width, size.Height));
-            y += size.Height;
-        }
-    }
-
-    private void ArrangeFlex(Visual visual, ComputedStyle style, Rect inner)
-    {
-        var isRow = style.FlexDirection is FlexDirection.Row or FlexDirection.RowReverse;
-        var gap = style.Gap;
-        var children = visual.Children.Where(child => child.IsVisible).ToArray();
-        var count = children.Length;
-
-        var sizes = new float[count];
-        var total = 0f;
-        for (int i = 0; i < count; i++)
-        {
-            var s = MeasureWithStyle(children[i], inner.Size);
-            sizes[i] = isRow ? s.Width : s.Height;
-            total += sizes[i];
+            var refW = ResolveRefSize(element.Style.Get("width"), parentW, parentH, em, rem, parentW);
+            var refH = ResolveRefSize(element.Style.Get("height"), parentW, parentH, em, rem, parentH);
+            uint i = 0;
+            foreach (var child in children)
+            {
+                var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
+                YGNodeInsertChild(node, childNode, i++);
+            }
         }
 
-        var mainSize = isRow ? inner.Width : inner.Height;
-        var remaining = mainSize - total - gap * Math.Max(0, count - 1);
+        return node;
+    }
 
-        var (start, step) = style.JustifyContent switch
+    private static YGSize LeafMeasureCallback(
+        YogaNode node, float availableWidth, MeasureMode widthMode,
+        float availableHeight, MeasureMode heightMode)
+    {
+        var element = YGNodeGetContext(node) as Element;
+        if (element == null) return new YGSize { Width = 0, Height = 0 };
+
+        var availW = widthMode == MeasureMode.Undefined ? float.MaxValue : Math.Max(0, availableWidth);
+        var availH = heightMode == MeasureMode.Undefined ? float.MaxValue : Math.Max(0, availableHeight);
+        var measured = element.Measure(new Size(availW, availH));
+
+        var w = measured.Width;
+        var h = measured.Height;
+        if (widthMode == MeasureMode.Exactly) w = availableWidth;
+        else if (widthMode == MeasureMode.AtMost) w = Math.Min(w, availableWidth);
+        if (heightMode == MeasureMode.Exactly) h = availableHeight;
+        else if (heightMode == MeasureMode.AtMost) h = Math.Min(h, availableHeight);
+
+        return new YGSize
         {
-            JustifyContent.Center => (remaining / 2f, 0f),
-            JustifyContent.FlexEnd => (remaining, 0f),
-            JustifyContent.SpaceBetween => (0f, count > 1 ? remaining / (count - 1) : 0f),
-            JustifyContent.SpaceAround => (count > 0 ? remaining / count / 2f : 0f, count > 0 ? remaining / count : 0f),
-            _ => (0f, 0f)
+            Width = Sanitize(w),
+            Height = Sanitize(h)
         };
+    }
 
-        var pos = start;
-        for (int i = 0; i < count; i++)
+    private YGSize GridHostMeasureCallback(
+        YogaNode node, float availableWidth, MeasureMode widthMode,
+        float availableHeight, MeasureMode heightMode)
+    {
+        var element = YGNodeGetContext(node) as Element;
+        if (element == null) return new YGSize { Width = 0, Height = 0 };
+
+        var w = widthMode == MeasureMode.Undefined ? 0 : availableWidth;
+        var h = heightMode == MeasureMode.Undefined ? 0 : availableHeight;
+        if (widthMode == MeasureMode.Undefined || heightMode == MeasureMode.Undefined)
         {
-            var child = children[i];
-            var size = MeasureWithStyle(child, inner.Size);
-            float x, y, w, h;
-            if (isRow)
-            {
-                x = inner.Left + pos;
-                w = sizes[i];
-                h = style.AlignItems switch
-                {
-                    AlignItems.Center => size.Height,
-                    AlignItems.FlexEnd => size.Height,
-                    _ => inner.Height
-                };
-                y = style.AlignItems switch
-                {
-                    AlignItems.Center => inner.Top + (inner.Height - size.Height) / 2f,
-                    AlignItems.FlexEnd => inner.Bottom - size.Height,
-                    _ => inner.Top
-                };
-            }
-            else
-            {
-                y = inner.Top + pos;
-                h = sizes[i];
-                w = style.AlignItems switch
-                {
-                    AlignItems.Center => size.Width,
-                    AlignItems.FlexEnd => size.Width,
-                    _ => inner.Width
-                };
-                x = style.AlignItems switch
-                {
-                    AlignItems.Center => inner.Left + (inner.Width - size.Width) / 2f,
-                    AlignItems.FlexEnd => inner.Right - size.Width,
-                    _ => inner.Left
-                };
-            }
-            Arrange(child, new Rect(x, y, w, h));
-            pos += sizes[i] + gap + step;
+            // 尽量给出合理默认
+            if (widthMode == MeasureMode.Undefined) w = 0;
+            if (heightMode == MeasureMode.Undefined) h = 0;
+        }
+
+        var style = GetComputedStyle(element, w, h);
+        MeasureGrid(element, style, new Size(
+            widthMode == MeasureMode.Undefined ? float.MaxValue : w,
+            heightMode == MeasureMode.Undefined ? float.MaxValue : h));
+
+        // 用子项排布估算占位尺寸
+        return new YGSize
+        {
+            Width = widthMode == MeasureMode.Exactly ? availableWidth : Sanitize(w),
+            Height = heightMode == MeasureMode.Exactly ? availableHeight : Sanitize(h)
+        };
+    }
+
+    private void ApplyYogaLayout(Element element, YogaNode yoga, float parentAbsX, float parentAbsY)
+    {
+        var left = YGNodeLayoutGetLeft(yoga);
+        var top = YGNodeLayoutGetTop(yoga);
+        var width = YGNodeLayoutGetWidth(yoga);
+        var height = YGNodeLayoutGetHeight(yoga);
+        var absX = parentAbsX + left;
+        var absY = parentAbsY + top;
+        var rect = new Rect(absX, absY, width, height);
+
+        var display = element.Style.Get("display")?.Trim();
+        if (string.Equals(display, "grid", StringComparison.OrdinalIgnoreCase))
+        {
+            var style = GetComputedStyle(element, width, height);
+            var padding = style.Padding;
+            var inner = rect.Inflate(-padding, -padding);
+            ArrangeGrid(element, style, inner);
+            element.Arrange(rect);
+            return;
+        }
+
+        element.Arrange(rect);
+
+        var children = element.Children.Where(c => c.IsVisible).ToArray();
+        var count = (int)YGNodeGetChildCount(yoga);
+        for (var i = 0; i < children.Length && i < count; i++)
+        {
+            var childYoga = YGNodeGetChild(yoga, (nuint)i);
+            if (childYoga != null)
+                ApplyYogaLayout(children[i], childYoga, absX, absY);
         }
     }
 
-    private void MeasureGrid(Visual visual, ComputedStyle style, Size available)
+    private static void ApplyFlexContainer(Element element, YogaNode node)
+    {
+        YGNodeStyleSetFlexDirection(node, element.Style.Get("flex-direction")?.Trim() switch
+        {
+            "column" => YGFlexDirection.Column,
+            "column-reverse" => YGFlexDirection.ColumnReverse,
+            "row-reverse" => YGFlexDirection.RowReverse,
+            _ => YGFlexDirection.Row
+        });
+        YGNodeStyleSetJustifyContent(node, element.Style.Get("justify-content")?.Trim() switch
+        {
+            "center" => YGJustify.Center,
+            "flex-end" or "end" => YGJustify.FlexEnd,
+            "space-between" => YGJustify.SpaceBetween,
+            "space-around" => YGJustify.SpaceAround,
+            "space-evenly" => YGJustify.SpaceEvenly,
+            _ => YGJustify.FlexStart
+        });
+        YGNodeStyleSetAlignItems(node, element.Style.Get("align-items")?.Trim() switch
+        {
+            "center" => YGAlign.Center,
+            "flex-start" or "start" => YGAlign.FlexStart,
+            "flex-end" or "end" => YGAlign.FlexEnd,
+            "baseline" => YGAlign.Baseline,
+            _ => YGAlign.Stretch
+        });
+        YGNodeStyleSetFlexWrap(node, element.Style.Get("flex-wrap")?.Trim() switch
+        {
+            "wrap" => YGWrap.Wrap,
+            "wrap-reverse" => YGWrap.WrapReverse,
+            _ => YGWrap.NoWrap
+        });
+    }
+
+    private static void ApplyFlexItem(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        var grow = element.Style.Get("flex-grow");
+        if (grow != null && float.TryParse(grow, NumberStyles.Float, CultureInfo.InvariantCulture, out var g))
+            YGNodeStyleSetFlexGrow(node, g);
+        var shrink = element.Style.Get("flex-shrink");
+        if (shrink != null && float.TryParse(shrink, NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
+            YGNodeStyleSetFlexShrink(node, s);
+        var basis = element.Style.Get("flex-basis");
+        if (basis != null)
+        {
+            var t = basis.Trim();
+            if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase))
+                YGNodeStyleSetFlexBasisAuto(node);
+            else if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+                YGNodeStyleSetFlexBasisPercent(node, pct);
+            else if (TryParsePoints(t, parentW, parentH, em, rem, out var pts))
+                YGNodeStyleSetFlexBasis(node, pts);
+        }
+        var alignSelf = element.Style.Get("align-self")?.Trim();
+        if (alignSelf != null)
+        {
+            YGNodeStyleSetAlignSelf(node, alignSelf switch
+            {
+                "center" => YGAlign.Center,
+                "flex-start" or "start" => YGAlign.FlexStart,
+                "flex-end" or "end" => YGAlign.FlexEnd,
+                "stretch" => YGAlign.Stretch,
+                "baseline" => YGAlign.Baseline,
+                _ => YGAlign.Auto
+            });
+        }
+    }
+
+    private static void ApplyBoxModel(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        ApplyDim(element.Style.Get("width"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetWidth(node, v), p => YGNodeStyleSetWidthPercent(node, p), () => YGNodeStyleSetWidthAuto(node));
+        ApplyDim(element.Style.Get("height"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetHeight(node, v), p => YGNodeStyleSetHeightPercent(node, p), () => YGNodeStyleSetHeightAuto(node));
+        ApplyMinMax(element.Style.Get("min-width"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetMinWidth(node, v), p => YGNodeStyleSetMinWidthPercent(node, p));
+        ApplyMinMax(element.Style.Get("min-height"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetMinHeight(node, v), p => YGNodeStyleSetMinHeightPercent(node, p));
+        ApplyMinMax(element.Style.Get("max-width"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetMaxWidth(node, v), p => YGNodeStyleSetMaxWidthPercent(node, p));
+        ApplyMinMax(element.Style.Get("max-height"), parentW, parentH, em, rem,
+            v => YGNodeStyleSetMaxHeight(node, v), p => YGNodeStyleSetMaxHeightPercent(node, p));
+
+        if (TryParsePoints(element.Style.Get("padding"), parentW, parentH, em, rem, out var pad))
+            YGNodeStyleSetPadding(node, YGEdge.All, pad);
+        ApplyEdge(element.Style.Get("padding-left"), YGEdge.Left, true, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("padding-top"), YGEdge.Top, true, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("padding-right"), YGEdge.Right, true, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("padding-bottom"), YGEdge.Bottom, true, node, parentW, parentH, em, rem);
+
+        var margin = element.Style.Get("margin");
+        if (margin != null)
+        {
+            if (string.Equals(margin.Trim(), "auto", StringComparison.OrdinalIgnoreCase))
+                YGNodeStyleSetMarginAuto(node, YGEdge.All);
+            else if (TryParsePoints(margin, parentW, parentH, em, rem, out var m))
+                YGNodeStyleSetMargin(node, YGEdge.All, m);
+        }
+        ApplyEdge(element.Style.Get("margin-left"), YGEdge.Left, false, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("margin-top"), YGEdge.Top, false, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("margin-right"), YGEdge.Right, false, node, parentW, parentH, em, rem);
+        ApplyEdge(element.Style.Get("margin-bottom"), YGEdge.Bottom, false, node, parentW, parentH, em, rem);
+    }
+
+    private static void ApplyGap(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (TryParsePoints(element.Style.Get("gap"), parentW, parentH, em, rem, out var gap))
+            YGNodeStyleSetGap(node, YGGutter.All, gap);
+        if (TryParsePoints(element.Style.Get("row-gap"), parentW, parentH, em, rem, out var rowGap))
+            YGNodeStyleSetGap(node, YGGutter.Row, rowGap);
+        if (TryParsePoints(element.Style.Get("column-gap"), parentW, parentH, em, rem, out var colGap))
+            YGNodeStyleSetGap(node, YGGutter.Column, colGap);
+    }
+
+    private static void ApplyPosition(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        var pos = element.Style.Get("position")?.Trim();
+        if (string.Equals(pos, "absolute", StringComparison.OrdinalIgnoreCase))
+            YGNodeStyleSetPositionType(node, YGPositionType.Absolute);
+        else if (string.Equals(pos, "relative", StringComparison.OrdinalIgnoreCase))
+            YGNodeStyleSetPositionType(node, YGPositionType.Relative);
+
+        ApplyInset(element.Style.Get("top"), YGEdge.Top, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("right"), YGEdge.Right, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("bottom"), YGEdge.Bottom, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("left"), YGEdge.Left, node, parentW, parentH, em, rem);
+    }
+
+    private static void ApplyOverflow(Element element, YogaNode node)
+    {
+        var o = element.Style.Get("overflow")?.Trim();
+        if (o is "hidden" or "clip") YGNodeStyleSetOverflow(node, YGOverflow.Hidden);
+        else if (o is "scroll" or "auto") YGNodeStyleSetOverflow(node, YGOverflow.Scroll);
+    }
+
+    // ——— 原有 Grid 实现（Yoga Grid 暂不可靠）———
+
+    private void MeasureGrid(Element element, ComputedStyle style, Size available)
     {
         var gap = style.Gap;
         var cols = ParseGridTemplate(style.GridTemplateColumns, available.Width, gap);
         var rows = ParseGridTemplate(style.GridTemplateRows, available.Height, gap);
-        ApplyIntrinsicGridTracks(visual, style.GridTemplateColumns, cols, isColumns: true);
-        ApplyIntrinsicGridTracks(visual, style.GridTemplateRows, rows, isColumns: false);
+        ApplyIntrinsicGridTracks(element, style.GridTemplateColumns, cols, isColumns: true);
+        ApplyIntrinsicGridTracks(element, style.GridTemplateRows, rows, isColumns: false);
         RecomputeFlexibleGridTracks(style.GridTemplateColumns, cols, available.Width, gap);
         RecomputeFlexibleGridTracks(style.GridTemplateRows, rows, available.Height, gap);
 
-        var colCount = cols.Length;
-        var rowCount = rows.Length;
-        if (colCount == 0) colCount = 1;
-        if (rowCount == 0) rowCount = 1;
-
+        var colCount = Math.Max(1, cols.Length);
+        var rowCount = Math.Max(1, rows.Length);
         var effectiveCols = new float[colCount];
         var effectiveRows = new float[rowCount];
-        for (int i = 0; i < colCount; i++) effectiveCols[i] = cols.Length > i ? cols[i] : Math.Max(0, available.Width - gap * Math.Max(0, colCount - 1)) / colCount;
-        for (int i = 0; i < rowCount; i++) effectiveRows[i] = rows.Length > i ? rows[i] : Math.Max(0, available.Height - gap * Math.Max(0, rowCount - 1)) / rowCount;
+        for (int i = 0; i < colCount; i++)
+            effectiveCols[i] = cols.Length > i ? cols[i] : Math.Max(0, available.Width - gap * Math.Max(0, colCount - 1)) / colCount;
+        for (int i = 0; i < rowCount; i++)
+            effectiveRows[i] = rows.Length > i ? rows[i] : Math.Max(0, available.Height - gap * Math.Max(0, rowCount - 1)) / rowCount;
 
-        var visibleChildren = visual.Children.Where(child => child.IsVisible).ToArray();
-        var areas = ParseGridAreas(visual.Style.Get("grid-template-areas"));
+        var visibleChildren = element.Children.Where(child => child.IsVisible).ToArray();
+        var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
         for (var childIndex = 0; childIndex < visibleChildren.Length; childIndex++)
         {
             var child = visibleChildren[childIndex];
-            var cs = GetComputedStyle(child);
+            var cs = GetComputedStyle(child, available.Width, available.Height);
             ApplyAutoOrAreaPlacement(child, childIndex, colCount, cs, areas);
             var col = Math.Min(Math.Max(0, cs.GridColumn - 1), colCount - 1);
             var row = Math.Min(Math.Max(0, cs.GridRow - 1), rowCount - 1);
             var colSpan = Math.Min(cs.GridColumnSpan, colCount - col);
             var rowSpan = Math.Min(cs.GridRowSpan, rowCount - row);
-
             var w = 0f; for (int i = 0; i < colSpan; i++) w += effectiveCols[col + i];
             w += gap * Math.Max(0, colSpan - 1);
             var h = 0f; for (int i = 0; i < rowSpan; i++) h += effectiveRows[row + i];
@@ -233,39 +454,38 @@ public sealed class LayoutEngine
         }
     }
 
-    private void ArrangeGrid(Visual visual, ComputedStyle style, Rect inner)
+    private void ArrangeGrid(Element element, ComputedStyle style, Rect inner)
     {
         var gap = style.Gap;
         var cols = ParseGridTemplate(style.GridTemplateColumns, inner.Width, gap);
         var rows = ParseGridTemplate(style.GridTemplateRows, inner.Height, gap);
-        ApplyIntrinsicGridTracks(visual, style.GridTemplateColumns, cols, isColumns: true);
-        ApplyIntrinsicGridTracks(visual, style.GridTemplateRows, rows, isColumns: false);
+        ApplyIntrinsicGridTracks(element, style.GridTemplateColumns, cols, isColumns: true);
+        ApplyIntrinsicGridTracks(element, style.GridTemplateRows, rows, isColumns: false);
         RecomputeFlexibleGridTracks(style.GridTemplateColumns, cols, inner.Width, gap);
         RecomputeFlexibleGridTracks(style.GridTemplateRows, rows, inner.Height, gap);
 
         var colCount = Math.Max(1, cols.Length);
         var rowCount = Math.Max(1, rows.Length);
-
         var colX = new float[colCount + 1];
         colX[0] = inner.Left;
-        for (int i = 0; i < colCount; i++) colX[i + 1] = colX[i] + (cols.Length > i ? cols[i] : Math.Max(0, inner.Width - gap * Math.Max(0, colCount - 1)) / colCount) + gap;
-
+        for (int i = 0; i < colCount; i++)
+            colX[i + 1] = colX[i] + (cols.Length > i ? cols[i] : Math.Max(0, inner.Width - gap * Math.Max(0, colCount - 1)) / colCount) + gap;
         var rowY = new float[rowCount + 1];
         rowY[0] = inner.Top;
-        for (int i = 0; i < rowCount; i++) rowY[i + 1] = rowY[i] + (rows.Length > i ? rows[i] : Math.Max(0, inner.Height - gap * Math.Max(0, rowCount - 1)) / rowCount) + gap;
+        for (int i = 0; i < rowCount; i++)
+            rowY[i + 1] = rowY[i] + (rows.Length > i ? rows[i] : Math.Max(0, inner.Height - gap * Math.Max(0, rowCount - 1)) / rowCount) + gap;
 
-        var visibleChildren = visual.Children.Where(child => child.IsVisible).ToArray();
-        var areas = ParseGridAreas(visual.Style.Get("grid-template-areas"));
+        var visibleChildren = element.Children.Where(child => child.IsVisible).ToArray();
+        var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
         for (var childIndex = 0; childIndex < visibleChildren.Length; childIndex++)
         {
             var child = visibleChildren[childIndex];
-            var cs = GetComputedStyle(child);
+            var cs = GetComputedStyle(child, inner.Width, inner.Height);
             ApplyAutoOrAreaPlacement(child, childIndex, colCount, cs, areas);
             var col = Math.Min(Math.Max(0, cs.GridColumn - 1), colCount - 1);
             var row = Math.Min(Math.Max(0, cs.GridRow - 1), rowCount - 1);
             var colEnd = Math.Min(col + cs.GridColumnSpan, colCount);
             var rowEnd = Math.Min(row + cs.GridRowSpan, rowCount);
-
             var x = colX[col];
             var y = rowY[row];
             var w = colX[colEnd] - colX[col] - gap;
@@ -281,135 +501,54 @@ public sealed class LayoutEngine
         var result = new float[parts.Length];
         var fixedSize = 0f;
         var frTotal = 0f;
-        var autoCount = 0;
 
         foreach (var raw in parts)
         {
             var p = raw.Trim();
-            if (TryParseMinMax(p, out var min, out var frMax))
+            if (TryParseMinMaxLegacy(p, out var min, out var frMax))
             {
                 fixedSize += min;
                 frTotal += frMax;
             }
-            else if (p.EndsWith("fr"))
-                frTotal += float.TryParse(p[..^2], out var fr) ? fr : 1f;
-            else if (p.EndsWith("px"))
+            else if (p.EndsWith("fr", StringComparison.OrdinalIgnoreCase))
+                frTotal += float.TryParse(p[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var fr) ? fr : 1f;
+            else if (p.EndsWith("px", StringComparison.OrdinalIgnoreCase))
             {
-                if (float.TryParse(p[..^2], out var px)) fixedSize += px;
+                if (float.TryParse(p[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var px)) fixedSize += px;
             }
-            else if (p == "auto")
-                autoCount++;
-            else if (float.TryParse(p, out var val))
-                fixedSize += val;
+            else if (p.EndsWith('%'))
+            {
+                if (float.TryParse(p[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+                    fixedSize += available * pct / 100f;
+            }
         }
 
-        var availableForTracks = Math.Max(0, available - gap * Math.Max(0, parts.Length - 1));
-        var flexibleSpace = Math.Max(0, availableForTracks - fixedSize);
-        for (int i = 0; i < parts.Length; i++)
+        var flexible = Math.Max(0, available - gap * Math.Max(0, parts.Length - 1) - fixedSize);
+        for (var i = 0; i < parts.Length; i++)
         {
             var p = parts[i].Trim();
-            if (TryParseMinMax(p, out var min, out var frMax))
+            if (TryParseMinMaxLegacy(p, out var min, out var frMax))
+                result[i] = min + (frTotal > 0 ? flexible * frMax / frTotal : 0);
+            else if (p.EndsWith("fr", StringComparison.OrdinalIgnoreCase))
             {
-                result[i] = min + (frTotal > 0 ? flexibleSpace * frMax / frTotal : 0);
+                var fr = float.TryParse(p[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 1f;
+                result[i] = frTotal > 0 ? flexible * fr / frTotal : 0;
             }
-            else if (p.EndsWith("fr"))
-            {
-                var fr = float.TryParse(p[..^2], out var parsed) ? parsed : 1f;
-                result[i] = frTotal > 0 ? flexibleSpace * fr / frTotal : 0;
-            }
-            else if (p.EndsWith("px"))
-            {
-                if (float.TryParse(p[..^2], out var px)) result[i] = px;
-            }
-            else if (p == "auto")
-            {
-                result[i] = autoCount > 0 ? flexibleSpace / autoCount : 0;
-            }
-            else if (float.TryParse(p, out var val))
-            {
-                result[i] = val;
-            }
+            else if (p.EndsWith("px", StringComparison.OrdinalIgnoreCase) &&
+                     float.TryParse(p[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var px))
+                result[i] = px;
+            else if (p.EndsWith('%') &&
+                     float.TryParse(p[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+                result[i] = available * pct / 100f;
+            else if (p is "min-content" or "max-content" or "fit-content" or "auto")
+                result[i] = 0;
+            else if (float.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out var rawVal))
+                result[i] = rawVal;
         }
         return result;
     }
 
-    private static string[] SplitGridTemplate(string template)
-    {
-        var parts = new List<string>();
-        var start = 0;
-        var depth = 0;
-        for (var i = 0; i < template.Length; i++)
-        {
-            var ch = template[i];
-            if (ch == '(') depth++;
-            else if (ch == ')') depth = Math.Max(0, depth - 1);
-            else if (char.IsWhiteSpace(ch) && depth == 0)
-            {
-                if (i > start) parts.Add(template[start..i]);
-                start = i + 1;
-            }
-        }
-        if (start < template.Length) parts.Add(template[start..]);
-        return parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray();
-    }
-
-    private static bool TryParseMinMax(string value, out float min, out float frMax)
-    {
-        min = 0;
-        frMax = 0;
-        if (!value.StartsWith("minmax(", StringComparison.OrdinalIgnoreCase) || !value.EndsWith(')')) return false;
-        var inner = value[7..^1];
-        var comma = inner.IndexOf(',');
-        if (comma < 0) return false;
-        var minPart = inner[..comma].Trim();
-        var maxPart = inner[(comma + 1)..].Trim();
-        if (minPart.EndsWith("px", StringComparison.OrdinalIgnoreCase))
-            float.TryParse(minPart[..^2], out min);
-        else
-            float.TryParse(minPart, out min);
-        if (maxPart.EndsWith("fr", StringComparison.OrdinalIgnoreCase))
-            frMax = float.TryParse(maxPart[..^2], out var fr) ? fr : 1f;
-        return true;
-    }
-
-    private static Dictionary<string, (int col, int row, int colSpan, int rowSpan)> ParseGridAreas(string? value)
-    {
-        var result = new Dictionary<string, (int col, int row, int colSpan, int rowSpan)>(StringComparer.Ordinal);
-        if (string.IsNullOrWhiteSpace(value)) return result;
-        var rows = value.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        for (var row = 0; row < rows.Length; row++)
-        {
-            var cells = rows[row].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            for (var col = 0; col < cells.Length; col++)
-            {
-                var name = cells[col];
-                if (name == ".") continue;
-                if (!result.TryGetValue(name, out var area))
-                    result[name] = (col + 1, row + 1, 1, 1);
-                else
-                    result[name] = (Math.Min(area.col, col + 1), Math.Min(area.row, row + 1), Math.Max(area.colSpan, col - area.col + 2), Math.Max(area.rowSpan, row - area.row + 2));
-            }
-        }
-        return result;
-    }
-
-    private static void ApplyAutoOrAreaPlacement(Visual child, int childIndex, int colCount, ComputedStyle style, Dictionary<string, (int col, int row, int colSpan, int rowSpan)> areas)
-    {
-        if (!string.IsNullOrWhiteSpace(style.GridArea) && areas.TryGetValue(style.GridArea, out var area))
-        {
-            style.GridColumn = area.col;
-            style.GridRow = area.row;
-            style.GridColumnSpan = area.colSpan;
-            style.GridRowSpan = area.rowSpan;
-            return;
-        }
-
-        if (child.Style.Get("grid-column") != null || child.Style.Get("grid-row") != null) return;
-        style.GridColumn = childIndex % Math.Max(1, colCount) + 1;
-        style.GridRow = childIndex / Math.Max(1, colCount) + 1;
-    }
-
-    private static void ApplyIntrinsicGridTracks(Visual visual, string template, float[] tracks, bool isColumns)
+    private static void ApplyIntrinsicGridTracks(Element element, string template, float[] tracks, bool isColumns)
     {
         if (tracks.Length == 0 || !template.Contains("content", StringComparison.OrdinalIgnoreCase)) return;
         var parts = SplitGridTemplate(template);
@@ -419,13 +558,43 @@ public sealed class LayoutEngine
             if (keyword is not ("min-content" or "max-content" or "fit-content")) continue;
             var trackIndex = i + 1;
             var size = 0f;
-            foreach (var child in visual.Children.Where(child => child.IsVisible))
+            foreach (var child in element.Children.Where(child => child.IsVisible))
             {
-                var childStyle = GetComputedStyle(child);
+                var childStyle = GetComputedStyle(child, float.NaN, float.NaN);
                 var childTrack = isColumns ? childStyle.GridColumn : childStyle.GridRow;
-                if (childTrack != trackIndex) continue;
+                if (childTrack != trackIndex && childTrack != 1) continue;
+                // 未显式放置的第一个子项落入 track 1
+                if (child.Style.Get(isColumns ? "grid-column" : "grid-row") == null &&
+                    string.IsNullOrEmpty(childStyle.GridArea) && trackIndex != 1)
+                    continue;
+                if (child.Style.Get(isColumns ? "grid-column" : "grid-row") == null &&
+                    string.IsNullOrEmpty(childStyle.GridArea) && trackIndex == 1)
+                {
+                    // ok
+                }
+                else if (childTrack != trackIndex) continue;
+
                 var measured = child.Measure(Size.Zero);
                 size = Math.Max(size, isColumns ? measured.Width : measured.Height);
+            }
+            // 简化：对未指定 grid-column 的项，按文档序落入列
+            if (size <= 0)
+            {
+                var idx = 0;
+                foreach (var child in element.Children.Where(c => c.IsVisible))
+                {
+                    var cs = GetComputedStyle(child, float.NaN, float.NaN);
+                    var explicitTrack = isColumns
+                        ? child.Style.Get("grid-column") != null || !string.IsNullOrEmpty(cs.GridArea)
+                        : child.Style.Get("grid-row") != null || !string.IsNullOrEmpty(cs.GridArea);
+                    var track = explicitTrack
+                        ? (isColumns ? cs.GridColumn : cs.GridRow)
+                        : (isColumns ? idx % Math.Max(1, tracks.Length) + 1 : idx / Math.Max(1, tracks.Length) + 1);
+                    if (!explicitTrack) idx++;
+                    if (track != trackIndex) continue;
+                    var measured = child.Measure(Size.Zero);
+                    size = Math.Max(size, isColumns ? measured.Width : measured.Height);
+                }
             }
             tracks[i] = size;
         }
@@ -440,13 +609,13 @@ public sealed class LayoutEngine
         for (var i = 0; i < Math.Min(parts.Length, tracks.Length); i++)
         {
             var part = parts[i].Trim();
-            if (TryParseMinMax(part, out var minMaxMin, out var minMaxFr))
+            if (TryParseMinMaxLegacy(part, out var minMaxMin, out var minMaxFr))
             {
                 fixedSize += minMaxMin;
                 frTotal += minMaxFr;
             }
-            else if (part.EndsWith("fr"))
-                frTotal += float.TryParse(part[..^2], out var fr) ? fr : 1f;
+            else if (part.EndsWith("fr", StringComparison.OrdinalIgnoreCase))
+                frTotal += float.TryParse(part[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var fr) ? fr : 1f;
             else
                 fixedSize += tracks[i];
         }
@@ -456,37 +625,120 @@ public sealed class LayoutEngine
         for (var i = 0; i < Math.Min(parts.Length, tracks.Length); i++)
         {
             var part = parts[i].Trim();
-            if (TryParseMinMax(part, out var min, out var minMaxFr))
+            if (TryParseMinMaxLegacy(part, out var min, out var minMaxFr))
             {
                 tracks[i] = min + flexibleSpace * minMaxFr / frTotal;
                 continue;
             }
-            if (!part.EndsWith("fr")) continue;
-            var fr = float.TryParse(part[..^2], out var parsed) ? parsed : 1f;
+            if (!part.EndsWith("fr", StringComparison.OrdinalIgnoreCase)) continue;
+            var fr = float.TryParse(part[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 1f;
             tracks[i] = flexibleSpace * fr / frTotal;
         }
     }
 
-    private static ComputedStyle GetComputedStyle(Visual visual) =>
-        GetComputedStyle(visual, float.NaN, float.NaN);
+    private static void ApplyAutoOrAreaPlacement(
+        Element child, int childIndex, int colCount, ComputedStyle style,
+        Dictionary<string, (int col, int row, int colSpan, int rowSpan)> areas)
+    {
+        if (!string.IsNullOrWhiteSpace(style.GridArea) &&
+            !style.GridArea.Contains('/') &&
+            areas.TryGetValue(style.GridArea.Trim(), out var area))
+        {
+            style.GridColumn = area.col;
+            style.GridRow = area.row;
+            style.GridColumnSpan = area.colSpan;
+            style.GridRowSpan = area.rowSpan;
+            return;
+        }
 
-    private static ComputedStyle GetComputedStyle(Visual visual, float parentWidth, float parentHeight)
+        if (child.Style.Get("grid-column") != null || child.Style.Get("grid-row") != null) return;
+        style.GridColumn = childIndex % Math.Max(1, colCount) + 1;
+        style.GridRow = childIndex / Math.Max(1, colCount) + 1;
+    }
+
+    private static Dictionary<string, (int col, int row, int colSpan, int rowSpan)> ParseGridAreas(string? value)
+    {
+        var result = new Dictionary<string, (int col, int row, int colSpan, int rowSpan)>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(value)) return result;
+
+        // Square 约定：行用 | 分隔，单元格空格分隔（如 "header header | nav main"）
+        var rows = value.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        for (var row = 0; row < rows.Length; row++)
+        {
+            var cells = rows[row].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var col = 0; col < cells.Length; col++)
+            {
+                var name = cells[col];
+                if (name == ".") continue;
+                if (!result.TryGetValue(name, out var area))
+                    result[name] = (col + 1, row + 1, 1, 1);
+                else
+                    result[name] = (
+                        Math.Min(area.col, col + 1),
+                        Math.Min(area.row, row + 1),
+                        Math.Max(area.colSpan, col - area.col + 2),
+                        Math.Max(area.rowSpan, row - area.row + 2));
+            }
+        }
+        return result;
+    }
+
+    private static string[] SplitGridTemplate(string template)
+    {
+        var parts = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < template.Length; i++)
+        {
+            var c = template[i];
+            if (c == '(') depth++;
+            else if (c == ')') depth = Math.Max(0, depth - 1);
+            else if (char.IsWhiteSpace(c) && depth == 0)
+            {
+                if (i > start) parts.Add(template[start..i]);
+                start = i + 1;
+            }
+        }
+        if (start < template.Length) parts.Add(template[start..]);
+        return parts.Where(p => p.Length > 0).ToArray();
+    }
+
+    private static bool TryParseMinMaxLegacy(string part, out float minPts, out float maxFr)
+    {
+        minPts = 0;
+        maxFr = 0;
+        if (!part.StartsWith("minmax(", StringComparison.OrdinalIgnoreCase) || !part.EndsWith(')'))
+            return false;
+        var inner = part[7..^1];
+        var comma = inner.IndexOf(',');
+        if (comma < 0) return false;
+        var minPart = inner[..comma].Trim();
+        var maxPart = inner[(comma + 1)..].Trim();
+        if (minPart.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+            float.TryParse(minPart[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out minPts);
+        if (maxPart.EndsWith("fr", StringComparison.OrdinalIgnoreCase))
+            float.TryParse(maxPart[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out maxFr);
+        return true;
+    }
+
+    // ——— CSS 解析工具 ———
+
+    private static ComputedStyle GetComputedStyle(Element element, float parentWidth, float parentHeight)
     {
         var style = new ComputedStyle();
-        var display = visual.Style.Get("display");
+        var display = element.Style.Get("display");
         if (display == "flex") style.Display = DisplayMode.Flex;
         if (display == "grid") style.Display = DisplayMode.Grid;
         if (display == "none") style.Display = DisplayMode.None;
 
-        style.FlexDirection = visual.Style.Get("flex-direction")?.Trim() switch
+        style.FlexDirection = element.Style.Get("flex-direction")?.Trim() switch
         {
             "column" => FlexDirection.Column,
             "row-reverse" => FlexDirection.RowReverse,
             "column-reverse" => FlexDirection.ColumnReverse,
             _ => FlexDirection.Row
         };
-
-        style.JustifyContent = visual.Style.Get("justify-content")?.Trim() switch
+        style.JustifyContent = element.Style.Get("justify-content")?.Trim() switch
         {
             "center" => JustifyContent.Center,
             "flex-end" => JustifyContent.FlexEnd,
@@ -494,8 +746,7 @@ public sealed class LayoutEngine
             "space-around" => JustifyContent.SpaceAround,
             _ => JustifyContent.FlexStart
         };
-
-        style.AlignItems = visual.Style.Get("align-items")?.Trim() switch
+        style.AlignItems = element.Style.Get("align-items")?.Trim() switch
         {
             "center" => AlignItems.Center,
             "flex-start" => AlignItems.FlexStart,
@@ -503,43 +754,38 @@ public sealed class LayoutEngine
             _ => AlignItems.Stretch
         };
 
-        var gap = visual.Style.Get("gap");
-        if (gap != null && float.TryParse(gap.TrimEnd('p', 'x'), out var gapVal)) style.Gap = gapVal;
+        var emSize = GetFontSize(element);
+        var remSize = GetRootFontSize(element);
+        if (TryParsePoints(element.Style.Get("gap"), parentWidth, parentHeight, emSize, remSize, out var gapVal))
+            style.Gap = gapVal;
+        if (TryParsePoints(element.Style.Get("padding"), parentWidth, parentHeight, emSize, remSize, out var paddingVal))
+            style.Padding = paddingVal;
+        if (TryParsePoints(element.Style.Get("margin"), parentWidth, parentHeight, emSize, remSize, out var marginVal))
+            style.Margin = marginVal;
+        if (TryParsePoints(element.Style.Get("width"), parentWidth, parentHeight, emSize, remSize, out var widthVal))
+            style.Width = widthVal;
+        if (TryParsePoints(element.Style.Get("height"), parentWidth, parentHeight, emSize, remSize, out var heightVal))
+            style.Height = heightVal;
 
-        var emSize = GetFontSize(visual);
-        var remSize = GetRootFontSize(visual);
+        var flexGrow = element.Style.Get("flex-grow");
+        if (flexGrow != null && float.TryParse(flexGrow, NumberStyles.Float, CultureInfo.InvariantCulture, out var grow))
+            style.FlexGrow = grow;
+        var flexShrink = element.Style.Get("flex-shrink");
+        if (flexShrink != null && float.TryParse(flexShrink, NumberStyles.Float, CultureInfo.InvariantCulture, out var shrink))
+            style.FlexShrink = shrink;
+        if (TryParsePoints(element.Style.Get("flex-basis"), parentWidth, parentHeight, emSize, remSize, out var basis))
+            style.FlexBasis = basis;
 
-        var padding = visual.Style.Get("padding");
-        if (padding != null && TryParseLength(padding, parentWidth, parentHeight, emSize, remSize, out var paddingVal)) style.Padding = paddingVal;
-
-        var margin = visual.Style.Get("margin");
-        if (margin != null && TryParseLength(margin, parentWidth, parentHeight, emSize, remSize, out var marginVal)) style.Margin = marginVal;
-
-        var width = visual.Style.Get("width");
-        if (width != null && TryParseLength(width, parentWidth, parentHeight, emSize, remSize, out var widthVal)) style.Width = widthVal;
-
-        var height = visual.Style.Get("height");
-        if (height != null && TryParseLength(height, parentWidth, parentHeight, emSize, remSize, out var heightVal)) style.Height = heightVal;
-
-        var flexGrow = visual.Style.Get("flex-grow");
-        if (flexGrow != null && float.TryParse(flexGrow, out var grow)) style.FlexGrow = grow;
-
-        var flexShrink = visual.Style.Get("flex-shrink");
-        if (flexShrink != null && float.TryParse(flexShrink, out var shrink)) style.FlexShrink = shrink;
-
-        var flexBasis = visual.Style.Get("flex-basis");
-        if (flexBasis != null && TryParseLength(flexBasis, parentWidth, parentHeight, emSize, remSize, out var basis)) style.FlexBasis = basis;
-
-        var gridCols = visual.Style.Get("grid-template-columns");
+        var gridCols = element.Style.Get("grid-template-columns");
         if (gridCols != null) style.GridTemplateColumns = gridCols;
-        var gridRows = visual.Style.Get("grid-template-rows");
+        var gridRows = element.Style.Get("grid-template-rows");
         if (gridRows != null) style.GridTemplateRows = gridRows;
 
-        var gridCol = visual.Style.Get("grid-column");
-        if (gridCol != null) ApplyGridPlacement(gridCol, value => style.GridColumn = value, value => style.GridColumnSpan = value);
-        var gridRow = visual.Style.Get("grid-row");
-        if (gridRow != null) ApplyGridPlacement(gridRow, value => style.GridRow = value, value => style.GridRowSpan = value);
-        var gridArea = visual.Style.Get("grid-area");
+        var gridCol = element.Style.Get("grid-column");
+        if (gridCol != null) ApplyGridPlacement(gridCol, v => style.GridColumn = v, v => style.GridColumnSpan = v);
+        var gridRow = element.Style.Get("grid-row");
+        if (gridRow != null) ApplyGridPlacement(gridRow, v => style.GridRow = v, v => style.GridRowSpan = v);
+        var gridArea = element.Style.Get("grid-area");
         if (gridArea != null) style.GridArea = gridArea;
 
         return style;
@@ -550,85 +796,136 @@ public sealed class LayoutEngine
         var parts = value.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length > 0 && int.TryParse(parts[0], out var start)) setStart(start);
         if (parts.Length <= 1) return;
-
         var spanPart = parts[1];
         if (spanPart.StartsWith("span ", StringComparison.OrdinalIgnoreCase))
             spanPart = spanPart[5..].Trim();
         if (int.TryParse(spanPart, out var span)) setSpan(Math.Max(1, span));
     }
 
-    private static float GetFontSize(Visual visual)
+    private static void ApplyDim(string? value, float parentW, float parentH, float em, float rem,
+        Action<float> setPts, Action<float> setPct, Action setAuto)
     {
-        var value = visual.Style.Get("font-size");
-        if (value != null && TryParseLength(value, float.NaN, float.NaN, 16f, 16f, out var parsed) && !float.IsNaN(parsed))
-            return parsed;
-        return visual.Parent != null ? GetFontSize(visual.Parent) : 16f;
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var t = value.Trim();
+        if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase)) { setAuto(); return; }
+        if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+        { setPct(pct); return; }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts);
     }
 
-    private static float GetRootFontSize(Visual visual)
+    private static void ApplyMinMax(string? value, float parentW, float parentH, float em, float rem,
+        Action<float> setPts, Action<float> setPct)
     {
-        var root = visual;
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var t = value.Trim();
+        if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+        { setPct(pct); return; }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts);
+    }
+
+    private static void ApplyEdge(string? value, YGEdge edge, bool isPadding, YogaNode node,
+        float parentW, float parentH, float em, float rem)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (string.Equals(value.Trim(), "auto", StringComparison.OrdinalIgnoreCase) && !isPadding)
+        {
+            YGNodeStyleSetMarginAuto(node, edge);
+            return;
+        }
+        if (!TryParsePoints(value, parentW, parentH, em, rem, out var pts)) return;
+        if (isPadding) YGNodeStyleSetPadding(node, edge, pts);
+        else YGNodeStyleSetMargin(node, edge, pts);
+    }
+
+    private static void ApplyInset(string? value, YGEdge edge, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var t = value.Trim();
+        if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetPositionAuto(node, edge);
+            return;
+        }
+        if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
+        {
+            YGNodeStyleSetPositionPercent(node, edge, pct);
+            return;
+        }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts))
+            YGNodeStyleSetPosition(node, edge, pts);
+    }
+
+    private static bool TryParsePoints(string? value, float parentW, float parentH, float em, float rem, out float result)
+    {
+        result = ParseLength(value, parentW, parentH, em, rem);
+        return !float.IsNaN(result);
+    }
+
+    private static float ParseLength(string? value, float parentW, float parentH, float em, float rem)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return float.NaN;
+        var text = value.Replace(" ", "", StringComparison.Ordinal).Trim();
+        if (text.EndsWith("rem", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(text[..^3], NumberStyles.Float, CultureInfo.InvariantCulture, out var remV))
+            return remV * rem;
+        if (text.EndsWith("em", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(text[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var emV))
+            return emV * em;
+        if (text.EndsWith("px", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(text[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var px))
+            return px;
+        if (text.EndsWith('%') && float.TryParse(text[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct) &&
+            !float.IsNaN(parentW))
+            return parentW * pct / 100f;
+        if (text is "auto" or "min-content" or "max-content" or "fit-content")
+            return float.NaN;
+        if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var raw))
+            return raw;
+        return float.NaN;
+    }
+
+    private static float ResolveRefSize(string? css, float parentW, float parentH, float em, float rem, float fallback)
+    {
+        var v = ParseLength(css, parentW, parentH, em, rem);
+        return float.IsNaN(v) ? fallback : v;
+    }
+
+    private static float GetFontSize(Element element)
+    {
+        var value = element.Style.Get("font-size");
+        if (value != null)
+        {
+            var parsed = ParseLength(value, float.NaN, float.NaN, 16f, 16f);
+            if (!float.IsNaN(parsed)) return parsed;
+        }
+        return element.Parent != null ? GetFontSize(element.Parent) : 16f;
+    }
+
+    private static float GetRootFontSize(Element element)
+    {
+        var root = element;
         while (root.Parent != null) root = root.Parent;
         return GetFontSize(root);
     }
 
-    private static bool TryParseLength(string value, float parentSize, float viewportSize, float emSize, float remSize, out float result)
+    private static float Sanitize(float v) =>
+        float.IsNaN(v) || float.IsInfinity(v) ? 0 : Math.Max(0, v);
+
+    private static void ClearDirtyRecursive(Element element)
     {
-        result = 0;
-        if (string.IsNullOrEmpty(value)) return false;
-        var text = value.Replace(" ", "").Trim();
-        if (text.EndsWith("rem", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!float.TryParse(text[..^3], out var rem)) return false;
-            result = rem * remSize;
-            return true;
-        }
-        if (text.EndsWith("em", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!float.TryParse(text[..^2], out var em)) return false;
-            result = em * emSize;
-            return true;
-        }
-        if (text.EndsWith("px", StringComparison.OrdinalIgnoreCase))
-            return float.TryParse(text[..^2], out result);
-        if (text.EndsWith('%') && !float.IsNaN(parentSize))
-        {
-            if (!float.TryParse(text[..^1], out var percent)) return false;
-            result = parentSize * percent / 100f;
-            return true;
-        }
-        if (text.EndsWith("vw", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(viewportSize))
-        {
-            if (!float.TryParse(text[..^2], out var vw)) return false;
-            result = viewportSize * vw / 100f;
-            return true;
-        }
-        if (text.EndsWith("vh", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(viewportSize))
-        {
-            if (!float.TryParse(text[..^2], out var vh)) return false;
-            result = viewportSize * vh / 100f;
-            return true;
-        }
-        if (text.EndsWith("rp", StringComparison.OrdinalIgnoreCase) && !float.IsNaN(parentSize))
-        {
-            if (!float.TryParse(text[..^2], out var rp)) return false;
-            result = parentSize * rp / 100f;
-            return true;
-        }
-        if (text is "auto" or "min-content" or "max-content" or "fit-content")
-        {
-            result = float.NaN;
-            return true;
-        }
-        return float.TryParse(text, out result);
+        element.ClearLayoutDirty();
+        foreach (var child in element.Children)
+            ClearDirtyRecursive(child);
     }
 
-    private static Size MeasureWithStyle(Visual visual, Size available)
+    private sealed class YogaSession : IDisposable
     {
-        var measured = visual.Measure(available);
-        var style = GetComputedStyle(visual);
-        return new Size(
-            float.IsNaN(style.Width) ? measured.Width : style.Width,
-            float.IsNaN(style.Height) ? measured.Height : style.Height);
+        public YogaNode Root { get; set; } = null!;
+        public Dictionary<Element, YogaNode> Map { get; } = new();
+        public void Dispose()
+        {
+            if (Root != null)
+                YGNodeFreeRecursive(Root);
+        }
     }
 }

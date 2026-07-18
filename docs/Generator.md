@@ -74,7 +74,7 @@ public partial class MyComponent : Component
     public ObservableCollection<Item> Items = new();
 
     // 构建视觉树
-    protected override void BuildVisualTree() { ... }
+    protected override void BuildElementTree() { ... }
 
     // 生命周期钩子（虚方法）
     protected override void OnPropChanged(string name) { }
@@ -82,12 +82,12 @@ public partial class MyComponent : Component
 }
 ```
 
-### 4.2 BuildVisualTree
+### 4.2 BuildElementTree
 
 生成器将 `<template>` 编译为命令式构建代码：
 
 ```csharp
-protected override void BuildVisualTree()
+protected override void BuildElementTree()
 {
     var view = new View();
     // <Show when={LoggedIn}>
@@ -241,16 +241,28 @@ _for0 = new ForNode<Item>(
 2. 写入常量 Props 与绑定 Props。
 3. 将调用处 children 按 `slot` 属性编译为调用方作用域内的 `RenderFragment`。
 4. 设置默认/具名 Slot。
-5. 调用子组件 `BuildVisualTree()`。
+5. 调用子组件 `BuildElementTree()`。
 6. 将子组件加入父视觉树。
 
-组件模板中的 `<Slot>` 不生成可布局 Visual，而是生成 `SlotOutlet.AttachTo(parent, slotName, fallback)`。多个根节点作为连续区域插入，不创建隐式 `View`。
+组件模板中的 `<Slot>` 不生成可布局 Element，而是生成 `SlotOutlet.AttachTo(parent, slotName, fallback)`。多个根节点作为连续区域插入，不创建隐式 `View`。
 
 ### 8.5 路由声明
 
 `<Router>`/`<Route>` 是生成器已知节点。`component={PageType}` 编译为静态 `Func<UIElement>`，避免 `Activator`、反射和运行时程序集扫描。嵌套路由编译为 `RouteDefinition.Children`；布局 Route 将子分支作为默认 Slot 传给父页面组件。
 
 ---
+
+## 8.1 结构指令校验（Directive SDK）
+
+| Id | 含义 |
+|----|------|
+| SQXD001 | 重复指令标签（Catalog 扫描） |
+| SQXD002 | 指令缺少必需属性（如 Show 缺 when、For 缺 each） |
+| SQXD003 | 父标签不匹配（Match 须在 Switch；Route 须在 Router/Route） |
+| SQXD004 | 未知 Emit Pattern |
+| SQXD005 | SkipStandalone 指令出现在模板根 |
+
+Source Generator AST：`SqxNodeKind.Directive` + `DirectiveId`（别名归一）。
 
 ## 9. 诊断
 

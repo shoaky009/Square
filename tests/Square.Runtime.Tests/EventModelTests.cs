@@ -6,62 +6,192 @@ namespace Square.Runtime.Tests;
 public class EventModelTests
 {
     [Fact]
-    public void RoutedEventCarriesNameStrategyAndArgumentType()
+    public void EventCarriesTypeAndInitFlags()
     {
-        var routedEvent = new RoutedEvent<RoutedEventArgs>("save", RoutingStrategy.Bubble);
+        var e = new Event("save", new EventInit { Bubbles = true, Cancelable = true });
 
-        Assert.Equal("save", routedEvent.Name);
-        Assert.Equal(RoutingStrategy.Bubble, routedEvent.RoutingStrategy);
-        Assert.Equal(typeof(RoutedEventArgs), routedEvent.EventArgsType);
+        Assert.Equal("save", e.Type);
+        Assert.True(e.Bubbles);
+        Assert.True(e.Cancelable);
+        Assert.Equal(EventPhase.None, e.EventPhase);
     }
 
     [Fact]
-    public void RoutedEventNamesAreNormalizedForCaseInsensitiveLookup()
+    public void PreventDefaultOnlyWorksWhenCancelable()
     {
-        var routedEvent = new RoutedEvent<RoutedEventArgs>("PointerDown", RoutingStrategy.TunnelAndBubble);
+        var cancelable = new Event("click", new EventInit { Cancelable = true });
+        cancelable.PreventDefault();
+        Assert.True(cancelable.DefaultPrevented);
 
-        Assert.Equal("pointerdown", routedEvent.Name);
+        var plain = new Event("change", new EventInit { Bubbles = true });
+        plain.PreventDefault();
+        Assert.False(plain.DefaultPrevented);
     }
 
     [Fact]
-    public void EventArgumentsTrackRoutingStateAndDefaultPrevention()
+    public void DispatchEventBubblesToParent()
     {
-        var target = new TestTarget();
-        var args = new RoutedEventArgs
+        var root = new TestNode();
+        var child = new TestNode { Parent = root };
+        var phases = new List<string>();
+
+        root.AddEventListener("click", e => phases.Add($"root:{e.EventPhase}"));
+        child.AddEventListener("click", e => phases.Add($"child:{e.EventPhase}"));
+
+        child.DispatchEvent(new Event("click", new EventInit { Bubbles = true }));
+
+        Assert.Equal(new[]
         {
-            OriginalSource = target,
-            Source = target,
-            CurrentTarget = target,
-            Phase = EventPhase.AtTarget
-        };
-
-        args.Handled = true;
-        args.PreventDefault();
-
-        Assert.True(args.Handled);
-        Assert.True(args.DefaultPrevented);
-        Assert.Same(target, args.OriginalSource);
-        Assert.Equal(EventPhase.AtTarget, args.Phase);
+            $"child:{EventPhase.AtTarget}",
+            $"root:{EventPhase.BubblingPhase}"
+        }, phases);
     }
 
     [Fact]
-    public void StandardEventsResolveNamesCaseInsensitively()
+    public void CaptureListenersRunBeforeTarget()
     {
-        Assert.Same(StandardEvents.Click, StandardEvents.Resolve("CLICK"));
-        Assert.Same(StandardEvents.PointerDown, StandardEvents.Resolve("pointerDown"));
-        Assert.Null(StandardEvents.Resolve("missing"));
+        var root = new TestNode();
+        var child = new TestNode { Parent = root };
+        var calls = new List<string>();
+
+        root.AddEventListener("click", _ => calls.Add("root-capture"), useCapture: true);
+        root.AddEventListener("click", _ => calls.Add("root-bubble"));
+        child.AddEventListener("click", _ => calls.Add("child"));
+
+        child.DispatchEvent(new Event("click", new EventInit { Bubbles = true }));
+
+        Assert.Equal(new[] { "root-capture", "child", "root-bubble" }, calls);
     }
 
     [Fact]
-    public void CustomEventDefinitionsUseValueIdentityWithoutGlobalRegistration()
+    public void StopPropagationPreventsParentHandlers()
     {
-        var first = StandardEvents.ResolveOrCreate("saved");
-        var second = StandardEvents.ResolveOrCreate("SAVED");
+        var root = new TestNode();
+        var child = new TestNode { Parent = root };
+        var rootCalls = 0;
 
-        Assert.NotSame(first, second);
-        Assert.Equal(first, second);
-        Assert.Equal(RoutingStrategy.Bubble, first.RoutingStrategy);
+        root.AddEventListener("click", _ => rootCalls++);
+        child.AddEventListener("click", e => e.StopPropagation());
+
+        child.DispatchEvent(new Event("click", new EventInit { Bubbles = true }));
+
+        Assert.Equal(0, rootCalls);
     }
 
-    private sealed class TestTarget : IEventTarget;
+    [Fact]
+    public void StopImmediatePropagationSkipsSameTargetListeners()
+    {
+        var target = new TestNode();
+        var calls = 0;
+
+        target.AddEventListener("click", e =>
+        {
+            calls++;
+            e.StopImmediatePropagation();
+        });
+        target.AddEventListener("click", _ => calls++);
+
+        target.DispatchEvent(new Event("click", new EventInit { Bubbles = true }));
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void DispatchEventReturnsFalseWhenDefaultPrevented()
+    {
+        var target = new TestNode();
+        target.AddEventListener("click", e => e.PreventDefault());
+
+        var result = target.DispatchEvent(new Event("click", new EventInit { Bubbles = true, Cancelable = true }));
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void PassiveListenerCannotPreventDefault()
+    {
+        var target = new TestNode();
+        target.AddEventListener("wheel", e => e.PreventDefault(), new AddEventListenerOptions { Passive = true });
+
+        var result = target.DispatchEvent(new Event("wheel", new EventInit { Bubbles = true, Cancelable = true }));
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void OnceListenerIsRemovedAfterInvoke()
+    {
+        var target = new TestNode();
+        var calls = 0;
+        target.AddEventListener("click", _ => calls++, new AddEventListenerOptions { Once = true });
+
+        target.DispatchEvent(StandardEvents.CreateClick());
+        target.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void FocusDoesNotBubbleButFocusInDoes()
+    {
+        var root = new TestNode();
+        var child = new TestNode { Parent = root };
+        var focusOnRoot = 0;
+        var focusInOnRoot = 0;
+
+        root.AddEventListener(StandardEvents.Focus, _ => focusOnRoot++);
+        root.AddEventListener(StandardEvents.FocusIn, _ => focusInOnRoot++);
+
+        child.DispatchEvent(StandardEvents.CreateFocus());
+        child.DispatchEvent(StandardEvents.CreateFocusIn());
+
+        Assert.Equal(0, focusOnRoot);
+        Assert.Equal(1, focusInOnRoot);
+    }
+
+    [Fact]
+    public void RemoveEventListenerByActionDelegate()
+    {
+        var target = new TestNode();
+        var calls = 0;
+        void Handler() => calls++;
+
+        target.AddEventListener("click", Handler);
+        target.DispatchEvent(StandardEvents.CreateClick());
+        target.RemoveEventListener("click", Handler);
+        target.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void StandardEventsCreateUsesDefaultInit()
+    {
+        var click = StandardEvents.CreateClick();
+        Assert.Equal(StandardEvents.Click, click.Type);
+        Assert.True(click.Bubbles);
+        Assert.True(click.Cancelable);
+
+        var focus = StandardEvents.CreateFocus();
+        Assert.False(focus.Bubbles);
+    }
+
+    [Fact]
+    public void DispatchTrustedSetsIsTrusted()
+    {
+        var target = new TestNode();
+        Event? seen = null;
+        target.AddEventListener("click", e => seen = e);
+
+        target.DispatchTrusted(StandardEvents.CreateClick());
+
+        Assert.NotNull(seen);
+        Assert.True(seen!.IsTrusted);
+    }
+
+    private sealed class TestNode : EventTarget
+    {
+        public TestNode? Parent { get; set; }
+        protected override EventTarget? GetEventParent() => Parent;
+    }
 }

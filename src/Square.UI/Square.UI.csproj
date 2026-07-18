@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Square.Runtime\Square.Runtime.csproj" />
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+    <ProjectReference Include="..\Square.Text\Square.Text.csproj" />
   </ItemGroup>
 
 </Project>

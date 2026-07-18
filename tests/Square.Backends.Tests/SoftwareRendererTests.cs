@@ -109,7 +109,7 @@ public class SoftwareRendererTests
 
         var view = new View();
         view.Style.Set("background", "#eeeeee");
-        var controls = new Visual[]
+        var controls = new Element[]
         {
             view,
             new Square.Controls.Controls.Text("Text"),
@@ -128,7 +128,7 @@ public class SoftwareRendererTests
             var context = CreateContext(240, 120);
             context.Clear(Color.Transparent);
             control.Geometry = new Rect(4, 4, 220, 100);
-            control.Render(context);
+            control.Paint(context);
 
             Assert.Contains(context.GetBitmap().Pixels.Where((_, index) => index % 4 == 3), alpha => alpha > 0);
         }
@@ -144,7 +144,7 @@ public class SoftwareRendererTests
         root.Children.Add(child);
         var context = CreateContext(60, 30);
         context.Clear(Color.Transparent);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(root);
 
         tree.Render(context);
@@ -165,7 +165,7 @@ public class SoftwareRendererTests
             control.Focus();
             var context = CreateContext(240, 100);
             context.Clear(Color.White);
-            var tree = new RenderTree();
+            var tree = new DisplayTree();
             tree.BuildFrom(control);
 
             tree.Render(context);
@@ -183,7 +183,7 @@ public class SoftwareRendererTests
         asciiInput.Focus();
         var context = CreateContext(240, 50);
         context.Clear(Color.White);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(input);
 
         tree.Render(context);
@@ -204,7 +204,7 @@ public class SoftwareRendererTests
         input.SelectAll();
         var context = CreateContext(240, 50);
         context.Clear(Color.White);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(input);
 
         tree.Render(context);
@@ -238,7 +238,7 @@ public class SoftwareRendererTests
         input.SelectAll();
         var context = CreateContext(240, 40);
         context.Clear(Color.White);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(input);
 
         tree.Render(context);
@@ -266,7 +266,7 @@ public class SoftwareRendererTests
         var input = new Input { Value = "Blink", Geometry = new Rect(4, 4, 220, 36) };
         input.Focus();
         var context = CreateContext(240, 50);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
 
         context.Clear(Color.White);
         tree.BuildFrom(input);
@@ -298,7 +298,7 @@ public class SoftwareRendererTests
         var radio = new Radio { IsChecked = true, Geometry = new Rect(4, 4, 100, 24) };
         var context = CreateContext(120, 40);
         context.Clear(Color.White);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(radio);
 
         tree.Render(context);
@@ -324,7 +324,7 @@ public class SoftwareRendererTests
         root.Children.Add(laterText);
         var context = CreateContext(240, 170);
         context.Clear(Color.White);
-        var tree = new RenderTree();
+        var tree = new DisplayTree();
         tree.BuildFrom(root);
         select.HandlePointerDown(new Point(20, 20));
         tree.UpdateDirty();
@@ -342,7 +342,7 @@ public class SoftwareRendererTests
         expectedSelect.HandlePointerDown(new Point(20, 20));
         var expectedContext = CreateContext(240, 170);
         expectedContext.Clear(Color.White);
-        var expectedTree = new RenderTree();
+        var expectedTree = new DisplayTree();
         expectedTree.BuildFrom(expectedRoot);
         expectedTree.Render(expectedContext);
 

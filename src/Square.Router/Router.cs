@@ -85,7 +85,7 @@ public sealed class Router : View
                 var captured = nested;
                 page.Slots.Set("", parent => parent.Children.Add(captured));
             }
-            page.BuildVisualTree();
+            page.BuildElementTree();
             nested = page;
         }
         return nested;

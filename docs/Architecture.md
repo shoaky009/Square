@@ -15,7 +15,7 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
 2. **Pure C# Core** —— 框架核心全部 C# 实现。
 3. **NativeAOT First** —— 禁用 `Reflection.Emit`、运行时代码生成、`Dynamic`、运行时加载程序集。
 4. **Backend Independent** —— 核心不依赖具体图形库；图形库均为可插拔 Backend。
-5. **Retained Rendering** —— Visual Tree + Render Tree，非 Immediate Mode。
+5. **Retained Rendering** —— Element Tree + Display Tree，非 Immediate Mode。
 6. **Low Coupling / IDE Friendly** —— 模块间通过抽象接口通信；`.sqx` 提供类型检查、智能补全、编译错误定位。
 
 ---
@@ -32,13 +32,13 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
   Component (C#)
       │
       ▼
- Visual Tree   (Square.UI / Runtime)
+ Element Tree   (Square.UI / Runtime)
       │
       ▼
 Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
       │
       ▼
- Render Tree   (Square.Rendering, DrawCommand 列表)
+ Display Tree   (Square.Rendering, DrawCommand 列表)
       │
       ▼
  IRenderContext  (Square.Graphics 抽象)
@@ -47,7 +47,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
  Backend  (Square.Backends: Software → Skia/Blend2D/Cairo)
 ```
 
-- **非 Immediate Mode**：保留 Visual Tree + Render Tree，支持脏区增量重绘。
+- **非 Immediate Mode**：保留 Element Tree + Display Tree，支持脏区增量重绘。
 - **低耦合**：除 `Square.Backends` 与 `Square.Platform` 外，所有模块仅依赖抽象接口。
 - **NativeAOT 合规**：组件类型在编译期生成，运行时无反射解析；属性系统使用生成代码与强类型委托。
 
@@ -58,18 +58,18 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | 模块 | 职责 | 关键设计 |
 |---|---|---|
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
-| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props 解析、ref 字段生成、绑定/事件编译、结构原语特判、诊断映射 |
-| `Square.Runtime` | `Application`、组件生命周期、调度、信号、路由事件 | UI Dispatcher；组件树挂载；线程安全的跨组件消息投递；`Square.Events` 命名空间下的路由事件协议与标准事件目录 |
-| `Square.UI` | 视觉基类型、属性、Visual Tree 节点 | 强类型属性（生成代码）；元素操作 API（Style/ClassList/Children/Event） |
-| `Square.Controls` | 控件 + 结构原语 + 基础动画 | 控件 = 视觉 + 行为 + 默认样式；`Square.Controls.Animation` 命名空间下的时钟、缓动和属性动画 |
+| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
+| `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
+| `Square.UI` | `Element`/`UIElement`/`Document`/`UIDocument`、属性 | Element Tree；Style/ClassList/Children；HTMLElement/SVGElement 占位 |
+| `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
-| `Square.Rendering` | Visual→Layout→Render Tree→DrawCommand | `Square.Rendering` 命名空间下的 Box/Flex/Grid 布局；保留模式、脏区/增量 |
+| `Square.Rendering` | Element→Layout→Display Tree→DrawCommand | Flex/Block 经 Yoga.Net（Meta Yoga C# 移植）；Grid 内置；保留模式、脏区/增量 |
 | `Square.Text` | 文本引擎 | Unicode/Glyph/Font/Layout/Caret/Selection/HitTest/BiDi |
 | `Square.Platform` | 平台宿主抽象 | `IPlatformHost`：窗口/消息循环/输入泵；`LibraryImport` 源生成；现含 Win32 与 X11 两个实现，按构建层 `PLATFORM_*` 裁剪 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
-| `Square.Hosting` | 桌面应用宿主 | `DesktopApplication`：聚合 Runtime/UI/Controls/Rendering/Platform/Backends，统一处理窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环 |
+| `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |
 
 **依赖方向**：`SourceGenerator` → `Markup`；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（按实际需要引用）；`Backends`/`Platform` → 底层图形抽象。核心层禁止反向依赖 Backend/Platform。`Square.Hosting` 是聚合层，为应用提供开箱即用的桌面输入、调度、布局和渲染管线。
 
@@ -159,7 +159,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 - `SignalHub` 按名称共享强类型信号。相同名称只能绑定一种 `T`，类型冲突立即抛错。
 - 未指定 `Dispatcher` 的订阅在发布线程同步执行；绑定 `Dispatcher` 后，后台发布会排队到该 Dispatcher 的所属线程。
 - 组件在 `OnAttached` 订阅，在 `OnDetached` 释放订阅，避免卸载组件继续接收消息。
-- Dispatcher 队列由平台消息循环在 UI 线程排空；后台线程不得直接修改 Visual Tree。
+- Dispatcher 队列由平台消息循环在 UI 线程排空；后台线程不得直接修改 Element Tree。
 
 完整用法与生命周期示例见 `Composition-and-Signals.md`。
 

@@ -261,7 +261,7 @@ internal sealed unsafe class X11Host : IPlatformHost
                 {
                     var raw = (byte*)(&e);
                     int count = *(int*)(raw + 56);
-                    if (count == 0 && _lastFrame != null) PresentFrame(_lastFrame);
+                    if (count == 0 && _lastFrame != null) PresentFrame(_lastFrame, null);
                 }
                 break;
             case X11Api.ConfigureNotify:
@@ -591,7 +591,7 @@ internal sealed unsafe class X11Host : IPlatformHost
         }
     }
 
-    private void PresentFrame(Bitmap bitmap)
+    private void PresentFrame(Bitmap bitmap, IReadOnlyList<Rect>? dirtyRects)
     {
         if (_display == IntPtr.Zero || _window == IntPtr.Zero) return;
         _lastFrame = bitmap;
@@ -600,15 +600,42 @@ internal sealed unsafe class X11Host : IPlatformHost
         var src = bitmap.Pixels;
         if (_imageBufferPtr != IntPtr.Zero && src.Length <= _imageBufferSize)
         {
+            // Always keep full buffer in sync (needed for partial PutImage src)
             Marshal.Copy(src, 0, _imageBufferPtr, src.Length);
         }
 
-        if (_ximage != IntPtr.Zero)
+        if (_ximage == IntPtr.Zero)
+        {
+            X11Api.Flush(_display);
+            return;
+        }
+
+        if (dirtyRects == null)
         {
             X11Api.PutImage(_display, _imagePixmap, _gc, _ximage,
                 0, 0, 0, 0, (uint)bitmap.Width, (uint)bitmap.Height);
             X11Api.PutImage(_display, _window, _gc, _ximage,
                 0, 0, 0, 0, (uint)_clientSize.Width, (uint)_clientSize.Height);
+            X11Api.Flush(_display);
+            return;
+        }
+
+        foreach (var r in dirtyRects)
+        {
+            if (r.IsEmpty) continue;
+            var x = Math.Max(0, (int)Math.Floor(r.X));
+            var y = Math.Max(0, (int)Math.Floor(r.Y));
+            var w = Math.Min(bitmap.Width - x, (int)Math.Ceiling(r.Width));
+            var h = Math.Min(bitmap.Height - y, (int)Math.Ceiling(r.Height));
+            if (w <= 0 || h <= 0) continue;
+            w = Math.Min(w, (int)_clientSize.Width - x);
+            h = Math.Min(h, (int)_clientSize.Height - y);
+            if (w <= 0 || h <= 0) continue;
+
+            X11Api.PutImage(_display, _imagePixmap, _gc, _ximage,
+                x, y, x, y, (uint)w, (uint)h);
+            X11Api.PutImage(_display, _window, _gc, _ximage,
+                x, y, x, y, (uint)w, (uint)h);
         }
         X11Api.Flush(_display);
     }

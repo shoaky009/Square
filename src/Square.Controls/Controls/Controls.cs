@@ -1,12 +1,13 @@
 using Square.Events;
 using Square.Graphics;
+using Square.Text.FontManager;
 using Square.UI;
 
 namespace Square.Controls.Controls;
 
 public class View : UIElement
 {
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
         if (background.A > 0) ctx.FillRect(Geometry, new SolidColorBrush(background));
@@ -28,10 +29,88 @@ public class Text : UIElement
         return ControlDrawing.MeasureText(this, TextContent, FontSize);
     }
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         if (string.IsNullOrEmpty(TextContent)) return;
         ControlDrawing.DrawText(ctx, this, TextContent, Geometry.Position, Color, FontSize);
+    }
+}
+
+/// <summary>List item, similar to HTML <c>li</c>. Optional marker and text; may also host children.</summary>
+public class ListItem : UIElement
+{
+    public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
+    public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
+    /// <summary>Bullet or number prefix, e.g. "• ", "1. ". Empty draws no marker.</summary>
+    public string Marker { get => GetProperty<string>(nameof(Marker)) ?? "• "; set => SetProperty(nameof(Marker), value); }
+
+    public ListItem() { }
+    public ListItem(string text) { TextContent = text; }
+
+    public override Size Measure(Size availableSize)
+    {
+        var label = Marker + TextContent;
+        if (string.IsNullOrEmpty(label.Trim()))
+        {
+            var childWidth = 0f;
+            var childHeight = 0f;
+            foreach (var child in Children)
+            {
+                var size = child.Measure(availableSize);
+                childWidth = Math.Max(childWidth, size.Width);
+                childHeight += size.Height;
+            }
+            return new Size(childWidth, childHeight);
+        }
+
+        return ControlDrawing.MeasureText(this, label, FontSize);
+    }
+
+    public override void Paint(IRenderContext ctx)
+    {
+        var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
+        if (background.A > 0) ctx.FillRect(Geometry, new SolidColorBrush(background));
+
+        var label = Marker + TextContent;
+        if (!string.IsNullOrEmpty(label.Trim()))
+            ControlDrawing.DrawText(ctx, this, label, Geometry.Position, Color, FontSize);
+    }
+}
+
+/// <summary>Hyperlink-style control, similar to HTML <c>a</c>. Use <see cref="Href"/> for the target URL/path.</summary>
+public class Link : UIElement
+{
+    public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    public string Href { get => GetProperty<string>(nameof(Href)) ?? ""; set => SetProperty(nameof(Href), value); }
+    public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.FromRgb(0, 102, 204); set => SetProperty(nameof(Color), value); }
+    public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
+    public bool Underline { get => !Properties.HasValue(nameof(Underline)) || GetProperty<bool>(nameof(Underline)); set => SetProperty(nameof(Underline), value); }
+
+    public Link() { }
+    public Link(string text) { TextContent = text; }
+    public Link(string text, string href) { TextContent = text; Href = href; }
+
+    public override Size Measure(Size availableSize)
+    {
+        if (string.IsNullOrEmpty(TextContent)) return Size.Zero;
+        return ControlDrawing.MeasureText(this, TextContent, FontSize);
+    }
+
+    public override void Paint(IRenderContext ctx)
+    {
+        if (string.IsNullOrEmpty(TextContent)) return;
+        var color = IsEnabled
+            ? ControlDrawing.GetStyledColor(this, "color", Color)
+            : Color.FromRgb(125, 130, 136);
+        var origin = Geometry.Position;
+        ControlDrawing.DrawText(ctx, this, TextContent, origin, color, FontSize);
+        if (Underline)
+        {
+            var textSize = ControlDrawing.MeasureText(this, TextContent, FontSize);
+            var y = origin.Y + textSize.Height - 1f;
+            ctx.DrawRect(new Rect(origin.X, y, textSize.Width, 1f), Pen.FromColor(color, 1f));
+        }
     }
 }
 
@@ -50,7 +129,7 @@ public class Button : UIElement
         return new Size(textSize.Width + 32, Math.Max(36, textSize.Height + 12));
     }
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         var background = IsEnabled
             ? ControlDrawing.GetStyledColor(this, "background", Background)
@@ -84,7 +163,7 @@ public class CheckBox : UIElement
         return new Size(26 + text.Width, Math.Max(24, text.Height));
     }
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         var box = new Rect(Geometry.X, Geometry.Y + (Geometry.Height - 18) / 2f, 18, 18);
         ctx.FillRect(box, new SolidColorBrush(IsEnabled ? Color.White : Color.FromRgb(235, 235, 235)));
@@ -105,14 +184,14 @@ public class CheckBox : UIElement
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
-        if (name == nameof(IsChecked)) SetState(VisualState.Checked, IsChecked);
+        if (name == nameof(IsChecked)) SetState(ElementState.Checked, IsChecked);
     }
 
     private void ToggleFromInput()
     {
         if (!IsEnabled) return;
         IsChecked = !IsChecked;
-        RaiseEvent("change");
+        DispatchEvent(StandardEvents.CreateChange());
     }
 }
 
@@ -133,7 +212,7 @@ public class Radio : UIElement
         return new Size(26 + text.Width, Math.Max(24, text.Height));
     }
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         var center = new Point(Geometry.X + 9, Geometry.Y + Geometry.Height / 2f);
         ctx.FillGeometry(new EllipseGeometry(center, 9, 9), new SolidColorBrush(IsEnabled ? Color.White : Color.FromRgb(235, 235, 235)));
@@ -147,7 +226,7 @@ public class Radio : UIElement
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
-        if (name == nameof(IsChecked)) SetState(VisualState.Checked, IsChecked);
+        if (name == nameof(IsChecked)) SetState(ElementState.Checked, IsChecked);
     }
 
     private void SelectFromInput()
@@ -159,7 +238,7 @@ public class Radio : UIElement
                 if (radio != this && radio.GroupName == GroupName) radio.IsChecked = false;
         }
         IsChecked = true;
-        RaiseEvent("change");
+        DispatchEvent(StandardEvents.CreateChange());
     }
 }
 
@@ -181,7 +260,7 @@ public class Select : UIElement
 
     public override Size Measure(Size availableSize) => new(200, 36);
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         ControlDrawing.DrawInputFrame(ctx, this);
         var value = string.IsNullOrEmpty(Value) ? Placeholder : Value;
@@ -209,7 +288,7 @@ public class Select : UIElement
         }
     }
 
-    public override Visual? HitTest(Point point)
+    public override Element? HitTest(Point point)
     {
         if (!IsVisible) return null;
         return Geometry.Contains(point) || IsOpen && GetDropDownRect().Contains(point) ? this : null;
@@ -231,7 +310,7 @@ public class Select : UIElement
             var index = Math.Clamp((int)((point.Y - popup.Y - 1) / 32), 0, Options.Length - 1);
             Value = Options[index];
             CloseDropDown();
-            RaiseEvent("change");
+            DispatchEvent(StandardEvents.CreateChange());
         }
     }
 
@@ -242,7 +321,7 @@ public class Select : UIElement
             : -1;
         if (_hoveredOption == next) return false;
         _hoveredOption = next;
-        InvalidateVisual();
+        InvalidatePaint();
         return true;
     }
 
@@ -251,8 +330,8 @@ public class Select : UIElement
         if (!IsOpen) return;
         IsOpen = false;
         _hoveredOption = -1;
-        Parent?.InvalidateVisual();
-        InvalidateVisual();
+        Parent?.InvalidatePaint();
+        InvalidatePaint();
     }
 
     private void ToggleDropDown()
@@ -260,8 +339,8 @@ public class Select : UIElement
         if (!IsEnabled || Options.Length == 0) return;
         IsOpen = !IsOpen;
         _hoveredOption = -1;
-        Parent?.InvalidateVisual();
-        InvalidateVisual();
+        Parent?.InvalidatePaint();
+        InvalidatePaint();
     }
 
     private Rect GetDropDownRect() => new(Geometry.X, Geometry.Bottom + 2, Geometry.Width, Options.Length * 32 + 2);
@@ -276,7 +355,7 @@ public class Image : UIElement
         ? new Size(160, 96)
         : new Size(ImageContent.Width, ImageContent.Height);
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
         if (ImageContent != null)
         {
@@ -301,14 +380,15 @@ public class Canvas : UIElement
 
     public Action<IRenderContext, Rect>? DrawContent { get; set; }
 
-    public void RequestFrame(double fps = 60d)
+    /// <summary>请求后续帧；默认 30fps，避免软件全窗口 Present 时 CPU 过高。</summary>
+    public void RequestFrame(double fps = 30d)
     {
-        InvalidateVisual();
-        RaiseEvent(StandardEvents.RequestFrame, new FrameRequestEventArgs(fps));
+        InvalidatePaint();
+        DispatchEvent(StandardEvents.CreateRequestFrame(fps));
     }
 
     public void RequestAnimationFrame(Action<IRenderContext, Rect> callback) =>
-        RequestAnimationFrame(callback, 60d);
+        RequestAnimationFrame(callback, 30d);
 
     public void RequestAnimationFrame(Action<IRenderContext, Rect> callback, double fps)
     {
@@ -319,53 +399,63 @@ public class Canvas : UIElement
 
     public override Size Measure(Size availableSize) => new(300, 140);
 
-    public override void Render(IRenderContext ctx)
+    public override void Paint(IRenderContext ctx)
     {
+        // 轻量背景：避免每帧绘制大量网格 Path（软件光栅很贵）
         ctx.FillRect(Geometry, new SolidColorBrush(Color.White));
-        for (var x = Geometry.X + 20; x < Geometry.Right; x += 20)
-            ctx.DrawPath(PathGeometry.Create().MoveTo(new Point(x, Geometry.Y)).LineTo(new Point(x, Geometry.Bottom)),
-                Pen.FromColor(Color.FromRgb(235, 238, 240)));
-        for (var y = Geometry.Y + 20; y < Geometry.Bottom; y += 20)
-            ctx.DrawPath(PathGeometry.Create().MoveTo(new Point(Geometry.X, y)).LineTo(new Point(Geometry.Right, y)),
-                Pen.FromColor(Color.FromRgb(235, 238, 240)));
+        ctx.DrawRect(Geometry, Pen.FromColor(Color.FromRgb(170, 175, 180)));
 
         var frameCallback = _animationFrameCallback;
         _animationFrameCallback = null;
         if (frameCallback != null)
-        {
             frameCallback(ctx, Geometry);
-        }
         else if (DrawContent != null)
-        {
             DrawContent(ctx, Geometry);
-        }
         else
         {
             ctx.FillRect(new Rect(Geometry.X + 20, Geometry.Y + 20, 80, 44), new SolidColorBrush(Color.FromRgb(0, 120, 212)));
             ctx.FillGeometry(new EllipseGeometry(new Point(Geometry.X + 150, Geometry.Y + 50), 28, 28),
                 new SolidColorBrush(Color.FromRgb(18, 155, 105)));
         }
-        ctx.DrawRect(Geometry, Pen.FromColor(Color.FromRgb(170, 175, 180)));
     }
 }
 
 internal static class ControlDrawing
 {
-    internal static Size MeasureText(Visual visual, string text, float defaultSize)
+    /// <summary>从元素 CSS 字体相关属性解析 <see cref="Font"/>（font-family/size/weight/style）。</summary>
+    internal static Font ResolveFont(Element element, float defaultSize)
     {
-        var size = GetStyledFloat(visual, "font-size", defaultSize);
-        return new TextLayout(text, new Font("Segoe UI", size)).Measure();
+        // 优先 CSS；控件属性 FontSize 作为缺省字号
+        var family = element.Style.GetPropertyValue("font-family");
+        if (string.IsNullOrEmpty(family)) family = "sans-serif";
+
+        var sizeCss = element.Style.GetPropertyValue("font-size");
+        var weightCss = element.Style.GetPropertyValue("font-weight");
+        var styleCss = element.Style.GetPropertyValue("font-style");
+
+        return FontManager.Instance.FromCss(
+            family,
+            string.IsNullOrEmpty(sizeCss) ? null : sizeCss,
+            string.IsNullOrEmpty(weightCss) ? null : weightCss,
+            string.IsNullOrEmpty(styleCss) ? null : styleCss,
+            defaultSize);
+    }
+
+    internal static Size MeasureText(Element element, string text, float defaultSize)
+    {
+        var font = ResolveFont(element, defaultSize);
+        return new TextLayout(text, font).Measure();
     }
 
     internal static void DrawText(
-        IRenderContext context, Visual visual, string text, Point position, Color defaultColor, float defaultSize,
+        IRenderContext context, Element element, string text, Point position, Color defaultColor, float defaultSize,
         float? lineHeight = null, bool useStyledColor = true)
     {
         if (string.IsNullOrEmpty(text)) return;
-        var size = GetStyledFloat(visual, "font-size", defaultSize);
-        var color = useStyledColor ? GetStyledColor(visual, "color", defaultColor) : defaultColor;
-        var layout = new TextLayout(text, new Font("Segoe UI", size));
-        if (lineHeight.HasValue && size > 0) layout.LineHeight = lineHeight.Value / size;
+        var font = ResolveFont(element, defaultSize);
+        var color = useStyledColor ? GetStyledColor(element, "color", defaultColor) : defaultColor;
+        var layout = new TextLayout(text, font);
+        if (lineHeight.HasValue && font.Size > 0) layout.LineHeight = lineHeight.Value / font.Size;
         context.DrawText(layout, position, new SolidColorBrush(color));
     }
 
@@ -377,27 +467,34 @@ internal static class ControlDrawing
         context.DrawRect(element.Geometry, Pen.FromColor(border, element.IsFocused ? 2 : 1));
     }
 
-    internal static float GetStyledFloat(Visual visual, string name, float fallback) =>
-        float.TryParse(visual.Style.Get(name)?.Replace("px", "", StringComparison.OrdinalIgnoreCase).Trim(), out var value)
+    internal static float GetStyledFloat(Element element, string name, float fallback)
+    {
+        var raw = element.Style.GetPropertyValue(name);
+        if (string.IsNullOrEmpty(raw)) return fallback;
+        raw = raw.Replace("px", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return float.TryParse(raw, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var value)
             ? value
             : fallback;
+    }
 
-    internal static float GetStyledLineHeight(Visual visual, float fontSize)
+    internal static float GetStyledLineHeight(Element element, float fontSize)
     {
-        var value = visual.Style.Get("line-height")?.Trim();
+        var value = element.Style.GetPropertyValue("line-height").Trim();
         if (string.IsNullOrEmpty(value)) return Math.Max(1, MathF.Round(fontSize * TextLayout.DefaultLineHeight));
 
         if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
-            return Math.Max(1, GetStyledFloat(visual, "line-height", fontSize * TextLayout.DefaultLineHeight));
+            return Math.Max(1, GetStyledFloat(element, "line-height", fontSize * TextLayout.DefaultLineHeight));
 
-        return float.TryParse(value, out var multiplier)
+        return float.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var multiplier)
             ? Math.Max(1, fontSize * multiplier)
             : Math.Max(1, MathF.Round(fontSize * TextLayout.DefaultLineHeight));
     }
 
-    internal static Color GetStyledColor(Visual visual, string name, Color fallback)
+    internal static Color GetStyledColor(Element element, string name, Color fallback)
     {
-        var value = visual.Style.Get(name);
+        var value = element.Style.GetPropertyValue(name);
         if (string.IsNullOrWhiteSpace(value)) return fallback;
         try { return Color.Parse(value.Replace(" ", "")); }
         catch (FormatException) { return fallback; }

@@ -14,6 +14,8 @@
   private float _secondSweep;
   private int _animatedSecond = -1;
   private double _lastFrameSeconds;
+  // 软件后端全窗口 Present 较贵：钟表 20fps 足够流畅
+  private const double ClockFps = 20d;
 
   protected override void OnAttachedCore()
   {
@@ -30,7 +32,7 @@
       t => 1f - MathF.Pow(1f - t, 3f),
       value => _introProgress = value);
     _introAnimation.Start();
-    DemoCanvas.RequestAnimationFrame(DrawClock);
+    DemoCanvas.RequestAnimationFrame(DrawClock, ClockFps);
   }
 
   protected override void OnDetachedCore()
@@ -55,6 +57,7 @@
     context.FillGeometry(face, new SolidColorBrush(Color.FromRgb(248, 250, 252)));
     context.DrawGeometry(face, Pen.FromColor(Color.FromRgb(60, 67, 74), 2f));
 
+    // 60 刻度：整点加粗加长，其余细刻度（保持视觉完整，帧率仍由 ClockFps 控制）
     for (var i = 0; i < 60; i++)
     {
       var angle = i * MathF.Tau / 60f - MathF.PI / 2f;
@@ -91,15 +94,19 @@
     DrawHand(context, center, radius * 0.52f * reveal, hourAngle, Color.FromRgb(35, 42, 48), 5f);
     DrawHand(context, center, radius * 0.72f * reveal, minuteAngle, Color.FromRgb(35, 42, 48), 3f);
     DrawHand(context, center, radius * 0.82f * reveal, secondAngle, Color.FromRgb(210, 48, 58), 1.5f);
-    context.FillGeometry(new EllipseGeometry(center, 5f + 2f * (1f - reveal), 5f + 2f * (1f - reveal)), new SolidColorBrush(Color.FromRgb(210, 48, 58)));
+    context.FillGeometry(
+      new EllipseGeometry(center, 5f + 2f * (1f - reveal), 5f + 2f * (1f - reveal)),
+      new SolidColorBrush(Color.FromRgb(210, 48, 58)));
 
-    DemoCanvas.RequestAnimationFrame(DrawClock);
+    DemoCanvas.RequestAnimationFrame(DrawClock, ClockFps);
   }
 
   private static void DrawHand(IRenderContext context, Point center, float length, float angle, Color color, float width)
   {
     if (length <= 0.1f) return;
-    context.DrawPath(PathGeometry.Create().MoveTo(center).LineTo(PointOnClock(center, length, angle)), Pen.FromColor(color, width));
+    context.DrawPath(
+      PathGeometry.Create().MoveTo(center).LineTo(PointOnClock(center, length, angle)),
+      Pen.FromColor(color, width));
   }
 
   private static float ToClockAngle(double turn) => (float)(turn * Math.Tau - Math.PI / 2d);

@@ -38,7 +38,7 @@ public class PseudoClassTests
         engine.LoadStyleSheet(sheet);
 
         var btn = new Square.Controls.Controls.Button();
-        btn.SetState(VisualState.Hover, true);
+        btn.SetState(ElementState.Hover, true);
         engine.ApplyStyles(btn);
         Assert.Equal("red", btn.Style.Get("color"));
     }

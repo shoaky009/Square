@@ -12,7 +12,7 @@ UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期�
 - **Pure C# Core**：Markup、Runtime、事件、CSS、布局、渲染树和文本等核心模块使用 C# 实现。
 - **NativeAOT First**：避免动态代码生成、`Reflection.Emit`、`dynamic` 和运行时程序集发现。
 - **Backend Independent**：UI 核心不绑定具体图形库，渲染通过 `IRenderContext` 抽象提交。
-- **Retained Rendering**：使用 Visual Tree、Layout、Render Tree 和 DrawCommand 管线。
+- **Retained Rendering**：使用 Element Tree、Layout、Display Tree 和 DrawCommand 管线。
 - **Low Coupling**：平台、渲染后端和框架核心保持明确的依赖边界。
 
 ## 当前能力
@@ -66,12 +66,12 @@ UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期�
     public ObservableValue<string> Name = new("");
     public ObservableValue<bool> Saved = new(false);
 
-    private void OnNameChanged(RoutedEventArgs e)
+    private void OnNameChanged(Event e)
     {
-      Name.Value = ((Input)e.OriginalSource!).Value;
+      Name.Value = ((Input)e.Target!).Value;
     }
 
-    private void OnSave(object? sender, RoutedEventArgs e)
+    private void OnSave(Event e)
     {
       Saved.Value = true;
     }
@@ -104,12 +104,11 @@ SQX 不需要 `<sqx>` 文件级根标签。`<template>` 必须且只能有一个
 </script>
 ```
 
-SQX 支持无参和强类型事件处理方法：
+SQX 支持无参和 `Event` 参数事件处理方法：
 
 ```csharp
 private void OnClick() { }
-private void OnClick(RoutedEventArgs e) { }
-private void OnClick(object? sender, RoutedEventArgs e) { }
+private void OnClick(Event e) { }
 ```
 
 ## CSS 支持情况
@@ -147,13 +146,13 @@ Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏�
 Square.SourceGenerator ──► C# Component
                               │
                               ▼
-                         Visual Tree
+                         Element Tree
                               │
                               ▼
                          Layout Engine
                               │
                               ▼
-                          Render Tree
+                          Display Tree
                               │
                               ▼
                          DrawCommand
@@ -172,12 +171,12 @@ Square.SourceGenerator ──► C# Component
 | `Square.Markup` | SQX 词法、语法和 AST |
 | `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
 | `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的平台无关路由事件协议 |
-| `Square.UI` | Visual Tree、属性系统和元素操作 API |
+| `Square.UI` | Element Tree、属性系统和元素操作 API |
 | `Square.Controls` | 控件、结构原语和基础动画时钟 |
 | `Square.Router` | 内存路由、历史、Link 和 RouteContext |
 | `Square.CSS` | CSS 解析、选择器、级联和样式应用 |
 | `Square.Graphics` | 绘图接口和基础图形类型 |
-| `Square.Rendering` | Box / Flex / Grid 布局、Render Tree 和 DrawCommand |
+| `Square.Rendering` | Box / Flex / Grid 布局、Display Tree 和 DrawCommand |
 | `Square.Text` | 字形、测量和文本布局 |
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer 及后续图形后端 |

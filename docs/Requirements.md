@@ -123,7 +123,7 @@ WebGPU
 - Layout Engine
 - Event System
 - Runtime
-- Render Tree
+- Display Tree
 - Animation
 - Text Engine（优先）
 
@@ -329,7 +329,7 @@ Component
 
 ↓
 
-Visual Tree
+Element Tree
 
 ↓
 
@@ -337,7 +337,7 @@ Layout
 
 ↓
 
-Render Tree
+Display Tree
 
 ↓
 
@@ -393,7 +393,7 @@ Canvas 为 Graphics 的兼容层。
 
 内部：
 
-采用 Render Tree + DrawCommand。
+采用 Display Tree + DrawCommand。
 
 外部：
 
@@ -575,7 +575,7 @@ Square.Hosting
 
 ## Retained Rendering
 
-采用 Visual Tree + Render Tree。
+采用 Element Tree + Display Tree。
 
 不采用 Immediate Mode。
 
@@ -620,7 +620,7 @@ CSS Engine
 Layout Engine
         │
         ▼
-Render Tree
+Display Tree
         │
         ▼
 Graphics

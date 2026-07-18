@@ -26,4 +26,21 @@ public static class SqxDiagnostics
 
     public static readonly DiagnosticDescriptor SQX0007_PropTypeMismatch = new(
         "SQX0007", "Prop 类型不匹配", "Prop '{0}' 类型不匹配", Category, DiagnosticSeverity.Error, true);
+
+    // ——— 结构指令（Directive SDK）———
+
+    public static readonly DiagnosticDescriptor SQXD001_DuplicateDirective = new(
+        "SQXD001", "重复的结构指令标签", "结构指令标签 '{0}' 重复注册", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor SQXD002_MissingRequiredAttribute = new(
+        "SQXD002", "指令缺少必需属性", "结构指令 <{0}> 缺少必需属性 '{1}'", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor SQXD003_InvalidParent = new(
+        "SQXD003", "指令父标签不匹配", "结构指令 <{0}> 必须位于 <{1}> 内", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor SQXD004_UnknownPattern = new(
+        "SQXD004", "未知指令发射模式", "结构指令 <{0}> 的 Pattern '{1}' 无法解析", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor SQXD005_IllegalStandalone = new(
+        "SQXD005", "指令出现在非法位置", "结构指令 <{0}> 不能作为独立节点发射（SkipStandalone）", Category, DiagnosticSeverity.Error, true);
 }

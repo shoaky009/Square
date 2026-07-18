@@ -119,12 +119,21 @@ internal sealed class Win32Host : IPlatformHost
     public void Close()
     {
         _running = false;
+        ReleasePresentResources();
         if (_hwnd != IntPtr.Zero)
         {
             Win32Api.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
         }
         Win32Api.PostQuitMessage(0);
+    }
+
+    private void ReleasePresentResources()
+    {
+        if (_presentPixelsHandle.IsAllocated)
+            _presentPixelsHandle.Free();
+        _presentPixelsArray = null;
+        _presentInfoReady = false;
     }
 
     public IRenderContext CreateRenderContext()
@@ -138,6 +147,107 @@ internal sealed class Win32Host : IPlatformHost
             PresentFrame = PresentFrame
         });
         return _renderContext;
+    }
+
+    private void PresentFrame(Bitmap bitmap, IReadOnlyList<Rect>? dirtyRects)
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        _lastFrame = bitmap;
+        EnsurePresentResources(bitmap);
+
+        var dc = Win32Api.GetDC(_hwnd);
+        try
+        {
+            if (dirtyRects == null)
+            {
+                // Full window
+                Win32Api.StretchDIBits(
+                    dc,
+                    0, 0, (int)_clientSize.Width, (int)_clientSize.Height,
+                    0, 0, bitmap.Width, bitmap.Height,
+                    _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
+                    Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
+                return;
+            }
+
+            // Partial present: geometry is in the same space as the software bitmap
+            // (host ClientSize drives both layout and bitmap size). Fall back to full
+            // window blit if any rect fails clamping so the UI never freezes.
+            var presentedAny = false;
+            foreach (var r in dirtyRects)
+            {
+                if (r.IsEmpty) continue;
+                var x = Math.Max(0, (int)Math.Floor(r.X));
+                var y = Math.Max(0, (int)Math.Floor(r.Y));
+                var w = (int)Math.Ceiling(r.Right) - x;
+                var h = (int)Math.Ceiling(r.Bottom) - y;
+                if (w <= 0 || h <= 0) continue;
+                if (x >= bitmap.Width || y >= bitmap.Height) continue;
+                w = Math.Min(w, bitmap.Width - x);
+                h = Math.Min(h, bitmap.Height - y);
+                var destX = x;
+                var destY = y;
+                var destW = Math.Min(w, (int)_clientSize.Width - destX);
+                var destH = Math.Min(h, (int)_clientSize.Height - destY);
+                if (destW <= 0 || destH <= 0) continue;
+
+                Win32Api.StretchDIBits(
+                    dc,
+                    destX, destY, destW, destH,
+                    x, y, destW, destH,
+                    _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
+                    Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
+                presentedAny = true;
+            }
+
+            if (!presentedAny)
+            {
+                Win32Api.StretchDIBits(
+                    dc,
+                    0, 0, (int)_clientSize.Width, (int)_clientSize.Height,
+                    0, 0, bitmap.Width, bitmap.Height,
+                    _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
+                    Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
+            }
+        }
+        finally
+        {
+            if (dc != IntPtr.Zero) Win32Api.ReleaseDC(_hwnd, dc);
+        }
+    }
+
+    private void EnsurePresentResources(Bitmap bitmap)
+    {
+        if (!_presentInfoReady
+            || _presentInfo.bmiHeader.biWidth != bitmap.Width
+            || _presentInfo.bmiHeader.biHeight != -bitmap.Height)
+        {
+            _presentInfo = new Win32Api.BITMAPINFO
+            {
+                bmiHeader = new Win32Api.BITMAPINFOHEADER
+                {
+                    biSize = (uint)Marshal.SizeOf<Win32Api.BITMAPINFOHEADER>(),
+                    biWidth = bitmap.Width,
+                    biHeight = -bitmap.Height,
+                    biPlanes = 1,
+                    biBitCount = 32,
+                    biCompression = Win32Api.BI_RGB,
+                    biSizeImage = (uint)bitmap.Pixels.Length
+                }
+            };
+            _presentInfoReady = true;
+        }
+        else
+        {
+            _presentInfo.bmiHeader.biSizeImage = (uint)bitmap.Pixels.Length;
+        }
+
+        if (!_presentPixelsHandle.IsAllocated || !ReferenceEquals(_presentPixelsArray, bitmap.Pixels))
+        {
+            if (_presentPixelsHandle.IsAllocated) _presentPixelsHandle.Free();
+            _presentPixelsArray = bitmap.Pixels;
+            _presentPixelsHandle = GCHandle.Alloc(bitmap.Pixels, GCHandleType.Pinned);
+        }
     }
 
     public void PumpEvents()
@@ -253,7 +363,8 @@ internal sealed class Win32Host : IPlatformHost
                 {
                     var paint = new Win32Api.PAINTSTRUCT();
                     Win32Api.BeginPaint(hWnd, ref paint);
-                    if (host._lastFrame != null) host.PresentFrame(host._lastFrame);
+                    // System repaint: full window
+                    if (host._lastFrame != null) host.PresentFrame(host._lastFrame, null);
                     Win32Api.EndPaint(hWnd, ref paint);
                 }
                 return IntPtr.Zero;
@@ -264,6 +375,7 @@ internal sealed class Win32Host : IPlatformHost
                 return IntPtr.Zero;
             case Win32Api.WM_DESTROY:
                 Win32Api.KillTimer(hWnd, new UIntPtr(1));
+                host.ReleasePresentResources();
                 host._running = false;
                 Win32Api.PostQuitMessage(0);
                 break;
@@ -423,39 +535,9 @@ internal sealed class Win32Host : IPlatformHost
         }
     }
 
-    private void PresentFrame(Bitmap bitmap)
-    {
-        if (_hwnd == IntPtr.Zero) return;
-        _lastFrame = bitmap;
-        var info = new Win32Api.BITMAPINFO
-        {
-            bmiHeader = new Win32Api.BITMAPINFOHEADER
-            {
-                biSize = (uint)Marshal.SizeOf<Win32Api.BITMAPINFOHEADER>(),
-                biWidth = bitmap.Width,
-                biHeight = -bitmap.Height,
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = Win32Api.BI_RGB,
-                biSizeImage = (uint)bitmap.Pixels.Length
-            }
-        };
-
-        var handle = GCHandle.Alloc(bitmap.Pixels, GCHandleType.Pinned);
-        var dc = Win32Api.GetDC(_hwnd);
-        try
-        {
-            Win32Api.StretchDIBits(
-                dc,
-                0, 0, (int)_clientSize.Width, (int)_clientSize.Height,
-                0, 0, bitmap.Width, bitmap.Height,
-                handle.AddrOfPinnedObject(), ref info,
-                Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
-        }
-        finally
-        {
-            if (dc != IntPtr.Zero) Win32Api.ReleaseDC(_hwnd, dc);
-            handle.Free();
-        }
-    }
+    // Reused across presents to avoid per-frame struct setup cost
+    private Win32Api.BITMAPINFO _presentInfo;
+    private bool _presentInfoReady;
+    private GCHandle _presentPixelsHandle;
+    private byte[]? _presentPixelsArray;
 }

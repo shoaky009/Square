@@ -59,7 +59,7 @@
   {
     if (index == SelectedIndex) return;
     SelectedIndex = index;
-    RaiseEvent("change");
+    DispatchEvent(StandardEvents.CreateChange());
   }
 
   private void ApplySelection()

@@ -1,9 +1,11 @@
-using Square.Controls.Controls;
 using Square.UI;
 
 namespace Square.Router;
 
-public sealed class Link : Button
+/// <summary>
+/// In-app navigation link (declarative <c>to</c>), based on the HTML-like controls Link.
+/// </summary>
+public sealed class Link : Square.Controls.Controls.Link
 {
     public Link()
     {
@@ -12,8 +14,16 @@ public sealed class Link : Button
 
     public string To
     {
-        get => GetProperty<string>(nameof(To)) ?? "/";
-        set => SetProperty(nameof(To), value);
+        get
+        {
+            var to = GetProperty<string>(nameof(To));
+            return !string.IsNullOrEmpty(to) ? to! : Href;
+        }
+        set
+        {
+            SetProperty(nameof(To), value);
+            Href = value;
+        }
     }
 
     public bool Replace
@@ -24,10 +34,13 @@ public sealed class Link : Button
 
     private void NavigateToTarget()
     {
-        for (Visual? current = Parent; current != null; current = current.Parent)
+        var target = To;
+        if (string.IsNullOrEmpty(target)) return;
+
+        for (Element? current = Parent; current != null; current = current.Parent)
         {
             if (current is not Router router) continue;
-            router.Navigate(To, Replace);
+            router.Navigate(target, Replace);
             return;
         }
     }

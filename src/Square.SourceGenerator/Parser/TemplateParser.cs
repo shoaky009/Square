@@ -1,3 +1,5 @@
+using Square.SourceGenerator.Directives;
+
 namespace Square.SourceGenerator.Parser
 {
     internal class TemplateParser
@@ -69,18 +71,19 @@ namespace Square.SourceGenerator.Parser
 
         private SqxElement NewElement(string tagName, List<SqxAttribute> attrs, SqxToken open)
         {
+            string directiveId = null;
             var kind = SqxNodeKind.Element;
-            if (tagName == "Show") kind = SqxNodeKind.Show;
-            else if (tagName == "For") kind = SqxNodeKind.For;
-            else if (tagName == "Switch") kind = SqxNodeKind.Switch;
-            else if (tagName == "Match") kind = SqxNodeKind.Match;
-            else if (tagName == "Slot" || tagName == "Outlet") kind = SqxNodeKind.Slot;
-            else if (tagName == "Router") kind = SqxNodeKind.Router;
-            else if (tagName == "Route") kind = SqxNodeKind.Route;
+            var catalog = DirectiveCatalog.BuiltIn;
+            if (catalog.TryGet(tagName, out var descriptor))
+            {
+                kind = SqxNodeKind.Directive;
+                directiveId = descriptor.TagName; // 别名归一（Outlet → Slot）
+            }
 
             return new SqxElement
             {
                 TagName = tagName,
+                DirectiveId = directiveId,
                 Attributes = attrs,
                 Kind = kind,
                 Line = open.Line,

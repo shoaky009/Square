@@ -5,9 +5,9 @@ namespace Square.CSS.Engine;
 public sealed class ThemeProvider
 {
     private readonly CssEngine _engine;
-    private readonly Visual _root;
+    private readonly Element _root;
 
-    public ThemeProvider(CssEngine engine, Visual root)
+    public ThemeProvider(CssEngine engine, Element root)
     {
         _engine = engine;
         _root = root;
@@ -23,10 +23,10 @@ public sealed class ThemeProvider
         _engine.ApplyStylesToTree(_root);
     }
 
-    private static void ClearComputedStyles(Visual visual)
+    private static void ClearComputedStyles(Element Element)
     {
-        visual.Style.ClearCascaded();
-        foreach (var child in visual.Children)
+        Element.Style.ClearCascaded();
+        foreach (var child in Element.Children)
             ClearComputedStyles(child);
     }
 }

@@ -1,0 +1,104 @@
+using Square.Controls.Controls;
+using Square.Graphics;
+using Square.UI;
+using Xunit;
+
+namespace Square.UI.Tests;
+
+public class StyleAndFontTests
+{
+    [Fact]
+    public void StyleAccessorCssomSetPropertyAndGetPropertyValue()
+    {
+        var view = new View();
+        view.Style.SetProperty("fontSize", "18px");
+        view.Style.SetProperty("color", "#112233");
+
+        Assert.Equal("18px", view.Style.GetPropertyValue("font-size"));
+        Assert.Equal("18px", view.Style.GetPropertyValue("fontSize"));
+        Assert.Equal("#112233", view.Style.GetPropertyValue("color"));
+        Assert.Equal("", view.Style.GetPropertyValue("missing"));
+    }
+
+    [Fact]
+    public void StyleAccessorCssTextRoundTrip()
+    {
+        var view = new View();
+        view.Style.CssText = "color: red; font-size: 20px";
+
+        Assert.Equal("red", view.Style.GetPropertyValue("color"));
+        Assert.Equal("20px", view.Style.GetPropertyValue("font-size"));
+        Assert.Contains("color:", view.Style.CssText, StringComparison.Ordinal);
+        Assert.Contains("font-size:", view.Style.CssText, StringComparison.Ordinal);
+
+        var removed = view.Style.RemoveProperty("color");
+        Assert.Equal("red", removed);
+        Assert.Equal("", view.Style.GetPropertyValue("color"));
+    }
+
+    [Fact]
+    public void FontParseFamilyListAndWeight()
+    {
+        var list = Font.ParseFamilyList("\"Segoe UI\", Tahoma, sans-serif");
+        Assert.Equal(new[] { "Segoe UI", "Tahoma", "sans-serif" }, list);
+
+        Assert.Equal(FontWeight.Bold, Font.ParseWeight("bold"));
+        Assert.Equal(FontWeight.Normal, Font.ParseWeight("normal"));
+        Assert.Equal((FontWeight)600, Font.ParseWeight("600"));
+        Assert.Equal(18f, Font.ParseSize("18px"));
+        Assert.Equal(FontStyle.Italic, Font.ParseStyle("italic"));
+    }
+
+    [Fact]
+    public void FontFromCssUsesFirstFamilyOrGeneric()
+    {
+        var segoe = Font.FromCss("\"Segoe UI\", sans-serif", "14px", "bold", "italic");
+        Assert.Equal("Segoe UI", segoe.Family);
+        Assert.Equal(14f, segoe.Size);
+        Assert.Equal(FontWeight.Bold, segoe.Weight);
+        Assert.Equal(FontStyle.Italic, segoe.Style);
+
+        var generic = Font.FromCss("sans-serif", "16px");
+        Assert.Equal("Segoe UI", generic.Family);
+
+        // FontManager：未知族后回退到列表中已知通用族
+        var viaManager = Square.Text.FontManager.FontManager.Instance.FromCss(
+            "\"My Missing\", sans-serif", "14px", "700");
+        Assert.Equal("Segoe UI", viaManager.Family);
+        Assert.Equal(14f, viaManager.Size);
+        Assert.Equal(FontWeight.Bold, viaManager.Weight);
+    }
+
+    [Fact]
+    public void ControlDrawingResolvesFontFromElementStyle()
+    {
+        var text = new Square.Controls.Controls.Text("hi");
+        text.Style.SetProperty("font-family", "monospace");
+        text.Style.SetProperty("font-size", "12px");
+        text.Style.SetProperty("font-weight", "700");
+
+        // 通过 Measure 间接验证不会抛错且尺寸随字号变化
+        var small = text.Measure(new Size(1000, 1000));
+        text.Style.SetProperty("font-size", "24px");
+        var large = text.Measure(new Size(1000, 1000));
+        Assert.True(large.Width >= small.Width);
+        Assert.True(large.Height >= small.Height);
+    }
+
+    [Fact]
+    public void QuerySelectorFindsByIdClassAndDescendant()
+    {
+        var root = new View { Id = "root" };
+        var child = new View();
+        child.ClassList.Add("panel");
+        var deep = new Square.Controls.Controls.Text("x") { Id = "label" };
+        root.AppendChild(child);
+        child.AppendChild(deep);
+
+        Assert.Same(deep, root.QuerySelector("#label"));
+        Assert.Same(child, root.QuerySelector(".panel"));
+        Assert.Same(deep, root.QuerySelector("View Text"));
+        Assert.Same(deep, root.QuerySelector("View > Text"));
+        Assert.Null(root.QuerySelector("#missing"));
+    }
+}

@@ -7,7 +7,9 @@
 
 ## 1. 定位
 
-`Square.Rendering` 程序集中的 `LayoutEngine` 负责 Visual Tree 的几何计算。
+`Square.Rendering` 程序集中的 `LayoutEngine` 负责 Element Tree 的几何计算。
+
+**Flex / Block** 由 [Yoga.Net](https://www.nuget.org/packages/Yoga.Net)（Meta [Yoga](https://github.com/facebook/yoga) 的纯 C# 移植，AOT 友好）计算；**Grid** 仍使用内置算法（上游 Yoga.Net 的 CSS Grid 绑定当前结果不可靠，故未接入）。
 
 采用 CSS 盒模型思想。
 
@@ -16,13 +18,13 @@
 ## 2. 布局流程
 
 ```
-Visual Tree
+Element Tree
   ↓
 Measure（测量：计算期望尺寸）
   ↓
 Arrange（排列：确定最终位置与尺寸）
   ↓
-写入 Visual.Geometry
+写入 Element.Geometry
 ```
 
 ---

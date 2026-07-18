@@ -7,6 +7,7 @@ using Square.Runtime;
 using Square.Runtime.Binding;
 using Square.Router;
 using Square.Sample;
+using Square.UI;
 using Xunit;
 using RouterControl = Square.Router.Router;
 
@@ -19,7 +20,7 @@ public class M1IntegrationTests
     {
         var component = new Main();
 
-        component.BuildVisualTree();
+        component.BuildElementTree();
 
         var root = Assert.IsType<View>(Assert.Single(component.Children));
         var tabs = Assert.Single(root.QueryAll<Tabs>());
@@ -58,7 +59,7 @@ public class M1IntegrationTests
     public void GeneratedEventsUpdateShowForAndInputBinding()
     {
         var component = new Main();
-        component.BuildVisualTree();
+        component.BuildElementTree();
         var root = Assert.IsType<View>(Assert.Single(component.Children));
         var controlsPage = Assert.Single(root.QueryAll<ControlsSamplesPage>());
         var textPage = Assert.Single(root.QueryAll<TextSamplesPage>());
@@ -69,7 +70,8 @@ public class M1IntegrationTests
         input.HandleKey('A');
         Assert.Equal("A", textPage.Name.Value);
 
-        button.RaiseEvent("CLICK");
+        button.DispatchEvent(StandardEvents.CreateClick());
+        Reconciler.Current.Flush();
         Assert.True(controlsPage.LastEventSourceWasButton.Value);
         Assert.True(controlsPage.ShowCount.Value);
         Assert.Equal(2, controlsPage.Items.Count);
@@ -176,7 +178,7 @@ public class M1IntegrationTests
     public void GeneratedSampleControlsUpdateBoundState()
     {
         var component = new Main();
-        component.BuildVisualTree();
+        component.BuildElementTree();
         SampleSignals.Initialize(new Dispatcher());
         ((IComponentLifecycle)component).OnAttached();
 
@@ -193,8 +195,8 @@ public class M1IntegrationTests
         textArea.HandleKey('N');
         textArea.HandleKey(13);
         textArea.HandleKey('X');
-        checkBox.RaiseEvent("click");
-        radios[1].RaiseEvent("click");
+        checkBox.DispatchEvent(StandardEvents.CreateClick());
+        radios[1].DispatchEvent(StandardEvents.CreateClick());
         select.Geometry = new Rect(10, 10, 200, 36);
         select.HandlePointerDown(new Point(20, 20));
         select.HandlePointerDown(new Point(20, 81));
@@ -220,7 +222,7 @@ public class M1IntegrationTests
             parent.Children.Add(new Square.Controls.Controls.Text("Second body"));
         });
 
-        card.BuildVisualTree();
+        card.BuildElementTree();
 
         var root = Assert.IsType<View>(Assert.Single(card.Children));
         Assert.Equal(2, root.Children.Count);
@@ -231,7 +233,7 @@ public class M1IntegrationTests
         Assert.All(content.Children, child => Assert.IsType<Square.Controls.Controls.Text>(child));
 
         var fallbackCard = new SlotCard();
-        fallbackCard.BuildVisualTree();
+        fallbackCard.BuildElementTree();
         Assert.Contains(fallbackCard.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Fallback header");
         Assert.Contains(fallbackCard.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Fallback content");
     }
@@ -240,14 +242,14 @@ public class M1IntegrationTests
     public void GeneratedNestedRouterNavigatesWithParamsQueryLinksAndHistory()
     {
         var component = new Main();
-        component.BuildVisualTree();
+        component.BuildElementTree();
         ((IComponentLifecycle)component).OnAttached();
         var router = Assert.Single(component.QueryAll<RouterControl>());
 
         var layout = new LayoutEngine();
         layout.Measure(component, new Size(900, 980));
         layout.Arrange(component, new Rect(0, 0, 900, 980));
-        var routeLinks = router.QueryAll<Link>();
+        var routeLinks = router.QueryAll<Square.Router.Link>();
         Assert.Equal(2, routeLinks.Count);
         Assert.Same(routeLinks[0].Parent, routeLinks[1].Parent);
         Assert.Equal("flex", routeLinks[0].Parent?.Style.Get("display"));
@@ -255,7 +257,7 @@ public class M1IntegrationTests
         Assert.Equal(routeLinks[0].Geometry.Y, routeLinks[1].Geometry.Y);
 
         var userLink = routeLinks.Single(link => link.To.Contains("users"));
-        userLink.RaiseEvent("click");
+        userLink.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal("/users/42", router.Current?.Path);
         Assert.Equal("42", router.Current?.Parameters["id"]);
@@ -305,7 +307,7 @@ public class M1IntegrationTests
     }
 
     [Fact]
-    public void HitTestAndRoutedEventReachButton()
+    public void HitTestAndDispatchEventReachButton()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 100) };
         var button = new Button { Geometry = new Rect(20, 20, 80, 40) };
@@ -314,7 +316,7 @@ public class M1IntegrationTests
         button.AddEventListener("click", () => clicks++);
 
         var hit = root.HitTest(new Point(30, 30));
-        hit?.RouteEvent("Click");
+        hit?.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Same(button, hit);
         Assert.Equal(1, clicks);
@@ -354,7 +356,7 @@ public class M1IntegrationTests
     }
 
     [Fact]
-    public void RoutedEventTunnelsToTargetThenBubblesToRoot()
+    public void EventCapturesThenBubblesLikeDom()
     {
         var root = new View();
         var panel = new View();
@@ -363,44 +365,46 @@ public class M1IntegrationTests
         panel.Children.Add(button);
         var calls = new List<string>();
 
-        root.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"root:{e.Phase}"));
-        panel.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"panel:{e.Phase}"));
-        button.AddEventListener(StandardEvents.PointerDown, (_, e) => calls.Add($"button:{e.Phase}"));
+        root.AddEventListener(StandardEvents.PointerDown, e => calls.Add($"root:{e.EventPhase}"), useCapture: true);
+        root.AddEventListener(StandardEvents.PointerDown, e => calls.Add($"root:{e.EventPhase}"));
+        panel.AddEventListener(StandardEvents.PointerDown, e => calls.Add($"panel:{e.EventPhase}"), useCapture: true);
+        panel.AddEventListener(StandardEvents.PointerDown, e => calls.Add($"panel:{e.EventPhase}"));
+        button.AddEventListener(StandardEvents.PointerDown, e => calls.Add($"button:{e.EventPhase}"));
 
-        button.RaiseEvent(StandardEvents.PointerDown, new RoutedEventArgs());
+        button.DispatchEvent(StandardEvents.CreatePointerDown());
 
         Assert.Equal([
-            "root:Tunneling",
-            "panel:Tunneling",
-            "button:AtTarget",
-            "panel:Bubbling",
-            "root:Bubbling"
+            $"root:{EventPhase.CapturingPhase}",
+            $"panel:{EventPhase.CapturingPhase}",
+            $"button:{EventPhase.AtTarget}",
+            $"panel:{EventPhase.BubblingPhase}",
+            $"root:{EventPhase.BubblingPhase}"
         ], calls);
     }
 
     [Fact]
-    public void HandledRoutedEventStopsPropagation()
+    public void StopPropagationPreventsParentHandlers()
     {
         var root = new View();
         var button = new Button();
         root.Children.Add(button);
         var rootCalls = 0;
         var buttonCalls = 0;
-        root.AddEventListener(StandardEvents.Click, (_, _) => rootCalls++);
-        button.AddEventListener(StandardEvents.Click, (_, e) =>
+        root.AddEventListener(StandardEvents.Click, _ => rootCalls++);
+        button.AddEventListener(StandardEvents.Click, e =>
         {
             buttonCalls++;
-            e.Handled = true;
+            e.StopPropagation();
         });
 
-        button.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+        button.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal(1, buttonCalls);
         Assert.Equal(0, rootCalls);
     }
 
     [Fact]
-    public void StringEventApiUsesStandardRoutedEvents()
+    public void StringEventApiBubblesWithDefaultClickInit()
     {
         var root = new View();
         var button = new Button();
@@ -408,13 +412,13 @@ public class M1IntegrationTests
         var calls = 0;
         root.AddEventListener("click", () => calls++);
 
-        button.RouteEvent("CLICK");
+        button.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal(1, calls);
     }
 
     [Fact]
-    public void CustomStringEventsUseStableDefinitionsAcrossTargets()
+    public void CustomStringEventsBubbleWhenConfigured()
     {
         var root = new View();
         var button = new Button();
@@ -422,13 +426,13 @@ public class M1IntegrationTests
         var calls = 0;
         root.AddEventListener("saved", () => calls++);
 
-        button.RouteEvent("SAVED");
+        button.DispatchEvent(new Event("saved", new EventInit { Bubbles = true }));
 
         Assert.Equal(1, calls);
     }
 
     [Fact]
-    public void HandledEventsTooObserversReceiveHandledEventsLaterInRoute()
+    public void StopPropagationDoesNotBlockEarlierCaptureOnAncestors()
     {
         var root = new View();
         var panel = new View();
@@ -436,48 +440,49 @@ public class M1IntegrationTests
         root.Children.Add(panel);
         panel.Children.Add(button);
         var calls = new List<string>();
-        panel.AddEventListener(StandardEvents.Click, (_, e) =>
+        root.AddEventListener(StandardEvents.Click, _ => calls.Add("root-capture"), useCapture: true);
+        panel.AddEventListener(StandardEvents.Click, e =>
         {
             calls.Add("panel");
-            e.Handled = true;
+            e.StopPropagation();
         });
-        root.AddEventListener(StandardEvents.Click, (_, _) => calls.Add("root"), handledEventsToo: true);
+        root.AddEventListener(StandardEvents.Click, _ => calls.Add("root-bubble"));
 
-        button.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+        button.DispatchEvent(StandardEvents.CreateClick());
 
-        Assert.Equal(["panel", "root"], calls);
+        Assert.Equal(["root-capture", "panel"], calls);
     }
 
     [Fact]
-    public void DuplicateLegacyHandlersCanBeRemovedOneRegistrationAtATime()
+    public void DuplicateActionHandlersAreDedupedByDomRules()
     {
         var button = new Button();
         var calls = 0;
         Action handler = () => calls++;
+        // DOM: same function + same capture is not added twice
         button.AddEventListener("click", handler);
         button.AddEventListener("click", handler);
 
+        button.DispatchEvent(StandardEvents.CreateClick());
         button.RemoveEventListener("click", handler);
-        button.RaiseEvent("click");
-        button.RemoveEventListener("click", handler);
-        button.RaiseEvent("click");
+        button.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal(1, calls);
     }
 
     [Fact]
-    public void StringRoutedHandlersCanBeRemovedSymmetrically()
+    public void ActionAndEventHandlersCanBeRemovedSymmetrically()
     {
         var button = new Button();
         var calls = 0;
-        RoutedEventHandler<RoutedEventArgs> twoArgs = (_, _) => calls++;
-        Action<RoutedEventArgs> oneArg = _ => calls++;
-        button.AddEventListener("click", twoArgs);
+        Action noArg = () => calls++;
+        Action<Event> oneArg = _ => calls++;
+        button.AddEventListener("click", noArg);
         button.AddEventListener("click", oneArg);
 
-        button.RemoveEventListener("click", twoArgs);
+        button.RemoveEventListener("click", noArg);
         button.RemoveEventListener("click", oneArg);
-        button.RaiseEvent("click");
+        button.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal(0, calls);
     }
@@ -489,11 +494,11 @@ public class M1IntegrationTests
         var canvas = new Canvas();
         root.Children.Add(canvas);
         var requests = 0;
-        IEventTarget? source = null;
-        root.AddEventListener(StandardEvents.RequestFrame, (_, e) =>
+        EventTarget? source = null;
+        root.AddEventListener(StandardEvents.RequestFrame, e =>
         {
             requests++;
-            source = e.OriginalSource;
+            source = e.Target;
         });
 
         canvas.RequestFrame();
@@ -508,8 +513,8 @@ public class M1IntegrationTests
         var root = new View();
         var canvas = new Canvas();
         root.Children.Add(canvas);
-        FrameRequestEventArgs? request = null;
-        root.AddEventListener(StandardEvents.RequestFrame, (_, e) => request = e);
+        FrameRequestEvent? request = null;
+        root.AddEventListener(StandardEvents.RequestFrame, e => request = e as FrameRequestEvent);
         Action<IRenderContext, Rect> draw = (_, _) => { };
 
         canvas.RequestAnimationFrame(draw, fps: 5);
@@ -517,7 +522,7 @@ public class M1IntegrationTests
         Assert.Null(canvas.DrawContent);
         Assert.NotNull(request);
         Assert.Equal(5, request!.FramesPerSecond);
-        Assert.Same(canvas, request.OriginalSource);
+        Assert.Same(canvas, request.Target);
     }
 
     [Fact]
@@ -530,7 +535,7 @@ public class M1IntegrationTests
         };
 
         select.HandlePointerDown(new Point(20, 20));
-        select.RaiseEvent(StandardEvents.Click, new RoutedEventArgs());
+        select.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.True(select.IsOpen);
     }
@@ -566,7 +571,7 @@ public class M1IntegrationTests
     public void LayoutReflowsWhenViewportSizeChanges()
     {
         var component = new Main();
-        component.BuildVisualTree();
+        component.BuildElementTree();
         var layout = new LayoutEngine();
         var tabs = Assert.Single(component.QueryAll<Tabs>());
 
@@ -600,7 +605,7 @@ public class M1IntegrationTests
             parent.Children.Add(firstPage);
             parent.Children.Add(secondPage);
         });
-        tabs.BuildVisualTree();
+        tabs.BuildElementTree();
         ((IComponentLifecycle)tabs).OnAttached();
         var layout = new LayoutEngine();
         layout.Measure(tabs, new Size(600, 500));
@@ -608,7 +613,7 @@ public class M1IntegrationTests
 
         Assert.False(tabs.IsLayoutDirty);
 
-        secondButton.RaiseEvent("click");
+        secondButton.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.True(tabs.IsLayoutDirty);
         Assert.False(firstPage.IsVisible);
@@ -635,7 +640,7 @@ public class M1IntegrationTests
             parent.Children.Add(secondPage);
         });
 
-        tabs.BuildVisualTree();
+        tabs.BuildElementTree();
         ((IComponentLifecycle)tabs).OnAttached();
 
         Assert.True(firstPage.IsVisible);
@@ -647,7 +652,7 @@ public class M1IntegrationTests
         layout.Arrange(tabs, new Rect(0, 0, 600, 500));
         Assert.True(secondPage.Geometry.IsEmpty);
 
-        secondButton.RaiseEvent("click");
+        secondButton.DispatchEvent(StandardEvents.CreateClick());
         layout.Measure(tabs, new Size(600, 500));
         layout.Arrange(tabs, new Rect(0, 0, 600, 500));
 
@@ -669,8 +674,8 @@ public class M1IntegrationTests
         SampleSignals.Activity.Publish("initial", force: true);
         var publisher = new SignalPublisher();
         var subscriber = new SignalSubscriber();
-        publisher.BuildVisualTree();
-        subscriber.BuildVisualTree();
+        publisher.BuildElementTree();
+        subscriber.BuildElementTree();
         ((IComponentLifecycle)publisher).OnAttached();
         ((IComponentLifecycle)subscriber).OnAttached();
 
@@ -695,13 +700,13 @@ public class M1IntegrationTests
         var dispatcher = new Dispatcher();
         SampleSignals.Initialize(dispatcher);
         var component = new Main();
-        component.BuildVisualTree();
+        component.BuildElementTree();
         ((IComponentLifecycle)component).OnAttached();
         var signalsButton = Assert.Single(
             component.QueryAll<Button>(),
             button => button.ClassList.Contains("tab-button") && button.TextContent == "Signals");
 
-        signalsButton.RaiseEvent("click");
+        signalsButton.DispatchEvent(StandardEvents.CreateClick());
         var layout = new LayoutEngine();
         layout.Measure(component, new Size(900, 940));
         layout.Arrange(component, new Rect(0, 0, 900, 940));
@@ -731,14 +736,17 @@ public class M1IntegrationTests
         ((IComponentLifecycle)root).OnAttached();
         visible.Value = true;
         items.Add("b");
+        Reconciler.Current.Flush();
 
         Assert.True(shown.IsAttached);
         Assert.Equal(new[] { "a", "b" }, root.QueryAll<Square.Controls.Controls.Text>().Where(text => text != shown).Select(text => text.TextContent));
 
         items.Move(1, 0);
+        Reconciler.Current.Flush();
         Assert.Same(nodes["b"], root.Children[1]);
 
         visible.Value = false;
+        Reconciler.Current.Flush();
         Assert.False(shown.IsAttached);
     }
 

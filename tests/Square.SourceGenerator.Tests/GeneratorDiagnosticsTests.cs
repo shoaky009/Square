@@ -68,6 +68,47 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
+    public void ReportsMatchOutsideSwitchAsInvalidParent()
+    {
+        const string source = "<template><Match when={true}><Text text=\"x\" /></Match></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("BadMatch.sqx", source));
+
+        // 根级 SkipStandalone → SQXD005（也可伴随 SQXD003）
+        Assert.Contains(diagnostics, d => d.Id is "SQXD003" or "SQXD005");
+    }
+
+    [Fact]
+    public void ReportsShowMissingWhenAttribute()
+    {
+        const string source = "<template><Show><Text text=\"x\" /></Show></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("BadShow.sqx", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQXD002");
+    }
+
+    [Fact]
+    public void AcceptsShowWithWhenAttribute()
+    {
+        const string source = "<template><Show when={true}><Text text=\"x\" /></Show></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("OkShow.sqx", source));
+
+        Assert.DoesNotContain(diagnostics, d => d.Id is "SQXD002" or "SQXD003" or "SQXD005");
+    }
+
+    [Fact]
+    public void ReportsRouteAtRootAsIllegalStandalone()
+    {
+        const string source = "<template><Route path=\"/\" component={Page} /></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("BadRoute.sqx", source));
+
+        Assert.Contains(diagnostics, d => d.Id is "SQXD003" or "SQXD005");
+    }
+
+    [Fact]
     public void ReportsPropTypeMismatchForIntPropWithStringConstant()
     {
         const string component = """

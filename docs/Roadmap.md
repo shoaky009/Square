@@ -39,8 +39,8 @@
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Box/Flex/Grid 布局 + Visual→Render Tree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
-[x] `Square.Runtime` + `Square.UI`：Application/Visual 基类/属性/元素操作 API（Style/ClassList/Children/Event）
+[~] `Square.Rendering`：Box/Flex/Grid 布局 + Element→DisplayTree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[x] `Square.Runtime` + `Square.UI`：Application/Element/UIDocument 基类/属性/元素操作 API（Style/ClassList/Children/Event）
 [x] `Square.Hosting`：`DesktopApplication` 聚合层——提取窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环
 [x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画时钟/缓动
 [x] `Square.Text`：FontManager/测量/绘制（基础）
@@ -66,8 +66,8 @@
 [x] Theme 起步：注册/切换主题变量，重应用样式时覆盖样式表变量
 [x] Grid 起步：`display: grid`、`grid-template-*`、`fr`、`gap`、`grid-column`/`grid-row` span
 [x] 尺寸单位扩展：`rem` / `em`，Grid 内 `min-content` / `max-content` / `fit-content` 基础测量
-[x] Animation 运行时联动：`@keyframes` 可创建 timeline，支持 delay/iteration/direction 基础语义，`CssAnimationManager` 可自动扫描 Visual Tree 并按 tick 更新样式属性
-[x] Theme 完整体系起步：`ThemeProvider` 可切换主题、清理级联样式并自动重算整棵 Visual Tree
+[x] Animation 运行时联动：`@keyframes` 可创建 timeline，支持 delay/iteration/direction 基础语义，`CssAnimationManager` 可自动扫描 Element Tree 并按 tick 更新样式属性
+[x] Theme 完整体系起步：`ThemeProvider` 可切换主题、清理级联样式并自动重算整棵 Element Tree
 [x] Grid 完整化起步：支持 `minmax()`、基础 auto-placement、`grid-template-areas` / `grid-area` 命名区域
 
 ---

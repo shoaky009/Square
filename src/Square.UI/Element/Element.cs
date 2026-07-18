@@ -1,0 +1,436 @@
+using Square.Events;
+using Square.Graphics;
+using Square.Runtime;
+using Square.Runtime.Binding;
+using Square.UI.ElementApi;
+using Square.UI.Properties;
+
+namespace Square.UI;
+
+/// <summary>
+/// 文档树中的元素节点（对齐 DOM <c>Element</c> 身份，并承载 Square 保留模式布局/绘制扩展）。
+/// <para>继承：<see cref="EventTarget"/> → <see cref="Node"/> → <see cref="Element"/>。</para>
+/// <para>Web API 对应：<c>tagName</c> / <c>id</c> / <c>classList</c> / <c>style</c> / 树关系 / 事件。</para>
+/// <para>Square 扩展：<see cref="Geometry"/>、<see cref="Measure"/>/<see cref="Arrange"/>/<see cref="Paint"/>、脏标记与绑定等。</para>
+/// </summary>
+public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
+{
+    private Rect _geometry;
+    private bool _isVisible = true;
+    private bool _isLayoutDirty = true;
+    private bool _needsPaint = true;
+    private int _zIndex;
+    private readonly List<IDisposable> _bindings = [];
+
+    /// <summary>布局是否失效（Square 扩展；引擎在脏时重新 Measure/Arrange）。</summary>
+    public bool IsLayoutDirty => _isLayoutDirty;
+
+    /// <summary>绘制是否失效（Square 扩展；DisplayTree 据此重建 DrawCommand）。</summary>
+    public bool NeedsPaint => _needsPaint;
+
+    /// <summary>层叠顺序（Square 扩展；类似 CSS <c>z-index</c>）。</summary>
+    public virtual int ZIndex
+    {
+        get => _zIndex;
+        set
+        {
+            if (_zIndex == value) return;
+            _zIndex = value;
+            Parent?.InvalidatePaint();
+        }
+    }
+
+    /// <summary>强类型属性存储（Square 扩展；非 DOM Attr 系统）。</summary>
+    public PropertyStore Properties { get; } = new();
+
+    /// <summary>内联样式访问器（对齐 CSSOM <c>element.style</c>）。</summary>
+    public StyleAccessor Style { get; }
+
+    /// <summary>类名列表（对齐 DOMTokenList <c>classList</c>）。</summary>
+    public ClassListAccessor ClassList { get; }
+
+    /// <summary>子元素集合（对齐 <c>children</c>；实现为可修改列表）。</summary>
+    public ChildrenCollection Children { get; }
+
+    /// <summary>标签名（对齐 <c>tagName</c>；默认取运行时类型名）。</summary>
+    public virtual string TagName => GetType().Name;
+
+    /// <inheritdoc />
+    public override NodeType NodeTypeValue => NodeType.Element;
+
+    /// <inheritdoc />
+    public override string NodeName => TagName;
+
+    /// <summary>命名空间 URI（对齐 <c>namespaceURI</c>；Square UI 元素为 null）。</summary>
+    public virtual string? NamespaceURI => null;
+
+    /// <summary>元素 id（对齐 <c>id</c>）。</summary>
+    public string? Id
+    {
+        get => GetProperty<string>(nameof(Id));
+        set => SetProperty(nameof(Id), value);
+    }
+
+    /// <summary>
+    /// 父元素（对齐 <c>parentElement</c>）。
+    /// 底层存储为 <see cref="Node.ParentNode"/>。
+    /// </summary>
+    public Element? Parent
+    {
+        get => ParentNode as Element;
+        internal set => ParentNode = value;
+    }
+
+    /// <summary>第一个子元素（对齐 <c>firstElementChild</c>）。</summary>
+    public Element? FirstElementChild => Children.Count > 0 ? Children[0] : null;
+
+    /// <summary>最后一个子元素（对齐 <c>lastElementChild</c>）。</summary>
+    public Element? LastElementChild => Children.Count > 0 ? Children[^1] : null;
+
+    /// <summary>子元素个数（对齐 <c>childElementCount</c>）。</summary>
+    public int ChildElementCount => Children.Count;
+
+    /// <summary>
+    /// 布局后的几何（Square 扩展：位置与尺寸）。
+    /// 接近 <c>getBoundingClientRect()</c> 的结果缓存，非 Web 只读属性。
+    /// </summary>
+    public Rect Geometry
+    {
+        get => _geometry;
+        set
+        {
+            if (_geometry == value) return;
+            _geometry = value;
+            InvalidatePaint();
+        }
+    }
+
+    /// <summary>是否参与布局与命中（Square 扩展；可映射 CSS 可见性）。</summary>
+    public bool IsVisible
+    {
+        get => _isVisible;
+        set
+        {
+            if (_isVisible == value) return;
+            _isVisible = value;
+            InvalidateLayout();
+        }
+    }
+
+    /// <summary>交互/伪类状态位（Square 扩展，供 CSS 伪类匹配）。</summary>
+    public ElementState State { get; private set; }
+
+    /// <summary>设置或清除状态标志（Square 扩展）。</summary>
+    public void SetState(ElementState flag, bool on)
+    {
+        if (on) State |= flag;
+        else State &= ~flag;
+        InvalidatePaint();
+    }
+
+    /// <summary>是否包含指定状态标志（Square 扩展）。</summary>
+    public bool HasState(ElementState flag) => State.Has(flag);
+
+    /// <summary>是否已挂载到活动文档树（Square 生命周期）。</summary>
+    public bool IsAttached { get; private set; }
+
+    /// <summary>是否已完成加载（Square 生命周期）。</summary>
+    public bool IsLoaded { get; private set; }
+
+    /// <summary>初始化样式、类列表与子节点集合。</summary>
+    protected Element()
+    {
+        Style = new StyleAccessor(this);
+        ClassList = new ClassListAccessor(this);
+        Children = new ChildrenCollection(this);
+    }
+
+    /// <summary>
+    /// 追加子元素（对齐 <c>appendChild</c>）。
+    /// 已有父节点时抛出 <see cref="InvalidOperationException"/>。
+    /// </summary>
+    /// <returns>被追加的 <paramref name="child"/>。</returns>
+    public Element AppendChild(Element child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        Children.Add(child);
+        return child;
+    }
+
+    /// <summary>
+    /// 在参考子节点之前插入（对齐 <c>insertBefore</c>）。
+    /// <paramref name="referenceChild"/> 为 null 时等价于 <see cref="AppendChild"/>。
+    /// </summary>
+    public Element InsertBefore(Element newChild, Element? referenceChild)
+    {
+        ArgumentNullException.ThrowIfNull(newChild);
+        if (referenceChild == null)
+            return AppendChild(newChild);
+        Children.InsertBefore(newChild, referenceChild);
+        return newChild;
+    }
+
+    /// <summary>移除子元素（对齐 <c>removeChild</c>）；非本节点子元素时抛错。</summary>
+    /// <returns>被移除的 <paramref name="child"/>。</returns>
+    public Element RemoveChild(Element child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (!Children.Remove(child))
+            throw new InvalidOperationException("The node to be removed is not a child of this element.");
+        return child;
+    }
+
+    /// <summary>用新子节点列表替换全部子节点（对齐 <c>replaceChildren</c> 简化版）。</summary>
+    public void ReplaceChildren(params Element[] nodes)
+    {
+        Children.Clear();
+        if (nodes is { Length: > 0 })
+            Children.AddRange(nodes);
+    }
+
+    /// <summary>
+    /// 返回布局后的边界矩形（对齐 <c>getBoundingClientRect</c>；当前返回 <see cref="Geometry"/> 副本语义）。
+    /// </summary>
+    public Rect GetBoundingClientRect() => Geometry;
+
+    /// <summary>读取强类型属性（Square 扩展）。</summary>
+    public T? GetProperty<T>(string name)
+    {
+        if (Properties.TryGetValue(name, out T value)) return value;
+        return default;
+    }
+
+    /// <summary>写入强类型属性并触发变更通知与重绘（Square 扩展）。</summary>
+    public void SetProperty<T>(string name, T value)
+    {
+        Properties.SetValue(name, value);
+        OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
+        InvalidatePaint();
+    }
+
+    /// <summary>用委托取值写入属性（Square 扩展；用于表达式绑定）。</summary>
+    public void BindProperty<T>(string name, Func<T> getter)
+    {
+        Properties.MarkBound(name);
+        var value = getter();
+        Properties.SetValue(name, value);
+        InvalidatePaint();
+    }
+
+    /// <summary>订阅 <see cref="ObservableValue{T}"/> 并同步到属性（Square 扩展）。</summary>
+    public void BindProperty<T>(string name, ObservableValue<T> source)
+    {
+        Properties.MarkBound(name);
+        SetBoundValue(name, source.Value);
+        _bindings.Add(source.Subscribe(value => SetBoundValue(name, value)));
+    }
+
+    private void SetBoundValue<T>(string name, T value)
+    {
+        Properties.SetValue(name, value);
+        OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
+        InvalidatePaint();
+    }
+
+    /// <summary>
+    /// 命中测试：返回包含指定点的最上层后代，或自身（Square 扩展，类似 document.elementFromPoint 的节点侧实现）。
+    /// </summary>
+    public virtual Element? HitTest(Point point)
+    {
+        if (!IsVisible) return null;
+        var inside = Geometry.Contains(point);
+        if (!inside && ClipsOverflowAt(point)) return null;
+
+        foreach (var child in Children.OrderByDescending(child => child.ZIndex))
+        {
+            var hit = child.HitTest(point);
+            if (hit != null) return hit;
+        }
+
+        return inside ? this : null;
+    }
+
+    /// <summary>是否裁剪溢出内容（由 CSS overflow 推导；渲染用）。</summary>
+    public bool ClipsOverflow()
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        return clipX || clipY;
+    }
+
+    /// <summary>溢出裁剪矩形（渲染用）。</summary>
+    public Rect GetOverflowClipRect()
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        if (!clipX && !clipY) return Rect.Empty;
+        const float unbounded = 1_000_000f;
+        return new Rect(
+            clipX ? Geometry.X : -unbounded,
+            clipY ? Geometry.Y : -unbounded,
+            clipX ? Geometry.Width : unbounded * 2,
+            clipY ? Geometry.Height : unbounded * 2);
+    }
+
+    private bool ClipsOverflowAt(Point point)
+    {
+        var (clipX, clipY) = GetOverflowClipAxes();
+        return clipX && (point.X < Geometry.Left || point.X > Geometry.Right) ||
+            clipY && (point.Y < Geometry.Top || point.Y > Geometry.Bottom);
+    }
+
+    private (bool clipX, bool clipY) GetOverflowClipAxes()
+    {
+        var overflow = Style.Get("overflow");
+        var clipBoth = IsClippingOverflow(overflow);
+        return (clipBoth || IsClippingOverflow(Style.Get("overflow-x")),
+            clipBoth || IsClippingOverflow(Style.Get("overflow-y")));
+    }
+
+    private static bool IsClippingOverflow(string? value) =>
+        string.Equals(value, "hidden", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "clip", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 按类型与可选 class 查询第一个匹配后代（Square 强类型查询；接近 <c>querySelector</c>）。
+    /// </summary>
+    public T? Query<T>(string? className = null) where T : Element
+    {
+        return QueryInternal<T>(className);
+    }
+
+    /// <summary>
+    /// 按类型与可选 class 查询所有匹配后代（Square 强类型查询；接近 <c>querySelectorAll</c>）。
+    /// </summary>
+    public List<T> QueryAll<T>(string? className = null) where T : Element
+    {
+        var result = new List<T>();
+        QueryAllInternal(className, result);
+        return result;
+    }
+
+    /// <summary>
+    /// 按 CSS 选择器子集查找第一个匹配后代（对齐 <c>querySelector</c>；不含自身）。
+    /// 支持标签、<c>#id</c>、<c>.class</c>、后代、子代 <c>&gt;</c>、逗号列表。
+    /// </summary>
+    public Element? QuerySelector(string selectors) =>
+        CssSelector.QuerySelector(this, selectors, includeRoot: false);
+
+    /// <summary>
+    /// 按 CSS 选择器子集查找所有匹配后代（对齐 <c>querySelectorAll</c>；不含自身）。
+    /// </summary>
+    public List<Element> QuerySelectorAll(string selectors) =>
+        CssSelector.QuerySelectorAll(this, selectors, includeRoot: false);
+
+    private T? QueryInternal<T>(string? className) where T : Element
+    {
+        if (this is T typed && (className == null || ClassList.Contains(className)))
+            return typed;
+        foreach (var child in Children)
+        {
+            var found = child.QueryInternal<T>(className);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private void QueryAllInternal<T>(string? className, List<T> result) where T : Element
+    {
+        if (this is T typed && (className == null || ClassList.Contains(className)))
+            result.Add(typed);
+        foreach (var child in Children)
+            child.QueryAllInternal(className, result);
+    }
+
+    /// <summary>标记布局与绘制失效，并向父级传播布局脏（Square 扩展）。</summary>
+    public void InvalidateLayout()
+    {
+        _isLayoutDirty = true;
+        _needsPaint = true;
+        Parent?.InvalidateLayout();
+    }
+
+    /// <summary>仅标记绘制失效（Square 扩展）。</summary>
+    public void InvalidatePaint()
+    {
+        _needsPaint = true;
+    }
+
+    /// <summary>
+    /// 标记此元素需要协调（结构或属性变更），由 Reconciler 在下次 flush 时统一处理。
+    /// 调用方在批量修改属性/子节点后调用此方法，避免每次修改都即时触发重绘。
+    /// </summary>
+    public void ScheduleReconcile()
+    {
+        Reconciler.Current.MarkDirty(this);
+    }
+
+    /// <summary>清除布局脏标记（由布局引擎调用）。</summary>
+    public void ClearLayoutDirty() => _isLayoutDirty = false;
+
+    /// <summary>清除绘制脏标记（由 DisplayTree 在收集命令后调用）。</summary>
+    public void ClearPaintDirty() => _needsPaint = false;
+
+    /// <summary>属性变更时的扩展点。</summary>
+    protected virtual void OnPropertyChanged(string name) { }
+
+    /// <summary>子节点加入时的内部通知。</summary>
+    internal virtual void OnChildAdded(Element child) { }
+
+    /// <summary>子节点移除时的内部通知。</summary>
+    internal virtual void OnChildRemoved(Element child) { }
+
+    /// <summary>测量期望尺寸（Square 布局协议）。</summary>
+    public virtual Size Measure(Size availableSize) => Size.Zero;
+
+    /// <summary>在最终矩形内排列自身（Square 布局协议）。</summary>
+    public virtual void Arrange(Rect finalRect) { _geometry = finalRect; }
+
+    /// <summary>向渲染上下文绘制本节点（Square 扩展；由 DisplayTree 经 CommandCollector 调用）。</summary>
+    public virtual void Paint(IRenderContext ctx) { }
+
+    /// <summary>构建元素子树（由 Source Generator 重写；组件初始化入口）。</summary>
+    public virtual void BuildElementTree() { }
+
+    /// <summary>Props 变更钩子（组件生命周期）。</summary>
+    protected virtual void OnPropChanged(string name) { }
+
+    /// <summary>挂载完成钩子。</summary>
+    protected virtual void OnAttachedCore() { }
+
+    /// <summary>卸载完成钩子。</summary>
+    protected virtual void OnDetachedCore() { }
+
+    void IComponentLifecycle.OnPropChanged(string name) => OnPropChanged(name);
+
+    void IComponentLifecycle.OnAttached()
+    {
+        if (IsAttached) return;
+        IsAttached = true;
+        OnAttachedCore();
+        foreach (var child in Children) ((IComponentLifecycle)child).OnAttached();
+    }
+
+    void IComponentLifecycle.OnDetached()
+    {
+        if (!IsAttached) return;
+        foreach (var child in Children) ((IComponentLifecycle)child).OnDetached();
+        OnDetachedCore();
+        IsAttached = false;
+    }
+
+    void IComponentLifecycle.OnLoaded()
+    {
+        IsLoaded = true;
+        foreach (var child in Children) ((IComponentLifecycle)child).OnLoaded();
+    }
+
+    void IComponentLifecycle.OnUnloaded()
+    {
+        IsLoaded = false;
+        foreach (var child in Children) ((IComponentLifecycle)child).OnUnloaded();
+    }
+
+    void ILayoutLifecycle.OnMeasure() => Measure(_geometry.Size);
+    void ILayoutLifecycle.OnArrange() => Arrange(_geometry);
+}

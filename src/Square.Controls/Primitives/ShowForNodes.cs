@@ -8,22 +8,22 @@ public sealed class ShowNode : IDisposable
 {
     private readonly ObservableValue<bool>? _source;
     private readonly Func<bool> _condition;
-    private readonly Func<Visual?> _build;
+    private readonly Func<Element?> _build;
     private IDisposable? _subscription;
     private bool _lastValue;
-    private Visual? _child;
-    private Visual? _parent;
+    private Element? _child;
+    private Element? _parent;
     private int _index;
     private bool _disposed;
 
-    public ShowNode(ObservableValue<bool> source, Func<Visual?> build)
+    public ShowNode(ObservableValue<bool> source, Func<Element?> build)
         : this(() => source.Value, build)
     {
         _source = source;
-        _subscription = source.Subscribe(_ => Update());
+        _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
-    public ShowNode(Func<bool> condition, Func<Visual?> build)
+    public ShowNode(Func<bool> condition, Func<Element?> build)
     {
         _condition = condition;
         _build = build;
@@ -31,11 +31,18 @@ public sealed class ShowNode : IDisposable
         if (_lastValue) _child = _build();
     }
 
-    public void AttachTo(Visual parent)
+    public void AttachTo(Element parent)
     {
         _parent = parent;
         _index = parent.Children.Count;
         if (_child != null) parent.Children.Insert(_index, _child);
+    }
+
+    /// <summary>通过 Reconciler 批处理，而非即时修改树。</summary>
+    private void ScheduleUpdate()
+    {
+        if (_disposed) return;
+        Reconciler.Current.ScheduleUpdate(Update);
     }
 
     public void Update()
@@ -70,34 +77,34 @@ public sealed class ShowNode : IDisposable
 
 public interface IForNode : IDisposable
 {
-    void AttachTo(Visual parent);
+    void AttachTo(Element parent);
     void Update();
 }
 
 public static class ForNode
 {
-    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Visual?> build) =>
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source);
 
-    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Visual?> build) =>
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
 }
 
 public sealed class ForNode<T> : IForNode
 {
     private readonly Func<IEnumerable<T>> _source;
-    private readonly Func<T, Visual?> _build;
-    private readonly List<(T item, Visual? node)> _nodes = new();
+    private readonly Func<T, Element?> _build;
+    private readonly List<(T item, Element? node)> _nodes = new();
     private readonly INotifyCollectionChanged? _observableSource;
-    private Visual? _parent;
+    private Element? _parent;
     private int _index;
 
-    public ForNode(Func<IEnumerable<T>> source, Func<T, Visual?> build)
+    public ForNode(Func<IEnumerable<T>> source, Func<T, Element?> build)
         : this(source, build, source() as INotifyCollectionChanged)
     {
     }
 
-    internal ForNode(Func<IEnumerable<T>> source, Func<T, Visual?> build, INotifyCollectionChanged? observableSource)
+    internal ForNode(Func<IEnumerable<T>> source, Func<T, Element?> build, INotifyCollectionChanged? observableSource)
     {
         _source = source;
         _build = build;
@@ -106,7 +113,7 @@ public sealed class ForNode<T> : IForNode
         if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
     }
 
-    public void AttachTo(Visual parent)
+    public void AttachTo(Element parent)
     {
         _parent = parent;
         _index = parent.Children.Count;
@@ -138,6 +145,12 @@ public sealed class ForNode<T> : IForNode
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // 通过 Reconciler 批处理集合变更，而非即时操作树
+        Square.UI.Reconciler.Current.ScheduleUpdate(() => ApplyCollectionChange(e));
+    }
+
+    private void ApplyCollectionChange(NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
         {
@@ -232,7 +245,7 @@ public sealed class SwitchNode : IDisposable
 {
     private readonly Func<int> _selector;
     private readonly List<MatchBranch> _branches = [];
-    private Visual? _parent;
+    private Element? _parent;
     private int _index;
     private int _activeBranch = -1;
     private bool _disposed;
@@ -242,17 +255,17 @@ public sealed class SwitchNode : IDisposable
         _selector = selector;
     }
 
-    public void AddBranch(Func<bool> condition, Func<Visual?> build)
+    public void AddBranch(Func<bool> condition, Func<Element?> build)
     {
         _branches.Add(new MatchBranch(condition, build));
     }
 
-    public void AddDefault(Func<Visual?> build)
+    public void AddDefault(Func<Element?> build)
     {
         _branches.Add(new MatchBranch(null, build));
     }
 
-    public void AttachTo(Visual parent)
+    public void AttachTo(Element parent)
     {
         _parent = parent;
         _index = parent.Children.Count;
@@ -260,6 +273,13 @@ public sealed class SwitchNode : IDisposable
     }
 
     public void Update()
+    {
+        if (_disposed || _parent == null) return;
+        // 通过 Reconciler 批处理分支切换
+        Square.UI.Reconciler.Current.ScheduleUpdate(UpdateCore);
+    }
+
+    private void UpdateCore()
     {
         if (_disposed || _parent == null) return;
         var match = FindMatch();
@@ -305,10 +325,10 @@ public sealed class SwitchNode : IDisposable
         return -1;
     }
 
-    private sealed class MatchBranch(Func<bool>? condition, Func<Visual?> build)
+    private sealed class MatchBranch(Func<bool>? condition, Func<Element?> build)
     {
         public Func<bool>? Condition { get; } = condition;
-        public Func<Visual?> Build { get; } = build;
-        public Visual? Child { get; set; }
+        public Func<Element?> Build { get; } = build;
+        public Element? Child { get; set; }
     }
 }

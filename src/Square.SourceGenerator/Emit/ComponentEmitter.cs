@@ -1,4 +1,5 @@
 using System.Text;
+using Square.SourceGenerator.Directives;
 using Square.SourceGenerator.Parser;
 
 namespace Square.SourceGenerator.Emit
@@ -9,11 +10,9 @@ namespace Square.SourceGenerator.Emit
         private readonly string _namespace;
         private readonly StringBuilder _sb = new StringBuilder();
         private readonly List<RefInfo> _refs = new List<RefInfo>();
-        private int _showCounter;
-        private int _forCounter;
-        private int _switchCounter;
-        private int _showIndex;
-        private int _forIndex;
+        private readonly DirectiveCatalog _catalog = DirectiveCatalog.BuiltIn;
+        private DirectiveEmitPipeline _pipeline;
+        private readonly Dictionary<string, int> _structCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         private int _varCounter;
         private int _slotCounter;
 
@@ -48,7 +47,7 @@ namespace Square.SourceGenerator.Emit
             _sb.AppendLine("{");
 
             EmitFields();
-            _sb.AppendLine("    public override void BuildVisualTree()");
+            _sb.AppendLine("    public override void BuildElementTree()");
             _sb.AppendLine("    {");
             _sb.AppendLine("        if (_visualTreeBuilt) return;");
             _sb.AppendLine("        _visualTreeBuilt = true;");
@@ -65,14 +64,19 @@ namespace Square.SourceGenerator.Emit
 
         private void ResetState()
         {
-            _showCounter = 0;
-            _forCounter = 0;
-            _showIndex = 0;
-            _forIndex = 0;
             _varCounter = 0;
             _slotCounter = 0;
+            _structCounts.Clear();
             _refs.Clear();
             _sb.Clear();
+            _pipeline = new DirectiveEmitPipeline(
+                _sb,
+                _catalog,
+                EmitNodes,
+                EmitFactoryBody,
+                EmitAttribute,
+                NextVariable);
+            _pipeline.ResetFieldIndexes();
         }
 
         private void CollectRefs(List<SqxNode> nodes)
@@ -95,9 +99,14 @@ namespace Square.SourceGenerator.Emit
             foreach (var node in nodes)
             {
                 if (node is not SqxElement element) continue;
-                if (element.Kind == SqxNodeKind.Show) _showCounter++;
-                if (element.Kind == SqxNodeKind.For) _forCounter++;
-                if (element.Kind == SqxNodeKind.Switch) _switchCounter++;
+                if (_catalog.TryGet(element.TagName, out var descriptor) &&
+                    !descriptor.SkipStandaloneEmit &&
+                    descriptor.Pattern == "ControlFlowAttach")
+                {
+                    var prefix = string.IsNullOrEmpty(descriptor.FieldPrefix) ? "_dir" : descriptor.FieldPrefix;
+                    if (!_structCounts.TryGetValue(prefix, out var count)) count = 0;
+                    _structCounts[prefix] = count + 1;
+                }
                 CountStructs(element.Children);
             }
         }
@@ -107,37 +116,51 @@ namespace Square.SourceGenerator.Emit
             _sb.AppendLine("    private bool _visualTreeBuilt;");
             foreach (var item in _refs)
                 _sb.AppendLine("    internal " + item.TypeName + " " + item.Name + " = null!;");
-            for (var i = 0; i < _showCounter; i++)
-                _sb.AppendLine("    private ShowNode _show" + i + " = null!;");
-            for (var i = 0; i < _forCounter; i++)
-                _sb.AppendLine("    private IForNode _for" + i + " = null!;");
-            for (var i = 0; i < _switchCounter; i++)
-                _sb.AppendLine("    private SwitchNode _switch" + i + " = null!;");
+
+            // Field types by ControlFlowAttach prefix (catalog-driven)
+            EmitStructFields("_show", "ShowNode");
+            EmitStructFields("_for", "IForNode");
+            EmitStructFields("_switch", "SwitchNode");
             _sb.AppendLine();
 
-            if ((_refs.Count > 0 || _showCounter > 0 || _forCounter > 0 || _switchCounter > 0) &&
-                !ContainsOnDetachedCore(_doc.ScriptCode))
+            var hasStructs = _structCounts.Count > 0;
+            if ((_refs.Count > 0 || hasStructs) && !ContainsOnDetachedCore(_doc.ScriptCode))
             {
                 _sb.AppendLine("    protected override void OnDetachedCore()");
                 _sb.AppendLine("    {");
                 foreach (var item in _refs)
                     _sb.AppendLine("        " + item.Name + " = null!;");
-                for (var i = 0; i < _showCounter; i++)
-                    _sb.AppendLine("        _show" + i + "?.Dispose();");
-                for (var i = 0; i < _forCounter; i++)
-                    _sb.AppendLine("        _for" + i + "?.Dispose();");
-                for (var i = 0; i < _switchCounter; i++)
-                    _sb.AppendLine("        _switch" + i + "?.Dispose();");
-                for (var i = 0; i < _showCounter; i++)
-                    _sb.AppendLine("        _show" + i + " = null!;");
-                for (var i = 0; i < _forCounter; i++)
-                    _sb.AppendLine("        _for" + i + " = null!;");
-                for (var i = 0; i < _switchCounter; i++)
-                    _sb.AppendLine("        _switch" + i + " = null!;");
+                EmitDisposeFields("_show");
+                EmitDisposeFields("_for");
+                EmitDisposeFields("_switch");
+                EmitNullFields("_show");
+                EmitNullFields("_for");
+                EmitNullFields("_switch");
                 _sb.AppendLine("        base.OnDetachedCore();");
                 _sb.AppendLine("    }");
                 _sb.AppendLine();
             }
+        }
+
+        private void EmitStructFields(string prefix, string typeName)
+        {
+            var count = _structCounts.TryGetValue(prefix, out var c) ? c : 0;
+            for (var i = 0; i < count; i++)
+                _sb.AppendLine("    private " + typeName + " " + prefix + i + " = null!;");
+        }
+
+        private void EmitDisposeFields(string prefix)
+        {
+            var count = _structCounts.TryGetValue(prefix, out var c) ? c : 0;
+            for (var i = 0; i < count; i++)
+                _sb.AppendLine("        " + prefix + i + "?.Dispose();");
+        }
+
+        private void EmitNullFields(string prefix)
+        {
+            var count = _structCounts.TryGetValue(prefix, out var c) ? c : 0;
+            for (var i = 0; i < count; i++)
+                _sb.AppendLine("        " + prefix + i + " = null!;");
         }
 
         private void EmitNodes(List<SqxNode> nodes, string indent, string parentName, string localName)
@@ -159,28 +182,15 @@ namespace Square.SourceGenerator.Emit
                 }
                 else if (node is SqxElement element)
                 {
-                    if (element.Kind == SqxNodeKind.Show)
-                        EmitShow(element, indent, parentName, localName);
-                    else if (element.Kind == SqxNodeKind.For)
-                        EmitFor(element, indent, parentName);
-                    else if (element.Kind == SqxNodeKind.Switch)
-                        EmitSwitch(element, indent, parentName, localName);
-                    else if (element.Kind == SqxNodeKind.Match)
-                        continue;
-                    else if (element.Kind == SqxNodeKind.Slot)
-                        EmitSlot(element, indent, parentName, localName);
-                    else if (element.Kind == SqxNodeKind.Router)
+                    // Catalog-driven structural directives (Show/For/Switch/Slot/Router/…)
+                    if (_catalog.IsDirective(element.TagName))
                     {
-                        var routerName = EmitRouter(element, indent, localName);
-                        _sb.AppendLine(indent + parentName + ".Children.Add(" + routerName + ");");
-                    }
-                    else if (element.Kind == SqxNodeKind.Route)
+                        _pipeline.TryEmit(element, indent, parentName, localName);
                         continue;
-                    else
-                    {
-                        var elementName = EmitControl(element, indent, localName);
-                        _sb.AppendLine(indent + parentName + ".Children.Add(" + elementName + ");");
                     }
+
+                    var elementName = EmitControl(element, indent, localName);
+                    _sb.AppendLine(indent + parentName + ".Children.Add(" + elementName + ");");
                 }
             }
         }
@@ -204,7 +214,7 @@ namespace Square.SourceGenerator.Emit
             if (isCustomComponent)
             {
                 EmitComponentSlots(element, variableName, indent, localName);
-                _sb.AppendLine(indent + variableName + ".BuildVisualTree();");
+                _sb.AppendLine(indent + variableName + ".BuildElementTree();");
             }
             else if (!EmitTextContent(element, variableName, indent, localName))
                 EmitNodes(element.Children, indent, variableName, localName);
@@ -269,7 +279,8 @@ namespace Square.SourceGenerator.Emit
 
         private bool EmitTextContent(SqxElement element, string variableName, string indent, string localName)
         {
-            if (element.TagName != "Text" && element.TagName != "Button" && element.TagName != "Link") return false;
+            if (element.TagName != "Text" && element.TagName != "Button" && element.TagName != "Link" &&
+                element.TagName != "ListItem") return false;
             if (FindAttr(element, "text") != null) return true;
 
             var content = element.Children.Where(node => !IsWrapperExpression(node)).ToList();
@@ -289,64 +300,6 @@ namespace Square.SourceGenerator.Emit
                 return true;
             }
             return false;
-        }
-
-        private void EmitShow(SqxElement element, string indent, string parentName, string localName)
-        {
-            var index = _showIndex++;
-            var condition = FindAttr(element, "when")?.RawValue ?? "new ObservableValue<bool>(false)";
-            _sb.AppendLine(indent + "_show" + index + " = new ShowNode(" + condition + ", () =>");
-            _sb.AppendLine(indent + "{");
-            EmitFactoryBody(element.Children, indent + "    ", localName);
-            _sb.AppendLine(indent + "});");
-            _sb.AppendLine(indent + "_show" + index + ".AttachTo(" + parentName + ");");
-        }
-
-        private void EmitFor(SqxElement element, string indent, string parentName)
-        {
-            var index = _forIndex++;
-            var source = FindAttr(element, "each")?.RawValue ?? "System.Array.Empty<object>()";
-            _sb.AppendLine(indent + "_for" + index + " = ForNode.Create(" + source + ", it =>");
-            _sb.AppendLine(indent + "{");
-            EmitFactoryBody(element.Children, indent + "    ", "it");
-            _sb.AppendLine(indent + "});");
-            _sb.AppendLine(indent + "_for" + index + ".AttachTo(" + parentName + ");");
-        }
-
-        private void EmitSwitch(SqxElement element, string indent, string parentName, string localName)
-        {
-            var index = _switchCounter > 0 ? _switchCounter - 1 : 0;
-            _switchCounter = 0;
-            _sb.AppendLine(indent + "_switch" + index + " = new SwitchNode(() => 0);");
-            foreach (var child in element.Children)
-            {
-                if (child is not SqxElement matchElement || matchElement.Kind != SqxNodeKind.Match) continue;
-                var when = FindAttr(matchElement, "when")?.RawValue;
-                if (when != null)
-                {
-                    _sb.AppendLine(indent + "_switch" + index + ".AddBranch(() => " + when + ", () =>");
-                    _sb.AppendLine(indent + "{");
-                    EmitFactoryBody(matchElement.Children, indent + "    ", localName);
-                    _sb.AppendLine(indent + "});");
-                }
-                else
-                {
-                    _sb.AppendLine(indent + "_switch" + index + ".AddDefault(() =>");
-                    _sb.AppendLine(indent + "{");
-                    EmitFactoryBody(matchElement.Children, indent + "    ", localName);
-                    _sb.AppendLine(indent + "});");
-                }
-            }
-            _sb.AppendLine(indent + "_switch" + index + ".AttachTo(" + parentName + ");");
-        }
-
-        private void EmitSlot(SqxElement element, string indent, string parentName, string localName)
-        {
-            var name = FindAttr(element, "name")?.RawValue ?? "";
-            _sb.AppendLine(indent + "if (!Slots.Render(\"" + Escape(name) + "\", " + parentName + "))");
-            _sb.AppendLine(indent + "{");
-            EmitNodes(element.Children, indent + "    ", parentName, localName);
-            _sb.AppendLine(indent + "}");
         }
 
         private void EmitComponentSlots(SqxElement element, string variableName, string indent, string localName)
@@ -380,58 +333,6 @@ namespace Square.SourceGenerator.Emit
             }
         }
 
-        private string EmitRouter(SqxElement element, string indent, string localName)
-        {
-            var refAttr = FindAttr(element, "ref");
-            var isRef = refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue);
-            var variableName = isRef ? refAttr.RawValue : NextVariable();
-            if (isRef)
-                _sb.AppendLine(indent + variableName + " = new Square.Router.Router();");
-            else
-                _sb.AppendLine(indent + "var " + variableName + " = new Square.Router.Router();");
-
-            var initialPath = FindAttr(element, "initialPath");
-            if (initialPath != null)
-            {
-                if (initialPath.IsExpression)
-                    _sb.AppendLine(indent + variableName + ".InitialPath = " + initialPath.RawValue + ";");
-                else
-                    _sb.AppendLine(indent + variableName + ".InitialPath = \"" + Escape(initialPath.RawValue ?? "/") + "\";");
-            }
-
-            foreach (var attribute in element.Attributes)
-            {
-                if (attribute.Name == "initialPath" || attribute.Name == "ref") continue;
-                EmitAttribute(variableName, attribute, indent, localName);
-            }
-
-            foreach (var route in element.Children.OfType<SqxElement>().Where(child => child.Kind == SqxNodeKind.Route))
-            {
-                var routeName = EmitRouteDefinition(route, indent);
-                _sb.AppendLine(indent + variableName + ".Routes.Add(" + routeName + ");");
-            }
-
-            _sb.AppendLine(indent + variableName + ".Start();");
-            return variableName;
-        }
-
-        private string EmitRouteDefinition(SqxElement element, string indent)
-        {
-            var variableName = NextVariable();
-            var path = FindAttr(element, "path")?.RawValue ?? "/";
-            var component = FindAttr(element, "component")?.RawValue;
-            var factory = string.IsNullOrWhiteSpace(component) ? "null" : "() => new " + component + "()";
-            _sb.AppendLine(indent + "var " + variableName + " = new Square.Router.RouteDefinition(\"" + Escape(path) + "\", " + factory + ");");
-
-            foreach (var child in element.Children.OfType<SqxElement>().Where(node => node.Kind == SqxNodeKind.Route))
-            {
-                var childName = EmitRouteDefinition(child, indent);
-                _sb.AppendLine(indent + variableName + ".Children.Add(" + childName + ");");
-            }
-
-            return variableName;
-        }
-
         private void EmitFactoryBody(List<SqxNode> nodes, string indent, string localName)
         {
             var content = nodes.Where(node => !IsWrapperExpression(node)).ToList();
@@ -460,7 +361,7 @@ namespace Square.SourceGenerator.Emit
 
         private string EmitFactoryRoot(SqxNode node, string indent, string localName)
         {
-            if (node is SqxElement element && element.Kind == SqxNodeKind.Element)
+            if (node is SqxElement element && element.Kind != SqxNodeKind.Directive)
                 return EmitControl(element, indent, localName);
             if (node is SqxText text)
                 return EmitText(text.Text, indent);
@@ -508,7 +409,7 @@ namespace Square.SourceGenerator.Emit
             _sb.AppendLine("    private static readonly Square.CSS.Ast.CssStyleSheet ComponentStyleSheet =");
             _sb.AppendLine("        new Square.CSS.Engine.CssParser(new Square.CSS.Tokenizer.CssTokenizer(@\"" + css + "\").Tokenize()).Parse();");
             _sb.AppendLine();
-            _sb.AppendLine("    private static void ApplyComponentStyles(Visual root)");
+            _sb.AppendLine("    private static void ApplyComponentStyles(Element root)");
             _sb.AppendLine("    {");
             _sb.AppendLine("        var engine = new Square.CSS.Engine.CssEngine();");
             _sb.AppendLine("        engine.LoadStyleSheet(ComponentStyleSheet);");
@@ -550,6 +451,7 @@ namespace Square.SourceGenerator.Emit
         {
             "View" => "Square.Controls.Controls.View",
             "Text" => "Square.Controls.Controls.Text",
+            "ListItem" => "Square.Controls.Controls.ListItem",
             "Button" => "Square.Controls.Controls.Button",
             "Input" => "Square.Controls.Controls.Input",
             "TextArea" => "Square.Controls.Controls.TextArea",
@@ -563,9 +465,9 @@ namespace Square.SourceGenerator.Emit
             _ => tag
         };
 
-        private static bool IsBuiltInTag(string tag) => tag == "View" || tag == "Text" || tag == "Button" ||
-            tag == "Input" || tag == "TextArea" || tag == "CheckBox" || tag == "Radio" || tag == "Select" ||
-            tag == "Image" || tag == "Canvas" || tag == "Link";
+        private static bool IsBuiltInTag(string tag) => tag == "View" || tag == "Text" || tag == "ListItem" ||
+            tag == "Button" || tag == "Input" || tag == "TextArea" || tag == "CheckBox" || tag == "Radio" ||
+            tag == "Select" || tag == "Image" || tag == "Canvas" || tag == "Link";
 
         private static string MapPropName(string name) => name switch
         {
@@ -579,9 +481,12 @@ namespace Square.SourceGenerator.Emit
             "group" => "GroupName",
             "options" => "Options",
             "to" => "To",
+            "href" => "Href",
+            "marker" => "Marker",
             "replace" => "Replace",
             "color" => "Color",
             "background" => "Background",
+            "underline" => "Underline",
             _ => name
         };
 

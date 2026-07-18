@@ -77,13 +77,13 @@ public class QueryTests
     }
 
     [Fact]
-    public void VisualStateSet()
+    public void ElementStateSet()
     {
         var btn = new Button();
-        Assert.False(btn.HasState(VisualState.Hover));
-        btn.SetState(VisualState.Hover, true);
-        Assert.True(btn.HasState(VisualState.Hover));
-        btn.SetState(VisualState.Hover, false);
-        Assert.False(btn.HasState(VisualState.Hover));
+        Assert.False(btn.HasState(ElementState.Hover));
+        btn.SetState(ElementState.Hover, true);
+        Assert.True(btn.HasState(ElementState.Hover));
+        btn.SetState(ElementState.Hover, false);
+        Assert.False(btn.HasState(ElementState.Hover));
     }
 }

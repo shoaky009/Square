@@ -6,7 +6,7 @@ namespace Square.CSS.Engine;
 
 public sealed class CssAnimationTimeline
 {
-    private readonly Visual _visual;
+    private readonly Element _visual;
     private readonly List<AnimationTrack> _tracks;
     private readonly float _duration;
     private readonly float _delay;
@@ -16,9 +16,9 @@ public sealed class CssAnimationTimeline
     private float _elapsed;
     private bool _running;
 
-    internal CssAnimationTimeline(Visual visual, KeyFramesRule keyFrames, float duration, Func<float, float> easing, float delay = 0, int iterationCount = 1, string direction = "normal")
+    internal CssAnimationTimeline(Element Element, KeyFramesRule keyFrames, float duration, Func<float, float> easing, float delay = 0, int iterationCount = 1, string direction = "normal")
     {
-        _visual = visual;
+        _visual = Element;
         _duration = Math.Max(0.0001f, duration);
         _delay = Math.Max(0, delay);
         _iterationCount = Math.Max(1, iterationCount);

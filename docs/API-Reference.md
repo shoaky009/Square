@@ -16,23 +16,26 @@ namespace Square.Hosting;
 
 public sealed class DesktopApplication : Application
 {
-    public DesktopApplication(Visual root, PlatformHostCreateInfo hostCreateInfo);
+    public DesktopApplication(UIDocument document, PlatformHostCreateInfo hostCreateInfo);
+    public DesktopApplication(Element contentRoot, PlatformHostCreateInfo hostCreateInfo); // 兼容：内容挂到新 UIDocument.Body
+    public UIDocument Document { get; }
     public Color Background { get; set; }   // 默认 Color.White
 }
 ```
 
 | 成员 | 说明 |
 |---|---|
-| 构造函数 | 接收根视觉节点和窗口创建信息 |
+| 构造函数 | 接收 `UIDocument`（或兼容地接收内容 `Element` 并包进 Body）与窗口创建信息 |
+| `Document` | 当前 UI 文档 |
 | `Background` | 窗口背景色，默认白色 |
 | `Dispatcher`（继承自 `Application`） | UI 线程调度器，用于 Signal 跨线程投递 |
-| `Run()`（继承自 `Application`） | 启动应用：注册默认后端/平台 → 构建根组件 → 创建窗口 → 消息循环 |
+| `Run()`（继承自 `Application`） | 启动应用：注册默认后端/平台/控件 → 构建文档 → 创建窗口 → 消息循环 |
 | `Shutdown()`（继承自 `Application`） | 请求关闭消息循环 |
 
 `Run()` 内部自动处理：
 
-1. `BackendRegistration.RegisterDefaults()` + `PlatformRegistration.RegisterDefaults()`
-2. 根组件 `BuildVisualTree()` → `OnAttached()`
+1. `BackendRegistration` / `PlatformRegistration` / `ControlRegistration.RegisterDefaults()`
+2. `document.Build()` → `documentElement` 上 `OnAttached()`
 3. 创建 `IPlatformHost` 并绑定所有输入事件
 4. `OnLoaded()` → 首帧渲染 → `PumpEvents()` 消息循环
 5. 退出时 `OnUnloaded()` → `OnDetached()`
@@ -185,7 +188,7 @@ public interface IComponentLifecycle
 }
 ```
 
-`Visual` 实现此接口。通过显式接口调用触发生命周期。
+`Element` 实现此接口。通过显式接口调用触发生命周期。
 
 ### Signal\<T\>
 
@@ -233,58 +236,91 @@ public sealed class SignalHub
 
 ---
 
-## 3. Square.Events — 路由事件
+## 3. Square.Events — DOM 事件（Web API）
 
-### RoutingStrategy / EventPhase
+对齐 MDN：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent`。  
+**已删除** WPF 风格 `RoutedEvent` / `RaiseEvent` / `Handled` / `RoutingStrategy`（非改名，硬切）。
+
+### EventPhase
 
 ```csharp
 namespace Square.Events;
 
-public enum RoutingStrategy { Direct, Bubble, Tunnel, TunnelAndBubble }
-public enum EventPhase { Direct, Tunneling, AtTarget, Bubbling }
+public enum EventPhase
+{
+    None = 0,
+    CapturingPhase = 1,
+    AtTarget = 2,
+    BubblingPhase = 3
+}
 ```
 
-### RoutedEventArgs
+### Event / EventInit
 
 ```csharp
 namespace Square.Events;
 
-public class RoutedEventArgs
+public sealed class EventInit
 {
-    public EventDefinition? Event { get; set; }
-    public IEventTarget? OriginalSource { get; set; }
-    public IEventTarget? Source { get; set; }
-    public IEventTarget? CurrentTarget { get; set; }
-    public EventPhase Phase { get; set; }
-    public long Timestamp { get; init; }
-    public bool Handled { get; set; }
+    public bool Bubbles { get; init; }
+    public bool Cancelable { get; init; }
+    public bool Composed { get; init; }
+}
+
+public class Event
+{
+    public Event(string type, EventInit? init = null);
+
+    public string Type { get; }
+    public EventTarget? Target { get; }
+    public EventTarget? CurrentTarget { get; }
+    public EventPhase EventPhase { get; }
+    public bool Bubbles { get; }
+    public bool Cancelable { get; }
+    public bool Composed { get; }
     public bool DefaultPrevented { get; }
+    public bool IsTrusted { get; }
+    public double TimeStamp { get; }
+
     public void PreventDefault();
+    public void StopPropagation();
+    public void StopImmediatePropagation();
+    public IReadOnlyList<EventTarget> ComposedPath();
 }
 ```
 
 | 成员 | 说明 |
 |---|---|
-| `OriginalSource` | 事件发起的原始视觉节点 |
-| `Source` | 事件源（可被修改） |
-| `CurrentTarget` | 当前处理事件的节点 |
-| `Phase` | 当前事件阶段 |
-| `Handled` | 标记已处理，抑制后续普通 handler |
-| `PreventDefault()` | 阻止默认行为 |
+| `Target` | 派发目标（原 `OriginalSource`/`Source`） |
+| `CurrentTarget` | 当前处理该事件的 `EventTarget` |
+| `EventPhase` | 捕获 / 目标 / 冒泡 |
+| `StopPropagation` | 停止继续传播（替代旧 `Handled`） |
+| `PreventDefault` | 可取消事件上阻止默认行为 |
 
-### RoutedEvent\<TEventArgs\>
+### EventTarget
 
 ```csharp
 namespace Square.Events;
 
-public sealed class RoutedEvent<TEventArgs> : EventDefinition
-    where TEventArgs : RoutedEventArgs
+public class EventTarget
 {
-    public RoutedEvent(string name, RoutingStrategy routingStrategy);
-    public string Name { get; }
-    public RoutingStrategy RoutingStrategy { get; }
+    public void AddEventListener(string type, Action<Event>? listener, AddEventListenerOptions? options = null);
+    public void AddEventListener(string type, Action<Event>? listener, bool useCapture);
+    public void AddEventListener(string type, Action handler, AddEventListenerOptions? options = null);
+    public void AddEventListener<TEvent>(string type, Action<TEvent> handler, AddEventListenerOptions? options = null)
+        where TEvent : Event;
+
+    public void RemoveEventListener(string type, Action<Event>? listener, bool useCapture = false);
+    public void RemoveEventListener(string type, Action handler, bool useCapture = false);
+
+    public bool DispatchEvent(Event e);
+    public bool DispatchTrusted(Event e); // IsTrusted = true（平台输入）
 }
 ```
+
+`AddEventListenerOptions`：`Capture`、`Once`、`Passive`、`Signal`（`CancellationToken`）。
+
+传播：捕获 → 目标 →（若 `Bubbles`）冒泡。父链由 `GetEventParent()` 提供（`Element.Parent`，否则 `OwnerDocument`）。
 
 ### StandardEvents
 
@@ -293,100 +329,105 @@ namespace Square.Events;
 
 public static class StandardEvents
 {
-    public static readonly RoutedEvent<RoutedEventArgs> PointerDown;   // TunnelAndBubble
-    public static readonly RoutedEvent<RoutedEventArgs> PointerUp;    // TunnelAndBubble
-    public static readonly RoutedEvent<RoutedEventArgs> PointerMove;   // TunnelAndBubble
-    public static readonly RoutedEvent<RoutedEventArgs> Wheel;       // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> KeyDown;      // TunnelAndBubble
-    public static readonly RoutedEvent<RoutedEventArgs> KeyUp;        // TunnelAndBubble
-    public static readonly RoutedEvent<RoutedEventArgs> TextInput;    // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> FocusIn;      // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> FocusOut;     // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> Focus;       // Direct
-    public static readonly RoutedEvent<RoutedEventArgs> Blur;        // Direct
-    public static readonly RoutedEvent<RoutedEventArgs> Click;       // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> Change;     // Bubble
-    public static readonly RoutedEvent<RoutedEventArgs> Input;      // Bubble
-    public static readonly RoutedEvent<FrameRequestEventArgs> RequestFrame; // Bubble
+    public const string PointerDown = "pointerdown";
+    public const string PointerUp = "pointerup";
+    public const string PointerMove = "pointermove";
+    public const string Wheel = "wheel";
+    public const string KeyDown = "keydown";
+    public const string KeyUp = "keyup";
+    public const string Click = "click";
+    public const string Change = "change";
+    public const string Input = "input";
+    public const string Focus = "focus";      // 不冒泡
+    public const string Blur = "blur";        // 不冒泡
+    public const string FocusIn = "focusin";  // 冒泡
+    public const string FocusOut = "focusout";
+    public const string RequestFrame = "requestframe"; // 框架扩展
 
-    public static EventDefinition? Resolve(string eventName);
-    public static RoutedEvent<RoutedEventArgs> ResolveOrCreate(string eventName, RoutingStrategy routingStrategy = RoutingStrategy.Bubble);
+    public static Event Create(string type);
+    public static Event CreateClick();
+    public static Event CreatePointerDown();
+    // … 其它 Create* 工厂
+    public static FrameRequestEvent CreateRequestFrame(double framesPerSecond = 60d);
 }
 ```
 
-### FrameRequestEventArgs
+### FrameRequestEvent
 
 ```csharp
 namespace Square.Events;
 
-public sealed class FrameRequestEventArgs : RoutedEventArgs
+public sealed class FrameRequestEvent : Event
 {
+    public double FramesPerSecond { get; }
     public double IntervalSeconds { get; }
 }
 ```
 
 ---
 
-## 4. Square.UI — 视觉树与元素 API
+## 4. Square.UI — 元素树 API
 
-### Visual
+### Element
 
 ```csharp
 namespace Square.UI;
 
-public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarget
+public abstract class Element : EventTarget, IComponentLifecycle, ILayoutLifecycle
 {
     public PropertyStore Properties { get; }
     public StyleAccessor Style { get; }
     public ClassListAccessor ClassList { get; }
     public ChildrenCollection Children { get; }
-    public Visual? Parent { get; }
+    public virtual string TagName { get; }
+    public string? Id { get; set; }
+    public Document? OwnerDocument { get; }
+    public Element? Parent { get; }
+    public Element? ParentNode { get; }      // 同 Parent
+    public Element? ParentElement { get; }   // 同 Parent
+    public Element? FirstElementChild { get; }
+    public Element? LastElementChild { get; }
+    public int ChildElementCount { get; }
     public Rect Geometry { get; set; }
     public bool IsVisible { get; set; }
     public bool IsLayoutDirty { get; }
-    public bool IsVisualDirty { get; }
+    public bool NeedsPaint { get; }
     public virtual int ZIndex { get; set; }
-    public VisualState State { get; }
+    public ElementState State { get; }
     public bool IsAttached { get; }
     public bool IsLoaded { get; }
 
-    public void SetState(VisualState flag, bool on);
-    public bool HasState(VisualState flag);
+    public void SetState(ElementState flag, bool on);
+    public bool HasState(ElementState flag);
+
+    public Element AppendChild(Element child);
+    public Element InsertBefore(Element newChild, Element? referenceChild);
+    public Element RemoveChild(Element child);
+    public void ReplaceChildren(params Element[] nodes);
+    public Rect GetBoundingClientRect();
 
     public T? GetProperty<T>(string name);
     public void SetProperty<T>(string name, T value);
     public void BindProperty<T>(string name, Func<T> getter);
     public void BindProperty<T>(string name, ObservableValue<T> source);
 
-    public void AddEventListener<TEventArgs>(RoutedEvent<TEventArgs> routedEvent, RoutedEventHandler<TEventArgs> handler, bool handledEventsToo = false) where TEventArgs : RoutedEventArgs;
-    public void AddEventListener(string eventName, Action handler);
-    public void AddEventListener(string eventName, RoutedEventHandler<RoutedEventArgs> handler);
-    public void AddEventListener(string eventName, Action<RoutedEventArgs> handler);
-    public void RemoveEventListener(string eventName);
-    public void RemoveEventListener(string eventName, Action handler);
-    public void RemoveEventListener(string eventName, RoutedEventHandler<RoutedEventArgs> handler);
-    public void RemoveEventListener(string eventName, Action<RoutedEventArgs> handler);
+    // 事件：继承 EventTarget（AddEventListener / DispatchEvent）
 
-    public void RaiseEvent<TEventArgs>(RoutedEvent<TEventArgs> routedEvent, TEventArgs args) where TEventArgs : RoutedEventArgs;
-    public void RaiseEvent(string eventName);
-    public void RouteEvent(string eventName);
-
-    public virtual Visual? HitTest(Point point);
-    public bool ClipsOverflow();
+    public virtual Element? HitTest(Point point);\n    public bool ClipsOverflow();
     public Rect GetOverflowClipRect();
 
-    public T? Query<T>(string? className = null) where T : Visual;
-    public List<T> QueryAll<T>(string? className = null) where T : Visual;
+    public T? Query<T>(string? className = null) where T : Element;
+    public List<T> QueryAll<T>(string? className = null) where T : Element;
 
     public void InvalidateLayout();
-    public void InvalidateVisual();
+    public void InvalidatePaint();
     public void ClearLayoutDirty();
-    public void ClearVisualDirty();
+    public void ClearPaintDirty();
 
     public virtual Size Measure(Size availableSize);
     public virtual void Arrange(Rect finalRect);
-    public virtual void Render(IRenderContext ctx);
-    public virtual void BuildVisualTree();
+    public virtual void Paint(IRenderContext ctx);
+    public virtual void BuildElementTree();
 
     protected virtual void OnPropertyChanged(string name);
     protected virtual void OnPropChanged(string name);
@@ -395,12 +436,60 @@ public abstract class Visual : IComponentLifecycle, ILayoutLifecycle, IEventTarg
 }
 ```
 
+### Document / UIDocument
+
+```csharp
+namespace Square.UI;
+
+public abstract class Document : EventTarget
+{
+    public Element DocumentElement { get; }   // 只读
+    public string Title { get; set; }
+    public Element? GetElementById(string id);
+    public T? GetElementById<T>(string id) where T : Element;
+    public List<T> GetElementsByTagName<T>(string tagName) where T : Element;
+    public List<T> GetElementsByClassName<T>(string className) where T : Element;
+    public T? Query<T>(string? className = null) where T : Element;
+    public List<T> QueryAll<T>(string? className = null) where T : Element;
+}
+
+public sealed class UIDocument : Document
+{
+    public UIRootElement Ui { get; }     // documentElement，TagName "UI"
+    public UIHeadElement Head { get; }   // 元数据；本阶段不参与布局
+    public UIBodyElement Body { get; }   // 窗口客户区内容宿主
+
+    public static void RegisterElement(string tagName, Func<Element> factory);
+    public Element CreateElement(string tagName);
+    public T CreateElement<T>() where T : Element, new();
+    public void Build();                 // 对 Body 子树 BuildElementTree
+}
+```
+
+壳结构：`DocumentElement = UI`（只读）→ 子节点 `Head` + `Body`。应用内容挂在 `Body` 下，**不是** documentElement。
+
+### HTMLElement / SVGElement（占位）
+
+```csharp
+namespace Square.UI;
+
+public abstract class HTMLElement : Element
+{
+    public override string? NamespaceURI => "http://www.w3.org/1999/xhtml";
+}
+
+public abstract class SVGElement : Element
+{
+    public override string? NamespaceURI => "http://www.w3.org/2000/svg";
+}
+```
+
 ### UIElement
 
 ```csharp
 namespace Square.UI;
 
-public abstract class UIElement : Visual
+public abstract class UIElement : Element
 {
     public SlotCollection Slots { get; }
     public HorizontalAlignment HorizontalAlign { get; set; }
@@ -433,13 +522,13 @@ public abstract class UIElement : Visual
 }
 ```
 
-### VisualState
+### ElementState
 
 ```csharp
 namespace Square.UI;
 
 [Flags]
-public enum VisualState : byte
+public enum ElementState : byte
 {
     None = 0, Hover = 1, Focus = 2, Active = 4, Disabled = 8, Checked = 16, Empty = 32
 }
@@ -485,20 +574,20 @@ public sealed class ClassListAccessor
 ```csharp
 namespace Square.UI.ElementApi;
 
-public sealed class ChildrenCollection : IList<Visual>
+public sealed class ChildrenCollection : IList<Element>
 {
-    public Visual this[int index] { get; }
+    public Element this[int index] { get; }
     public int Count { get; }
 
-    public void Add(Visual item);
-    public void AddRange(IEnumerable<Visual> items);
-    public void Insert(int index, Visual item);
-    public void InsertBefore(Visual newChild, Visual refChild);
-    public bool Remove(Visual item);
+    public void Add(Element item);
+    public void AddRange(IEnumerable<Element> items);
+    public void Insert(int index, Element item);
+    public void InsertBefore(Element newChild, Element refChild);
+    public bool Remove(Element item);
     public void RemoveAt(int index);
     public void Clear();
-    public int IndexOf(Visual item);
-    public bool Contains(Visual item);
+    public int IndexOf(Element item);
+    public bool Contains(Element item);
 }
 ```
 
@@ -509,13 +598,13 @@ public sealed class ChildrenCollection : IList<Visual>
 ```csharp
 namespace Square.UI;
 
-public delegate void RenderFragment(Visual parent);
+public delegate void RenderFragment(Element parent);
 
 public sealed class SlotCollection
 {
     public void Set(string? name, RenderFragment fragment);
     public bool Contains(string? name);
-    public bool Render(string? name, Visual parent);
+    public bool Render(string? name, Element parent);
 }
 ```
 
@@ -543,6 +632,8 @@ public sealed class PropertyStore
 |---|---|---|
 | `View` | `UIElement` | — |
 | `Text` | `UIElement` | `TextContent`, `Color`, `FontSize` |
+| `ListItem` | `UIElement` | `TextContent`, `Marker`, `Color`, `FontSize`（类似 HTML `li`） |
+| `Link` | `UIElement` | `TextContent`, `Href`, `Color`, `FontSize`, `Underline`（类似 HTML `a`；路由导航见 `Square.Router.Link`） |
 | `Button` | `UIElement` | `TextContent`, `Background`, `Foreground` |
 | `CheckBox` | `UIElement` | `IsChecked`, `TextContent` |
 | `Radio` | `UIElement` | `IsChecked`, `TextContent`, `GroupName` |
@@ -711,25 +802,25 @@ namespace Square.Controls.Primitives;
 
 public sealed class ShowNode : IDisposable
 {
-    public ShowNode(ObservableValue<bool> source, Func<Visual?> build);
-    public ShowNode(Func<bool> condition, Func<Visual?> build);
-    public void AttachTo(Visual parent);
+    public ShowNode(ObservableValue<bool> source, Func<Element?> build);
+    public ShowNode(Func<bool> condition, Func<Element?> build);
+    public void AttachTo(Element parent);
     public void Update();
     public void Dispose();
 }
 
 public static class ForNode
 {
-    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Visual?> build);
-    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Visual?> build);
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build);
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build);
 }
 
 public sealed class SwitchNode : IDisposable
 {
     public SwitchNode(Func<int> selector);
-    public void AddBranch(Func<bool> condition, Func<Visual?> build);
-    public void AddDefault(Func<Visual?> build);
-    public void AttachTo(Visual parent);
+    public void AddBranch(Func<bool> condition, Func<Element?> build);
+    public void AddDefault(Func<Element?> build);
+    public void AttachTo(Element parent);
     public void Update();
     public void Dispose();
 }
@@ -1102,12 +1193,12 @@ namespace Square.Rendering;
 
 public sealed class LayoutEngine
 {
-    public void Measure(Visual visual, Size availableSize);
-    public void Arrange(Visual visual, Rect finalRect);
+    public void Measure(Element element, Size availableSize);
+    public void Arrange(Element element, Rect finalRect);
 }
 ```
 
-布局流程：`Measure`（计算期望尺寸） → `Arrange`（确定最终位置与尺寸） → 写入 `Visual.Geometry`。
+布局流程：`Measure`（计算期望尺寸） → `Arrange`（确定最终位置与尺寸） → 写入 `Element.Geometry`。
 
 ### ComputedStyle
 
@@ -1143,22 +1234,22 @@ public enum JustifyContent { FlexStart, Center, FlexEnd, SpaceBetween, SpaceArou
 public enum AlignItems { Stretch, FlexStart, Center, FlexEnd }
 ```
 
-支持的 CSS 属性读取自 `Visual.Style.Get(...)`：`display`、`flex-direction`、`justify-content`、`align-items`、`gap`、`padding`、`margin`、`width`、`height`、`flex-grow`、`flex-shrink`、`flex-basis`、`grid-template-columns`、`grid-template-rows`、`grid-column`、`grid-row`、`grid-area`、`font-size`。
+支持的 CSS 属性读取自 `Element.Style.Get(...)`：`display`、`flex-direction`、`justify-content`、`align-items`、`gap`、`padding`、`margin`、`width`、`height`、`flex-grow`、`flex-shrink`、`flex-basis`、`grid-template-columns`、`grid-template-rows`、`grid-column`、`grid-row`、`grid-area`、`font-size`。
 
 长度单位：`px`、`%`、`rem`、`em`、`vw`、`vh`、`rp`、`auto`、`min-content`、`max-content`、`fit-content`。
 
 ---
 
-## 9. Square.Rendering — 渲染树
+## 9. Square.Rendering — Display Tree
 
-### RenderTree
+### DisplayTree
 
 ```csharp
 namespace Square.Rendering;
 
-public sealed class RenderTree
+public sealed class DisplayTree
 {
-    public void BuildFrom(Visual visual);
+    public void BuildFrom(Element element);
     public void Invalidate(Rect rect);
     public void UpdateDirty();
     public void Render(IRenderContext ctx);
@@ -1167,11 +1258,12 @@ public sealed class RenderTree
 
 | 成员 | 说明 |
 |---|---|
-| `BuildFrom(visual)` | 从 Visual Tree 全量构建渲染树 |
-| `UpdateDirty()` | 增量更新脏节点 |
-| `Render(ctx)` | 遍历渲染树，提交 DrawCommand |
+| `BuildFrom(element)` | 从 Element Tree 全量构建 Display Tree |
+| `UpdateDirty()` | 按 `NeedsPaint` 增量标记脏节点 |
+| `Render(ctx)` | 遍历 DisplayNode，收集并提交 DrawCommand |
 
-`DesktopApplication` 在 `RenderFrame()` 中按需调用 `BuildFrom` 或 `UpdateDirty`，随后 `Render`。
+`DesktopApplication` 在 `RenderFrame()` 中按需调用 `BuildFrom` 或 `UpdateDirty`，随后 `Render`。`DisplayNode.Source` / `Element` 指向对应文档元素。
+
 
 ---
 
@@ -1253,16 +1345,48 @@ public interface INavigationHistory
 }
 ```
 
-### Link
+### Link（控件，类似 `a`）
+
+```csharp
+namespace Square.Controls.Controls;
+
+public class Link : UIElement
+{
+    public string TextContent { get; set; }
+    public string Href { get; set; }
+    public Color Color { get; set; }      // 默认 #0066CC
+    public float FontSize { get; set; }   // 默认 16
+    public bool Underline { get; set; }   // 默认 true
+}
+```
+
+### ListItem（类似 `li`）
+
+```csharp
+namespace Square.Controls.Controls;
+
+public class ListItem : UIElement
+{
+    public string TextContent { get; set; }
+    public string Marker { get; set; }    // 默认 "• "
+    public Color Color { get; set; }
+    public float FontSize { get; set; }
+}
+```
+
+### Link（路由，继承控件 Link）
 
 ```csharp
 namespace Square.Router;
 
-public sealed class Link : UIElement
+public sealed class Link : Square.Controls.Controls.Link
 {
-    public string To { get; set; }
+    public string To { get; set; }      // 应用内路径；同步到 Href
+    public bool Replace { get; set; }
 }
 ```
+
+`.sqx` 中的 `<Link>` 映射为 `Square.Router.Link`（需引用 Router）。纯样式超链接可直接 `new Square.Controls.Controls.Link(...)`。
 
 ---
 
@@ -1349,12 +1473,11 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 
 ## 14. 事件签名约定
 
-SQX 中的事件处理方法支持三种签名（由 Source Generator 自动适配）：
+SQX 中的事件处理方法支持（由 Source Generator 适配）：
 
 ```csharp
 private void OnClick() { }
-private void OnClick(RoutedEventArgs e) { }
-private void OnClick(object? sender, RoutedEventArgs e) { }
+private void OnClick(Event e) { }
 ```
 
 事件名映射规则：DOM 风格小写 → SQX `on` 前缀 + PascalCase。例如 `click` → `onClick`、`textinput` → `onTextInput`、`requestframe` → `onRequestFrame`。
@@ -1369,14 +1492,15 @@ private void OnClick(object? sender, RoutedEventArgs e) { }
 | `Square.Runtime` | `Application`, `Dispatcher`, `IComponentLifecycle` |
 | `Square.Runtime.Binding` | `ObservableValue<T>`, `ObservableCollection<T>`, `PropAttribute` |
 | `Square.Runtime.Signals` | `Signal<T>`, `SignalHub` |
-| `Square.Events` | `RoutedEventArgs`, `StandardEvents`, `RoutedEvent<T>`, `RoutingStrategy` |
-| `Square.UI` | `Visual`, `UIElement`, `VisualState`, `SlotCollection`, `RenderFragment` |
+| `Square.Events` | `EventTarget`, `Event`, `EventInit`, `EventPhase`, `StandardEvents`, `FrameRequestEvent` |
+| `Square.Directives` | `SqxDirectiveAttribute`（编译期指令发现） |
+| `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
-| `Square.Controls.Controls` | `View`, `Text`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
+| `Square.Controls.Controls` | `View`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
 | `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `RenderBackendRegistry` |
-| `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `RenderTree` |
+| `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `DisplayTree`, `DisplayNode` |
 | `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformRegistration` |
 | `Square.Router` | `Router`, `RouteContext`, `RouteDefinition`, `Link`, `INavigationHistory` |
 | `Square.Controls.Animation` | `Animation<T>`, `Clock`, `Easing` |

@@ -25,15 +25,15 @@
   public ObservableValue<string[]> ColorOptions = new(["Blue", "Green", "Orange"]);
   public ObservableCollection<string> Items = new() { "For: ready" };
 
-  private void OnClick(object? sender, RoutedEventArgs e)
+  private void OnClick(Event e)
   {
-    LastEventSourceWasButton.Value = sender == MyBtn && e.OriginalSource == MyBtn;
+    LastEventSourceWasButton.Value = e.CurrentTarget == MyBtn && e.Target == MyBtn;
     _count++;
     ShowCount.Value = true;
     Items.Add("Click " + _count);
   }
 
-  private void OnAcceptedChanged(RoutedEventArgs e)
+  private void OnAcceptedChanged(Event e)
   {
     Accepted.Value = AcceptCheckBox.IsChecked;
   }

@@ -37,7 +37,7 @@
 - Slot 内容在调用方作用域内求值，事件和绑定仍访问调用方成员。
 - `<Slot>` 不产生额外的 `View`，不会改变 Flex 或 Grid 层级。
 - Slot 的 children 是未传入内容时的 fallback。
-- 组件的 Props 和 Slots 在 `BuildVisualTree()` 之前设置。
+- 组件的 Props 和 Slots 在 `BuildElementTree()` 之前设置。
 - 每个 Slot fragment 每个组件实例只渲染一次。
 
 ---
@@ -82,7 +82,7 @@ Sample 中的 `Tabs.sqx` 使用两个区域：
 | `SignalHub` | 按名称获取共享 Signal | 名称和类型共同构成契约 |
 | `Dispatcher` | 将回调送到所属线程 | 只有所属线程可以执行 `Run()` |
 
-不要从后台线程直接修改 Visual Tree。后台任务只发布 Signal，UI 组件通过绑定了 Dispatcher 的订阅接收消息。
+不要从后台线程直接修改 Element Tree。后台任务只发布 Signal，UI 组件通过绑定了 Dispatcher 的订阅接收消息。
 
 ---
 

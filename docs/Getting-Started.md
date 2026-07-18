@@ -112,9 +112,9 @@ app.Run();
   public ObservableValue<string> Name = new("");
   public ObservableValue<bool> Greeted = new(false);
 
-  private void OnNameChanged(RoutedEventArgs e)
+  private void OnNameChanged(Event e)
   {
-    Name.Value = ((Input)e.OriginalSource!).Value;
+    Name.Value = ((Input)e.Target!).Value;
   }
 
   private void OnGreet()
@@ -205,12 +205,12 @@ dotnet run
 Source Generator 生成类似以下的 C# 代码（在 `obj/Generated` 下可查看）：
 
 ```csharp
-public partial class Main : Visual
+public partial class Main : UIElement
 {
     public ObservableValue<string> Name = new("");
     public ObservableValue<bool> Greeted = new(false);
 
-    protected override void BuildVisualTree()
+    protected override void BuildElementTree()
     {
         var view = new View();
         var title = new Text("Hello Square");
@@ -265,8 +265,8 @@ public ObservableValue<bool> Visible = new(true);
 
 ```csharp
 private void OnClick() { }
-private void OnClick(RoutedEventArgs e) { }
-private void OnClick(object? sender, RoutedEventArgs e) { }
+private void OnClick(Event e) { }
+
 ```
 
 ### 5.5 双向绑定（显式）
@@ -278,9 +278,9 @@ Square 不提供隐式双向绑定。单向属性绑定 + 事件回写：
 ```
 
 ```csharp
-private void OnNameChanged(RoutedEventArgs e)
+private void OnNameChanged(Event e)
 {
-    Name.Value = ((Input)e.OriginalSource!).Value;
+    Name.Value = ((Input)e.Target!).Value;
 }
 ```
 
@@ -339,7 +339,7 @@ protected override void OnPropChanged(string name)
 </Show>
 ```
 
-`when` 绑定 `ObservableValue<bool>`。条件变化时增删 Visual 子树。
+`when` 绑定 `ObservableValue<bool>`。条件变化时增删 Element 子树。
 
 ### 7.2 列表渲染
 
@@ -630,7 +630,7 @@ Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dyna
 
 ### 15.1 查看生成代码
 
-`EmitCompilerGeneratedFiles=true` 会将生成的 C# 输出到 `obj/Generated/`。可直接查看 `BuildVisualTree()` 的生成结果。
+`EmitCompilerGeneratedFiles=true` 会将生成的 C# 输出到 `obj/Generated/`。可直接查看 `BuildElementTree()` 的生成结果。
 
 ### 15.2 诊断代码
 
