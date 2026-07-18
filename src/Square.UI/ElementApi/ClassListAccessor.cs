@@ -14,14 +14,14 @@ public sealed class ClassListAccessor
     public void Add(string className)
     {
         _classes ??= [];
-        if (_classes.Add(className)) _owner.InvalidatePaint();
+        if (_classes.Add(className)) _owner.Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
 
     /// <summary>移除 class。</summary>
     public void Remove(string className)
     {
         if (_classes == null) return;
-        if (_classes.Remove(className)) _owner.InvalidatePaint();
+        if (_classes.Remove(className)) _owner.Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
 
     /// <summary>切换 class 有无。</summary>
@@ -48,8 +48,9 @@ public sealed class ClassListAccessor
     public void Clear()
     {
         if (_classes == null) return;
+        if (_classes.Count == 0) return;
         _classes.Clear();
-        _owner.InvalidatePaint();
+        _owner.Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
 
     public IReadOnlyCollection<string> GetAll() => _classes ?? [];

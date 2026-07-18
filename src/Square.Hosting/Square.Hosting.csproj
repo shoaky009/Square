@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Square.Backends\Square.Backends.csproj" />
     <ProjectReference Include="..\Square.Controls\Square.Controls.csproj" />
+    <ProjectReference Include="..\Square.CSS\Square.CSS.csproj" />
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
     <ProjectReference Include="..\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\Square.Rendering\Square.Rendering.csproj" />

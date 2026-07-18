@@ -12,6 +12,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     private readonly PresentFrameHandler? _presentFrame;
     private readonly Stack<Rect> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
+    private Matrix3x2 _currentTransform = Matrix3x2.Identity;
     private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
     public Size CanvasSize => new(_bitmap.Width, _bitmap.Height);
@@ -32,11 +33,26 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     {
     }
 
-    public void PushTransform(Matrix3x2 matrix) => _transformStack.Push(matrix);
-    public void PopTransform() { if (_transformStack.Count > 0) _transformStack.Pop(); }
+    public void PushTransform(Matrix3x2 matrix)
+    {
+        _transformStack.Push(_currentTransform);
+        _currentTransform = matrix * _currentTransform;
+    }
 
-    public void PushClip(Rect rect) => _clipStack.Push(rect);
-    public void PushClip(Geometry geometry) => _clipStack.Push(geometry is RectGeometry rg ? rg.Rect : Rect.Empty);
+    public void PopTransform()
+    {
+        _currentTransform = _transformStack.Count > 0 ? _transformStack.Pop() : Matrix3x2.Identity;
+    }
+
+    public void PushClip(Rect rect)
+    {
+        rect = TransformRect(rect);
+        if (_clipStack.Count > 0)
+            rect = Rect.Intersect(_clipStack.Peek(), rect);
+        _clipStack.Push(rect);
+    }
+
+    public void PushClip(Geometry geometry) => PushClip(geometry is RectGeometry rg ? rg.Rect : Rect.Empty);
     public void PopClip() { if (_clipStack.Count > 0) _clipStack.Pop(); }
 
     public void Clear(Color color)
@@ -57,6 +73,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     public void FillRect(Rect rect, Brush brush)
     {
         if (brush is not SolidColorBrush sc) return;
+        rect = TransformRect(rect);
         var clipped = ClipRect(rect);
         if (clipped.IsEmpty) return;
         BlendRect(clipped, sc.Color);
@@ -65,6 +82,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     public void DrawRect(Rect rect, Pen pen)
     {
         if (pen.Width <= 0) return;
+        rect = TransformRect(rect);
         var w = (int)Math.Ceiling(pen.Width);
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
 
@@ -83,10 +101,10 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                 FillRect(rg.Rect, brush);
                 break;
             case RoundedRectGeometry rrg:
-                FillRoundedRect(rrg.Rect, rrg.RadiusX, rrg.RadiusY, sc.Color);
+                FillRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX, rrg.RadiusY, sc.Color);
                 break;
             case EllipseGeometry eg:
-                FillEllipse(eg.Center, eg.RadiusX, eg.RadiusY, sc.Color);
+                FillEllipse(TransformPoint(eg.Center), eg.RadiusX, eg.RadiusY, sc.Color);
                 break;
         }
     }
@@ -99,10 +117,10 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                 DrawRect(rg.Rect, pen);
                 break;
             case RoundedRectGeometry rrg:
-                DrawRoundedRect(rrg.Rect, rrg.RadiusX, rrg.RadiusY, pen);
+                DrawRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX, rrg.RadiusY, pen);
                 break;
             case EllipseGeometry eg:
-                DrawEllipse(eg.Center, eg.RadiusX, eg.RadiusY, pen);
+                DrawEllipse(TransformPoint(eg.Center), eg.RadiusX, eg.RadiusY, pen);
                 break;
         }
     }
@@ -110,7 +128,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     public void FillPath(PathGeometry path, Brush brush)
     {
         if (brush is not SolidColorBrush sc) return;
-        var points = FlattenPath(path);
+        var points = FlattenPath(path, _currentTransform);
         if (points.Count < 3) return;
         FillPolygon(points, sc.Color);
     }
@@ -118,7 +136,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     public void DrawPath(PathGeometry path, Pen pen)
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
-        var points = FlattenPath(path);
+        var points = FlattenPath(path, _currentTransform);
         if (points.Count < 2) return;
         DrawPolyline(points, pen.Width, color);
     }
@@ -127,14 +145,14 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     {
         if (brush is not SolidColorBrush sc) return;
         if (string.IsNullOrEmpty(text.Text)) return;
-        RenderText(text, origin, sc.Color);
+        RenderText(text, TransformPoint(origin), sc.Color);
     }
 
     public void DrawImage(Image image, Rect dest, Rect? source = null)
     {
         if (image is not Bitmap src) return;
         var srcRect = source ?? new Rect(0, 0, src.Width, src.Height);
-        BlendBitmap(src, srcRect, dest);
+        BlendBitmap(src, srcRect, TransformRect(dest));
     }
 
     public void PushLayer(Rect bounds, float opacity) { }
@@ -264,6 +282,28 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         if (_clipStack.Count == 0) return rect;
         var clip = _clipStack.Peek();
         return Rect.Intersect(rect, clip);
+    }
+
+    private Point TransformPoint(Point point)
+    {
+        if (_currentTransform.IsIdentity) return point;
+        var transformed = Vector2.Transform(new Vector2(point.X, point.Y), _currentTransform);
+        return new Point(transformed.X, transformed.Y);
+    }
+
+    private Rect TransformRect(Rect rect)
+    {
+        if (rect.IsEmpty || _currentTransform.IsIdentity) return rect;
+
+        var p1 = Vector2.Transform(new Vector2(rect.Left, rect.Top), _currentTransform);
+        var p2 = Vector2.Transform(new Vector2(rect.Right, rect.Top), _currentTransform);
+        var p3 = Vector2.Transform(new Vector2(rect.Right, rect.Bottom), _currentTransform);
+        var p4 = Vector2.Transform(new Vector2(rect.Left, rect.Bottom), _currentTransform);
+        var left = MathF.Min(MathF.Min(p1.X, p2.X), MathF.Min(p3.X, p4.X));
+        var top = MathF.Min(MathF.Min(p1.Y, p2.Y), MathF.Min(p3.Y, p4.Y));
+        var right = MathF.Max(MathF.Max(p1.X, p2.X), MathF.Max(p3.X, p4.X));
+        var bottom = MathF.Max(MathF.Max(p1.Y, p2.Y), MathF.Max(p3.Y, p4.Y));
+        return new Rect(left, top, right - left, bottom - top);
     }
 
     // ── 圆角矩形 ──
@@ -542,7 +582,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 
     // ── 路径展开 ──
 
-    private List<(double x, double y)> FlattenPath(PathGeometry path)
+    private static List<(double x, double y)> FlattenPath(PathGeometry path, Matrix3x2 transform)
     {
         var points = new List<(double x, double y)>();
         double curX = 0, curY = 0;
@@ -574,6 +614,14 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                     if (points.Count > 0)
                         points.Add(points[0]);
                     break;
+            }
+        }
+        if (!transform.IsIdentity)
+        {
+            for (var i = 0; i < points.Count; i++)
+            {
+                var point = Vector2.Transform(new Vector2((float)points[i].x, (float)points[i].y), transform);
+                points[i] = (point.X, point.Y);
             }
         }
         return points;

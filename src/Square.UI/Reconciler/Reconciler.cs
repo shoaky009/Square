@@ -51,38 +51,44 @@ public sealed class Reconciler
     /// </summary>
     public void Flush()
     {
-        List<Action>? updates = null;
-        List<Element>? dirty = null;
-
         lock (_gate)
         {
             if (_flushing) return;
             _flushing = true;
-
-            if (_pendingUpdates.Count > 0)
-            {
-                updates = new List<Action>(_pendingUpdates);
-                _pendingUpdates.Clear();
-            }
-            if (_dirtyElements.Count > 0)
-            {
-                dirty = new List<Element>(_dirtyElements);
-                _dirtyElements.Clear();
-            }
         }
 
         try
         {
-            // Phase 1: 执行排队的结构更新（可能产生新的脏元素）
-            if (updates != null)
+            while (true)
             {
-                foreach (var update in updates)
-                    update();
-            }
+                List<Action>? updates = null;
+                List<Element>? dirty = null;
 
-            // Phase 2: 对显式标记的脏元素传播 Invalidation
-            if (dirty != null)
-            {
+                lock (_gate)
+                {
+                    if (_pendingUpdates.Count > 0)
+                    {
+                        updates = new List<Action>(_pendingUpdates);
+                        _pendingUpdates.Clear();
+                    }
+                    if (_dirtyElements.Count > 0)
+                    {
+                        dirty = new List<Element>(_dirtyElements);
+                        _dirtyElements.Clear();
+                    }
+                }
+
+                if (updates == null && dirty == null) break;
+
+                // Phase 1: 执行排队的结构更新（可能产生新的工作）
+                if (updates != null)
+                {
+                    foreach (var update in updates)
+                        update();
+                }
+
+                // Phase 2: 对显式标记的脏元素传播 Invalidation
+                if (dirty == null) continue;
                 foreach (var element in dirty)
                     element.InvalidateLayout();
             }

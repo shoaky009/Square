@@ -57,6 +57,50 @@ public class PseudoClassTests
     }
 
     [Fact]
+    public void StyleReconcilerReappliesDynamicFocusPseudoClass()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button:focus { color: red; width: 180px; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var btn = new Square.Controls.Controls.Button();
+        engine.ApplyStylesToTree(btn);
+
+        btn.Focus();
+        CssStyleReconciler.Flush();
+        Assert.Equal("red", btn.Style.Get("color"));
+        Assert.Equal("180px", btn.Style.Get("width"));
+
+        btn.Unfocus();
+        CssStyleReconciler.Flush();
+        Assert.Null(btn.Style.Get("color"));
+        Assert.Null(btn.Style.Get("width"));
+    }
+
+    [Fact]
+    public void StyleReconcilerReappliesDynamicHoverAndActivePseudoClasses()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button:hover { color: red; } Button:active { background: blue; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var btn = new Square.Controls.Controls.Button();
+        engine.ApplyStylesToTree(btn);
+
+        btn.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+        Assert.Equal("red", btn.Style.Get("color"));
+
+        btn.SetState(ElementState.Active, true);
+        CssStyleReconciler.Flush();
+        Assert.Equal("blue", btn.Style.Get("background"));
+
+        btn.SetState(ElementState.Hover, false);
+        btn.SetState(ElementState.Active, false);
+        CssStyleReconciler.Flush();
+        Assert.Null(btn.Style.Get("color"));
+        Assert.Null(btn.Style.Get("background"));
+    }
+
+    [Fact]
     public void ParseKeyFrames()
     {
         var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }";

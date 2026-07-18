@@ -94,7 +94,9 @@ public class Link : UIElement
     public override Size Measure(Size availableSize)
     {
         if (string.IsNullOrEmpty(TextContent)) return Size.Zero;
-        return ControlDrawing.MeasureText(this, TextContent, FontSize);
+        var font = ControlDrawing.ResolveFont(this, FontSize);
+        var measured = ControlDrawing.MeasureText(this, TextContent, FontSize);
+        return new Size(ControlDrawing.MeasureRenderedTextWidth(TextContent, font), measured.Height);
     }
 
     public override void Paint(IRenderContext ctx)
@@ -107,9 +109,10 @@ public class Link : UIElement
         ControlDrawing.DrawText(ctx, this, TextContent, origin, color, FontSize);
         if (Underline)
         {
-            var textSize = ControlDrawing.MeasureText(this, TextContent, FontSize);
-            var y = origin.Y + textSize.Height - 1f;
-            ctx.DrawRect(new Rect(origin.X, y, textSize.Width, 1f), Pen.FromColor(color, 1f));
+            var font = ControlDrawing.ResolveFont(this, FontSize);
+            var underlineWidth = ControlDrawing.MeasureRenderedTextWidth(TextContent, font);
+            var y = origin.Y + ControlDrawing.MeasureText(this, TextContent, FontSize).Height - 1f;
+            ctx.FillRect(new Rect(origin.X, y, underlineWidth, 1f), new SolidColorBrush(color));
         }
     }
 }
@@ -242,12 +245,14 @@ public class Radio : UIElement
     }
 }
 
-public class Select : UIElement
+public class Select : UIElement, IPopupElement
 {
     public string Value { get => GetProperty<string>(nameof(Value)) ?? ""; set => SetProperty(nameof(Value), value); }
     public string[] Options { get => GetProperty<string[]>(nameof(Options)) ?? []; set => SetProperty(nameof(Options), value ?? []); }
     public string Placeholder { get => GetProperty<string>(nameof(Placeholder)) ?? "Select"; set => SetProperty(nameof(Placeholder), value); }
     public bool IsOpen { get; private set; }
+    public bool IsPopupOpen => IsOpen && Options.Length > 0;
+    public Rect PopupBounds => GetDropDownRect();
     private int _hoveredOption = -1;
 
     public override int ZIndex
@@ -272,8 +277,11 @@ public class Select : UIElement
             : PathGeometry.Create().MoveTo(new Point(Geometry.Right - 20, arrowY - 2)).LineTo(new Point(Geometry.Right - 15, arrowY + 3)).LineTo(new Point(Geometry.Right - 10, arrowY - 2));
         ctx.DrawPath(arrow, Pen.FromColor(Color.FromRgb(70, 75, 80), 1.5f));
 
-        if (!IsOpen || Options.Length == 0) return;
+    }
 
+    public void PaintPopup(IRenderContext ctx)
+    {
+        if (!IsPopupOpen) return;
         var popup = GetDropDownRect();
         ctx.FillRect(popup, new SolidColorBrush(Color.White));
         ctx.DrawRect(popup, Pen.FromColor(Color.FromRgb(145, 150, 156)));
@@ -291,8 +299,10 @@ public class Select : UIElement
     public override Element? HitTest(Point point)
     {
         if (!IsVisible) return null;
-        return Geometry.Contains(point) || IsOpen && GetDropDownRect().Contains(point) ? this : null;
+        return Geometry.Contains(point) ? this : null;
     }
+
+    public Element? HitTestPopup(Point point) => IsPopupOpen && PopupBounds.Contains(point) ? this : null;
 
     public void HandlePointerDown(Point point)
     {
@@ -422,6 +432,7 @@ public class Canvas : UIElement
 
 internal static class ControlDrawing
 {
+    private static readonly Square.Text.Glyph.SystemGlyphRasterizer GlyphRasterizer = new();
     /// <summary>从元素 CSS 字体相关属性解析 <see cref="Font"/>（font-family/size/weight/style）。</summary>
     internal static Font ResolveFont(Element element, float defaultSize)
     {
@@ -445,6 +456,26 @@ internal static class ControlDrawing
     {
         var font = ResolveFont(element, defaultSize);
         return new TextLayout(text, font).Measure();
+    }
+
+    internal static float MeasureRenderedTextWidth(string text, Font font)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var lineWidth = 0f;
+        var maxWidth = 0f;
+        foreach (var character in text)
+        {
+            if (character == '\n')
+            {
+                maxWidth = Math.Max(maxWidth, lineWidth);
+                lineWidth = 0;
+                continue;
+            }
+
+            var glyph = GlyphRasterizer.Rasterize(font, character);
+            lineWidth += glyph?.AdvanceX ?? Math.Max(1f, MathF.Round(font.Size * 0.5f));
+        }
+        return Math.Max(maxWidth, lineWidth);
     }
 
     internal static void DrawText(

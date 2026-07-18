@@ -21,6 +21,50 @@ public class StyleAndFontTests
     }
 
     [Fact]
+    public void StyleClassAndContentChangesInvalidateLayoutToRoot()
+    {
+        var root = new View();
+        var text = new Square.Controls.Controls.Text("short");
+        root.Children.Add(text);
+        root.ClearLayoutDirty();
+        text.ClearLayoutDirty();
+
+        text.Style.SetProperty("width", "200px");
+        Assert.True(text.IsLayoutDirty);
+        Assert.True(root.IsLayoutDirty);
+
+        root.ClearLayoutDirty();
+        text.ClearLayoutDirty();
+        text.ClassList.Add("wide");
+        Assert.True(text.IsLayoutDirty);
+        Assert.True(root.IsLayoutDirty);
+
+        root.ClearLayoutDirty();
+        text.ClearLayoutDirty();
+        text.TextContent = "content with a different intrinsic width";
+        Assert.True(text.IsLayoutDirty);
+        Assert.True(root.IsLayoutDirty);
+    }
+
+    [Fact]
+    public void PaintOnlyStyleChangesDoNotInvalidateLayout()
+    {
+        var root = new View();
+        var child = new View();
+        root.Children.Add(child);
+        root.ClearLayoutDirty();
+        child.ClearLayoutDirty();
+        root.ClearPaintDirty();
+        child.ClearPaintDirty();
+
+        child.Style.SetProperty("background", "#ff0000");
+
+        Assert.False(child.IsLayoutDirty);
+        Assert.False(root.IsLayoutDirty);
+        Assert.True(child.NeedsPaint);
+    }
+
+    [Fact]
     public void StyleAccessorCssTextRoundTrip()
     {
         var view = new View();

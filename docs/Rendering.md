@@ -1,6 +1,6 @@
 # 渲染架构
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Graphics.md`、`Layout.md`
 
 ---
@@ -99,14 +99,87 @@ Backend (Software / Skia / ...)
 - 节点几何变化 → 标记脏区
 - 合并脏区减少重绘次数
 - 仅重绘脏区范围内的 DrawCommand
+- `VisualBounds` 使用 DrawCommand 的实际视觉范围，而不是只使用元素 `Geometry`
+- Path、clip、transform、popup 等都会参与脏区计算，避免局部重绘漏绘或过度扩大
 
-### 6.2 子树挂卸
+### 6.2 渲染模式
+
+宿主支持三种渲染模式：
+
+| 模式 | 说明 |
+|---|---|
+| `FullFrame` | 每帧全窗口清屏并重绘，默认模式，优先保证正确性 |
+| `DirtyRegion` | 强制使用脏区局部重绘，用于压测和诊断脏区路径 |
+| `Auto` | 根据 dirty rect 数量和面积比例自动选择脏区或全帧 |
+
+`Auto` 会在以下情况回退全帧：
+
+- layout dirty，需要重新布局
+- 没有 dirty rect，但仍请求了渲染
+- dirty rect 数量超过 `MaxDirtyRectCount`
+- dirty area 比例超过 `MaxDirtyAreaRatio`
+
+当前默认仍为 `FullFrame`，因为它是最稳定的正确性基线。DirtyRegion 和 Auto 用于逐步验证和优化局部重绘路径。
+
+### 6.3 渲染诊断 Overlay
+
+`DesktopApplication` 提供渲染诊断开关：
+
+| 属性 | 说明 |
+|---|---|
+| `ShowRenderDiagnosticsOverlay` | 在窗口左上角绘制文字诊断信息 |
+| `ShowDirtyUnionOverlay` | 在画面上绘制 dirty union 外框 |
+| `LastRenderDiagnostics` | 最近一帧的渲染模式、决策原因、dirty 数量、面积比例和 union |
+
+文字诊断 overlay 会显示：
+
+- 当前 `RenderMode`
+- 当前帧使用 full frame 还是 dirty region
+- 决策原因，例如 `DirtyRegion`、`LayoutDirty`、`TooManyDirtyRects`、`DirtyAreaTooLarge`、`NoDirtyRects`
+- dirty rect 数量
+- dirty area 比例
+- dirty union 矩形
+
+Sample 支持命令行和环境变量配置：
+
+```powershell
+dotnet run --project "samples/Square.Sample/Square.Sample.csproj" -- --render-mode Auto --render-overlay true --dirty-overlay true
+```
+
+可用参数：
+
+```text
+--render-mode FullFrame|Auto|DirtyRegion
+--render-overlay true|false
+--dirty-overlay true|false
+--max-dirty-area 0.35
+--max-dirty-rects 16
+```
+
+对应环境变量：
+
+```text
+SQUARE_RENDER_MODE
+SQUARE_RENDER_OVERLAY
+SQUARE_DIRTY_OVERLAY
+SQUARE_MAX_DIRTY_AREA
+SQUARE_MAX_DIRTY_RECTS
+```
+
+Debug 构建的 `Square.Sample` 支持按 `F12` 切换 `ShowRenderDiagnosticsOverlay`。标题栏会显示当前状态：
+
+```text
+Square Framework - Overlay: On
+Square Framework - Overlay: Off
+```
+
+### 6.4 子树挂卸
 
 - `<Show>` 条件变化 → 子树挂载/卸载
 - 挂载：构建 Element 子树 → Layout → 加入 Display Tree
 - 卸载：从 Display Tree 移除 → 释放资源
 
-### 6.3 列表增量
+### 6.5 列表增量
 
 - `<For>` 列表变化 → keyed 增量增删
 - 项移动时节点不重建，仅调整位置

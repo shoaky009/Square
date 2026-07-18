@@ -22,6 +22,8 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private int _zIndex;
     private readonly List<IDisposable> _bindings = [];
 
+    public static event Action<Element>? StyleInvalidated;
+
     /// <summary>布局是否失效（Square 扩展；引擎在脏时重新 Measure/Arrange）。</summary>
     public bool IsLayoutDirty => _isLayoutDirty;
 
@@ -123,9 +125,11 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>设置或清除状态标志（Square 扩展）。</summary>
     public void SetState(ElementState flag, bool on)
     {
+        var previous = State;
         if (on) State |= flag;
         else State &= ~flag;
-        InvalidatePaint();
+        if (State == previous) return;
+        Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
 
     /// <summary>是否包含指定状态标志（Square 扩展）。</summary>
@@ -206,7 +210,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Properties.SetValue(name, value);
         OnPropertyChanged(name);
         ((IComponentLifecycle)this).OnPropChanged(name);
-        InvalidatePaint();
+        Invalidate(PropertyInvalidation.ForProperty(name));
     }
 
     /// <summary>用委托取值写入属性（Square 扩展；用于表达式绑定）。</summary>
@@ -215,7 +219,9 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Properties.MarkBound(name);
         var value = getter();
         Properties.SetValue(name, value);
-        InvalidatePaint();
+        OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
+        Invalidate(PropertyInvalidation.ForProperty(name));
     }
 
     /// <summary>订阅 <see cref="ObservableValue{T}"/> 并同步到属性（Square 扩展）。</summary>
@@ -231,7 +237,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Properties.SetValue(name, value);
         OnPropertyChanged(name);
         ((IComponentLifecycle)this).OnPropChanged(name);
-        InvalidatePaint();
+        Invalidate(PropertyInvalidation.ForProperty(name));
     }
 
     /// <summary>
@@ -354,6 +360,20 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     public void InvalidatePaint()
     {
         _needsPaint = true;
+    }
+
+    public void Invalidate(ElementInvalidation invalidation)
+    {
+        if ((invalidation & ElementInvalidation.Style) != 0)
+            StyleInvalidated?.Invoke(this);
+
+        if ((invalidation & ElementInvalidation.Layout) != 0)
+        {
+            InvalidateLayout();
+            return;
+        }
+        if ((invalidation & (ElementInvalidation.Paint | ElementInvalidation.Style | ElementInvalidation.DisplayTree)) != 0)
+            InvalidatePaint();
     }
 
     /// <summary>

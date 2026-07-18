@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 namespace Square.Platform.Win32;
 
 internal delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
 internal static partial class Win32Api
 {
@@ -32,6 +33,7 @@ internal static partial class Win32Api
     public const uint BI_RGB = 0;
     public const uint DIB_RGB_COLORS = 0;
     public const uint SRCCOPY = 0x00CC0020;
+    public const uint PW_RENDERFULLCONTENT = 0x00000002;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const int GCS_RESULTSTR = 0x0800;
@@ -68,6 +70,10 @@ internal static partial class Win32Api
     public static partial bool UpdateWindow(IntPtr hWnd);
 
     [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial bool SetWindowText(IntPtr hWnd, string lpString);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
     public static partial bool DestroyWindow(IntPtr hWnd);
 
@@ -93,8 +99,70 @@ internal static partial class Win32Api
     [LibraryImport("user32.dll", EntryPoint = "GetDC")]
     public static partial IntPtr GetDC(IntPtr hWnd);
 
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowDC")]
+    public static partial IntPtr GetWindowDC(IntPtr hWnd);
+
     [LibraryImport("user32.dll", EntryPoint = "ReleaseDC")]
     public static partial int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "EnumWindows")]
+    public static partial bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+    public static partial uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "IsWindowVisible")]
+    public static partial bool IsWindowVisible(IntPtr hWnd);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowRect")]
+    public static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "PrintWindow")]
+    public static partial bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint flags);
+
+    [LibraryImport("gdi32.dll", EntryPoint = "CreateCompatibleDC")]
+    public static partial IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [LibraryImport("gdi32.dll", EntryPoint = "CreateCompatibleBitmap")]
+    public static partial IntPtr CreateCompatibleBitmap(IntPtr hdc, int cx, int cy);
+
+    [LibraryImport("gdi32.dll", EntryPoint = "SelectObject")]
+    public static partial IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("gdi32.dll", EntryPoint = "DeleteObject")]
+    public static partial bool DeleteObject(IntPtr ho);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("gdi32.dll", EntryPoint = "DeleteDC")]
+    public static partial bool DeleteDC(IntPtr hdc);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("gdi32.dll", EntryPoint = "BitBlt")]
+    public static partial bool BitBlt(
+        IntPtr hdc,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        IntPtr hdcSrc,
+        int x1,
+        int y1,
+        uint rop);
+
+    [LibraryImport("gdi32.dll", EntryPoint = "GetDIBits")]
+    public static partial int GetDIBits(
+        IntPtr hdc,
+        IntPtr hbm,
+        uint start,
+        uint cLines,
+        byte[] lpvBits,
+        ref BITMAPINFO lpbmi,
+        uint usage);
 
     [LibraryImport("gdi32.dll", EntryPoint = "StretchDIBits")]
     public static partial int StretchDIBits(

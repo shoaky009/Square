@@ -4,6 +4,7 @@ using Square.Graphics;
 using Square.Rendering;
 using Square.Text.Glyph;
 using Square.UI;
+using System.Numerics;
 using Xunit;
 
 namespace Square.Backends.Tests;
@@ -172,6 +173,93 @@ public class SoftwareRendererTests
 
             Assert.True(ContainsBgra(context.GetBitmap(), 0, 0, 0, 255));
         }
+    }
+
+    [Fact]
+    public void DirtyRenderRepaintsFocusedInputOutsideParentBounds()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 280, 100) };
+        var wrapper = new View { Geometry = new Rect(0, 0, 20, 20) };
+        var input = new Input
+        {
+            Geometry = new Rect(40, 30, 200, 36),
+            Value = "Still visible"
+        };
+        wrapper.Children.Add(input);
+        root.Children.Add(wrapper);
+
+        var context = CreateContext(280, 100);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        tree.Render(context);
+
+        input.Focus();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = dirty[0];
+        for (var i = 1; i < dirty.Count; i++)
+            union = DisplayTree.Union(union, dirty[i]);
+        context.Clear(Color.White, union);
+        context.PushClip(union);
+        tree.Render(context, union);
+        context.PopClip();
+
+        var expectedRoot = new View { Geometry = root.Geometry };
+        var expectedWrapper = new View { Geometry = wrapper.Geometry };
+        var expectedInput = new Input { Geometry = input.Geometry, Value = input.Value };
+        expectedInput.Focus();
+        expectedWrapper.Children.Add(expectedInput);
+        expectedRoot.Children.Add(expectedWrapper);
+        var expectedContext = CreateContext(280, 100);
+        expectedContext.Clear(Color.White);
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expectedRoot);
+        expectedTree.Render(expectedContext);
+
+        AssertRegionEqual(expectedContext.GetBitmap(), context.GetBitmap(), union);
+    }
+
+    [Fact]
+    public void DirtyRenderReplaysCommandsThatExtendOutsideElementBounds()
+    {
+        var element = new OverflowPaintElement
+        {
+            Geometry = new Rect(0, 0, 10, 10),
+            PaintRect = new Rect(40, 4, 30, 12)
+        };
+        var context = CreateContext(90, 30);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(element);
+        tree.Render(context);
+
+        context.Clear(Color.White, new Rect(45, 6, 10, 8));
+        tree.Render(context, new Rect(45, 6, 10, 8));
+
+        var bitmap = context.GetBitmap();
+        var insideDirtyIndex = 8 * bitmap.Stride + 50 * 4;
+        var outsideDirtyIndex = 8 * bitmap.Stride + 42 * 4;
+        Assert.Equal(255, bitmap.Pixels[insideDirtyIndex + 2]);
+        Assert.Equal(255, bitmap.Pixels[outsideDirtyIndex + 2]);
+    }
+
+    [Fact]
+    public void NestedClipIntersectsDirtyClip()
+    {
+        var context = CreateContext(30, 20);
+        context.Clear(Color.White);
+        context.PushClip(new Rect(0, 0, 10, 20));
+        context.PushClip(new Rect(5, 0, 20, 20));
+        context.FillRect(new Rect(0, 0, 30, 20), new SolidColorBrush(Color.Red));
+        context.PopClip();
+        context.PopClip();
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 7 * 4 + 2]);
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4]);
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4 + 1]);
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4 + 2]);
     }
 
     [Fact]
@@ -352,6 +440,94 @@ public class SoftwareRendererTests
             new Rect(10, 48, 220, 98));
     }
 
+    [Fact]
+    public void DirtyRenderClearsClosedSelectPopupToMatchFullFrame()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 240, 170) };
+        var select = new Select
+        {
+            Geometry = new Rect(10, 10, 220, 36),
+            Options = ["Blue", "Green", "Orange"],
+            Value = "Blue"
+        };
+        var laterText = new Square.Controls.Controls.Text("For: ready")
+        {
+            Geometry = new Rect(10, 52, 220, 24)
+        };
+        root.Children.Add(select);
+        root.Children.Add(laterText);
+        select.HandlePointerDown(new Point(20, 20));
+
+        var context = CreateContext(240, 170);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        tree.Render(context);
+
+        select.CloseDropDown();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = dirty[0];
+        for (var i = 1; i < dirty.Count; i++)
+            union = DisplayTree.Union(union, dirty[i]);
+        context.Clear(Color.White, union);
+        tree.Render(context, union);
+
+        var expectedRoot = new View { Geometry = root.Geometry };
+        var expectedSelect = new Select
+        {
+            Geometry = select.Geometry,
+            Options = select.Options,
+            Value = select.Value
+        };
+        var expectedText = new Square.Controls.Controls.Text("For: ready") { Geometry = laterText.Geometry };
+        expectedRoot.Children.Add(expectedSelect);
+        expectedRoot.Children.Add(expectedText);
+        var expectedContext = CreateContext(240, 170);
+        expectedContext.Clear(Color.White);
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expectedRoot);
+        expectedTree.Render(expectedContext);
+
+        AssertRegionEqual(expectedContext.GetBitmap(), context.GetBitmap(), union);
+    }
+
+    [Fact]
+    public void DirtyRenderWithTransformedVisualBoundsMatchesFullFrame()
+    {
+        var element = new TransformedColorElement
+        {
+            Geometry = new Rect(0, 0, 10, 10),
+            FillColor = Color.Red
+        };
+        var context = CreateContext(140, 80);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(element);
+        tree.Render(context);
+
+        element.FillColor = Color.Green;
+        element.InvalidatePaint();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = UnionAll(dirty);
+        context.Clear(Color.White, union);
+        tree.Render(context, union);
+
+        var expected = new TransformedColorElement
+        {
+            Geometry = element.Geometry,
+            FillColor = Color.Green
+        };
+        var expectedContext = CreateContext(140, 80);
+        expectedContext.Clear(Color.White);
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expected);
+        expectedTree.Render(expectedContext);
+
+        AssertBitmapEqual(expectedContext.GetBitmap(), context.GetBitmap());
+    }
+
     private static void AssertRegionEqual(Bitmap expected, Bitmap actual, Rect region)
     {
         for (var y = Math.Max(0, (int)region.Top); y < Math.Min(expected.Height, (int)region.Bottom); y++)
@@ -360,6 +536,22 @@ public class SoftwareRendererTests
             var i = y * expected.Stride + x * 4;
             Assert.Equal(expected.Pixels.AsSpan(i, 4).ToArray(), actual.Pixels.AsSpan(i, 4).ToArray());
         }
+    }
+
+    private static void AssertBitmapEqual(Bitmap expected, Bitmap actual)
+    {
+        Assert.Equal(expected.Width, actual.Width);
+        Assert.Equal(expected.Height, actual.Height);
+        Assert.Equal(expected.Pixels, actual.Pixels);
+    }
+
+    private static Rect UnionAll(IReadOnlyList<Rect> rects)
+    {
+        Assert.NotEmpty(rects);
+        var union = rects[0];
+        for (var i = 1; i < rects.Count; i++)
+            union = DisplayTree.Union(union, rects[i]);
+        return union;
     }
 
     private static bool ContainsBgra(Bitmap bitmap, byte blue, byte green, byte red, byte alpha)
@@ -372,6 +564,28 @@ public class SoftwareRendererTests
         }
 
         return false;
+    }
+
+    private sealed class OverflowPaintElement : UIElement
+    {
+        public Rect PaintRect { get; init; }
+
+        public override void Paint(IRenderContext ctx)
+        {
+            ctx.FillRect(PaintRect, new SolidColorBrush(Color.Red));
+        }
+    }
+
+    private sealed class TransformedColorElement : UIElement
+    {
+        public Color FillColor { get; set; }
+
+        public override void Paint(IRenderContext ctx)
+        {
+            ctx.PushTransform(Matrix3x2.CreateTranslation(70, 20));
+            ctx.FillRect(new Rect(0, 0, 30, 20), Brush.FromColor(FillColor));
+            ctx.PopTransform();
+        }
     }
 
     [Fact]

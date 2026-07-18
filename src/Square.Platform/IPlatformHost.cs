@@ -6,6 +6,7 @@ public interface IPlatformHost
     Size ClientSize { get; }
     float DpiScale { get; }
     bool IsRunning { get; }
+    string Title { get; set; }
     CursorKind Cursor { get; set; }
     KeyModifiers Modifiers { get; }
 

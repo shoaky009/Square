@@ -5,7 +5,7 @@ namespace Square.Platform.X11;
 
 internal sealed unsafe class X11Host : IPlatformHost
 {
-    private readonly string _title;
+    private string _title;
     private readonly int _width;
     private readonly int _height;
     private readonly IntPtr _display;
@@ -46,6 +46,18 @@ internal sealed unsafe class X11Host : IPlatformHost
     private Rect _textInputRect;
 
     private static X11Api.XErrorHandler? _errorHandler;
+
+    public string Title
+    {
+        get => _title;
+        set
+        {
+            if (_title == value) return;
+            _title = value;
+            if (_window != IntPtr.Zero)
+                X11Api.StoreName(_display, _window, _title);
+        }
+    }
 
     public X11Host(PlatformHostCreateInfo info)
     {

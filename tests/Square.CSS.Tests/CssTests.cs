@@ -155,6 +155,39 @@ public class CssParserTests
     }
 
     [Fact]
+    public void StyleReconcilerReappliesDynamicClassMatchesAndRemovals()
+    {
+        var sheet = new CssParser(new CssTokenizer(".active { color: red; width: 120px; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var text = new Square.Controls.Controls.Text("item");
+        engine.ApplyStylesToTree(text);
+
+        text.ClassList.Add("active");
+        CssStyleReconciler.Flush();
+        Assert.Equal("red", text.Style.Get("color"));
+        Assert.Equal("120px", text.Style.Get("width"));
+
+        text.ClassList.Remove("active");
+        CssStyleReconciler.Flush();
+        Assert.Null(text.Style.Get("color"));
+        Assert.Null(text.Style.Get("width"));
+    }
+
+    [Fact]
+    public void IdSelectorMatchesElementIdProperty()
+    {
+        var sheet = new CssParser(new CssTokenizer("#target { color: blue; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var text = new Square.Controls.Controls.Text("item") { Id = "target" };
+
+        engine.ApplyStylesToTree(text);
+
+        Assert.Equal("blue", text.Style.Get("color"));
+    }
+
+    [Fact]
     public void ChildCombinatorOnlyMatchesDirectChildren()
     {
         var css = "View > Text { padding: 7px; }";

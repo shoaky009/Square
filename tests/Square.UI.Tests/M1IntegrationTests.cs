@@ -255,6 +255,14 @@ public class M1IntegrationTests
         Assert.Equal("flex", routeLinks[0].Parent?.Style.Get("display"));
         Assert.Equal("row", routeLinks[0].Parent?.Style.Get("flex-direction"));
         Assert.Equal(routeLinks[0].Geometry.Y, routeLinks[1].Geometry.Y);
+        var visibleShell = new RouteShell();
+        visibleShell.BuildElementTree();
+        ((IComponentLifecycle)visibleShell).OnAttached();
+        layout.Measure(visibleShell, new Size(600, 180));
+        layout.Arrange(visibleShell, new Rect(0, 0, 600, 180));
+        var visibleLinks = visibleShell.QueryAll<Square.Router.Link>();
+        Assert.True(visibleLinks[1].Geometry.X >= visibleLinks[0].Geometry.Right + 6f,
+            $"first={visibleLinks[0].Geometry}, second={visibleLinks[1].Geometry}");
 
         var userLink = routeLinks.Single(link => link.To.Contains("users"));
         userLink.DispatchEvent(StandardEvents.CreateClick());
@@ -555,10 +563,13 @@ public class M1IntegrationTests
         select.AddEventListener("change", () => changes++);
 
         select.HandlePointerDown(new Point(30, 30));
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
 
         Assert.True(select.IsOpen);
         Assert.Equal(1000, select.ZIndex);
-        Assert.Same(select, root.HitTest(new Point(30, 91)));
+        Assert.NotSame(select, root.HitTest(new Point(30, 91)));
+        Assert.Same(select, tree.HitTestPopups(new Point(30, 91)));
 
         select.HandlePointerDown(new Point(30, 91));
 
@@ -748,6 +759,24 @@ public class M1IntegrationTests
         visible.Value = false;
         Reconciler.Current.Flush();
         Assert.False(shown.IsAttached);
+    }
+
+    [Fact]
+    public void ReconcilerFlushProcessesDirtyWorkScheduledByUpdate()
+    {
+        Reconciler.Current.Reset();
+        var root = new View();
+        var child = new View();
+        root.Children.Add(child);
+        root.ClearLayoutDirty();
+        child.ClearLayoutDirty();
+
+        Reconciler.Current.ScheduleUpdate(child.ScheduleReconcile);
+        Reconciler.Current.Flush();
+
+        Assert.True(child.IsLayoutDirty);
+        Assert.True(root.IsLayoutDirty);
+        Assert.False(Reconciler.Current.HasWork);
     }
 
     private sealed class TrackingPage(

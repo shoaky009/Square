@@ -8,14 +8,18 @@ public sealed class DisplayTree
 {
     private readonly DisplayNode _root = new();
     private readonly List<Rect> _dirtyRects = [];
+    private readonly List<IPopupElement> _popups = [];
 
     public void BuildFrom(Element element)
     {
         _root.Element = element;
         _root.Bounds = element.Geometry;
+        _root.RebuildCommands();
+        _root.PopupBounds = element is IPopupElement { IsPopupOpen: true } popup ? popup.PopupBounds : Rect.Empty;
         _root.IsDirty = true;
         _root.Children.Clear();
         BuildChildren(_root, element);
+        RebuildPopupList();
         _dirtyRects.Clear();
     }
 
@@ -25,6 +29,9 @@ public sealed class DisplayTree
         {
             if (!child.IsVisible) continue;
             var node = new DisplayNode { Element = child, Bounds = child.Geometry, IsDirty = true };
+            node.RebuildCommands();
+            node.PopupBounds = child is IPopupElement { IsPopupOpen: true } popup ? popup.PopupBounds : Rect.Empty;
+            node.IsDirty = true;
             parent.Children.Add(node);
             BuildChildren(node, child);
         }
@@ -38,16 +45,50 @@ public sealed class DisplayTree
 
     public void UpdateDirty() => UpdateDirty(_root);
 
-    private static void UpdateDirty(DisplayNode node)
+    private void UpdateDirty(DisplayNode node)
     {
         if (node.Element != null)
         {
-            node.Bounds = node.Element.Geometry;
+            var bounds = node.Element.Geometry;
+            var oldVisualBounds = node.VisualBounds.IsEmpty ? node.Bounds : node.VisualBounds;
+            var oldPopupBounds = node.PopupBounds;
+            if (node.Bounds != bounds)
+            {
+                _dirtyRects.Add(PadAndSnap(Union(oldVisualBounds, bounds)));
+                node.Bounds = bounds;
+            }
             if (node.Element.NeedsPaint)
+            {
                 node.IsDirty = true;
+                node.RebuildCommands();
+                _dirtyRects.Add(PadAndSnap(Union(oldVisualBounds, node.VisualBounds)));
+            }
+
+            var popupBounds = node.Element is IPopupElement { IsPopupOpen: true } popup
+                ? popup.PopupBounds
+                : Rect.Empty;
+            if (oldPopupBounds != popupBounds)
+            {
+                _dirtyRects.Add(PadAndSnap(Union(oldPopupBounds, popupBounds)));
+                node.PopupBounds = popupBounds;
+            }
         }
         foreach (var child in node.Children)
             UpdateDirty(child);
+    }
+
+    private void RebuildPopupList()
+    {
+        _popups.Clear();
+        CollectPopups(_root);
+    }
+
+    private void CollectPopups(DisplayNode node)
+    {
+        if (node.Element is IPopupElement popup)
+            _popups.Add(popup);
+        foreach (var child in node.Children)
+            CollectPopups(child);
     }
 
     /// <summary>
@@ -55,19 +96,22 @@ public sealed class DisplayTree
     /// </summary>
     public List<Rect> CollectDirtyRects()
     {
-        _dirtyRects.Clear();
         CollectDirtyRects(_root, _dirtyRects);
-        return MergeDirtyRects(_dirtyRects);
+        var dirty = MergeDirtyRects(_dirtyRects);
+        _dirtyRects.Clear();
+        return dirty;
     }
 
     private static void CollectDirtyRects(DisplayNode node, List<Rect> dest)
     {
         if (node.IsDirty || (node.Element != null && node.Element.NeedsPaint))
         {
-            var g = node.Element?.Geometry ?? node.Bounds;
+            var g = node.VisualBounds.IsEmpty ? node.Element?.Geometry ?? node.Bounds : node.VisualBounds;
             // Geometry 尚未 arrange 时用 Bounds；仍空则跳过（父/兄弟可能有有效区）
             if (!g.IsEmpty)
                 dest.Add(PadAndSnap(g));
+            if (node.Element is IPopupElement { IsPopupOpen: true } popup && !popup.PopupBounds.IsEmpty)
+                dest.Add(PadAndSnap(popup.PopupBounds));
         }
         foreach (var child in node.Children)
             CollectDirtyRects(child, dest);
@@ -88,8 +132,8 @@ public sealed class DisplayTree
     /// </summary>
     public static List<Rect> MergeDirtyRects(List<Rect> rects)
     {
-        if (rects.Count <= 1) return rects;
         var list = new List<Rect>(rects.Where(r => !r.IsEmpty));
+        if (list.Count <= 1) return list;
         var changed = true;
         while (changed)
         {
@@ -137,7 +181,43 @@ public sealed class DisplayTree
     /// </summary>
     public void Render(IRenderContext ctx, Rect? dirtyClip)
     {
-        _root.Render(ctx, dirtyClip);
+        if (dirtyClip is { IsEmpty: true })
+        {
+            _dirtyRects.Clear();
+            return;
+        }
+        if (dirtyClip is { } clip)
+        {
+            ctx.PushClip(clip);
+            _root.Render(ctx, clip);
+            RenderPopups(ctx, clip);
+            ctx.PopClip();
+        }
+        else
+        {
+            _root.Render(ctx, dirtyClip);
+            RenderPopups(ctx, dirtyClip);
+        }
         _dirtyRects.Clear();
+    }
+
+    public Element? HitTestPopups(Point point)
+    {
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            var hit = _popups[i].HitTestPopup(point);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private void RenderPopups(IRenderContext ctx, Rect? dirtyClip)
+    {
+        foreach (var popup in _popups)
+        {
+            if (!popup.IsPopupOpen) continue;
+            if (dirtyClip is { } clip && !popup.PopupBounds.IntersectsWith(clip)) continue;
+            popup.PaintPopup(ctx);
+        }
     }
 }

@@ -71,9 +71,15 @@ public sealed class CssEngine
 
     public void ApplyStylesToTree(Element Element)
     {
+        CssStyleReconciler.RegisterScope(this, Element);
+        ApplyStylesToTreeCore(Element);
+    }
+
+    internal void ApplyStylesToTreeCore(Element Element)
+    {
         ApplyStyles(Element);
         foreach (var child in Element.Children)
-            ApplyStylesToTree(child);
+            ApplyStylesToTreeCore(child);
     }
 
     public CssAnimationTimeline? CreateAnimationTimeline(Element Element)
@@ -243,7 +249,7 @@ public sealed class CssEngine
                     specificity += 10;
                     break;
                 case SimpleSelectorKind.Id:
-                    if (Element.GetProperty<string>("id") != part.Name) return false;
+                    if (Element.Id != part.Name) return false;
                     specificity += 100;
                     break;
                 case SimpleSelectorKind.Universal:
@@ -308,7 +314,7 @@ public sealed class CssEngine
     private static bool MatchSimpleArgument(Element Element, string selector)
     {
         if (selector.StartsWith('.')) return Element.ClassList.Contains(selector[1..]);
-        if (selector.StartsWith('#')) return Element.GetProperty<string>("id") == selector[1..];
+        if (selector.StartsWith('#')) return Element.Id == selector[1..];
         if (selector == "*") return true;
         return string.Equals(Element.GetType().Name, selector, StringComparison.OrdinalIgnoreCase);
     }

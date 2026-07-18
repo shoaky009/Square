@@ -105,8 +105,10 @@ public sealed class StyleAccessor
         _styles ??= [];
         if (_styles.TryGetValue(property, out var current) && current.Specificity > specificity)
             return false;
+        if (_styles.TryGetValue(property, out current) && current.Value == value && current.Specificity == specificity)
+            return false;
         _styles[property] = new StyleEntry(value, specificity);
-        _owner.InvalidatePaint();
+        _owner.Invalidate(StyleInvalidation.ForProperty(property));
         return true;
     }
 
@@ -124,25 +126,36 @@ public sealed class StyleAccessor
     {
         property = NormalizePropertyName(property);
         if (_styles == null) return;
-        _styles.Remove(property);
-        _owner.InvalidatePaint();
+        if (_styles.Remove(property))
+            _owner.Invalidate(StyleInvalidation.ForProperty(property));
     }
 
     /// <summary>清空全部样式条目。</summary>
     public void Clear()
     {
         if (_styles == null) return;
+        if (_styles.Count == 0) return;
+        var invalidation = ElementInvalidation.None;
+        foreach (var property in _styles.Keys)
+            invalidation |= StyleInvalidation.ForProperty(property);
         _styles.Clear();
-        _owner.InvalidatePaint();
+        _owner.Invalidate(invalidation);
     }
 
     /// <summary>清除非内联（specificity &lt; int.MaxValue）的级联条目。</summary>
     public void ClearCascaded()
     {
         if (_styles == null) return;
+        var changed = false;
+        var invalidation = ElementInvalidation.None;
         foreach (var property in _styles.Where(pair => pair.Value.Specificity < int.MaxValue).Select(pair => pair.Key).ToArray())
-            _styles.Remove(property);
-        _owner.InvalidatePaint();
+        {
+            if (!_styles.Remove(property)) continue;
+            changed = true;
+            invalidation |= StyleInvalidation.ForProperty(property);
+        }
+        if (changed)
+            _owner.Invalidate(invalidation);
     }
 
     /// <summary>返回当前全部样式的只读快照。</summary>

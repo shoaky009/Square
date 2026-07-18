@@ -8,7 +8,7 @@ internal sealed class Win32Host : IPlatformHost
 {
     private IntPtr _hwnd;
     private bool _running;
-    private readonly string _title;
+    private string _title;
     private readonly int _width;
     private readonly int _height;
     private Size _clientSize;
@@ -29,6 +29,17 @@ internal sealed class Win32Host : IPlatformHost
     public Size ClientSize => _clientSize;
     public float DpiScale => _dpiScale;
     public bool IsRunning => _running;
+    public string Title
+    {
+        get => _title;
+        set
+        {
+            if (_title == value) return;
+            _title = value;
+            if (_hwnd != IntPtr.Zero)
+                Win32Api.SetWindowText(_hwnd, _title);
+        }
+    }
     public KeyModifiers Modifiers
     {
         get
@@ -170,45 +181,18 @@ internal sealed class Win32Host : IPlatformHost
                 return;
             }
 
-            // Partial present: geometry is in the same space as the software bitmap
-            // (host ClientSize drives both layout and bitmap size). Fall back to full
-            // window blit if any rect fails clamping so the UI never freezes.
-            var presentedAny = false;
-            foreach (var r in dirtyRects)
-            {
-                if (r.IsEmpty) continue;
-                var x = Math.Max(0, (int)Math.Floor(r.X));
-                var y = Math.Max(0, (int)Math.Floor(r.Y));
-                var w = (int)Math.Ceiling(r.Right) - x;
-                var h = (int)Math.Ceiling(r.Bottom) - y;
-                if (w <= 0 || h <= 0) continue;
-                if (x >= bitmap.Width || y >= bitmap.Height) continue;
-                w = Math.Min(w, bitmap.Width - x);
-                h = Math.Min(h, bitmap.Height - y);
-                var destX = x;
-                var destY = y;
-                var destW = Math.Min(w, (int)_clientSize.Width - destX);
-                var destH = Math.Min(h, (int)_clientSize.Height - destY);
-                if (destW <= 0 || destH <= 0) continue;
-
-                Win32Api.StretchDIBits(
-                    dc,
-                    destX, destY, destW, destH,
-                    x, y, destW, destH,
-                    _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
-                    Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
-                presentedAny = true;
-            }
-
-            if (!presentedAny)
-            {
-                Win32Api.StretchDIBits(
-                    dc,
-                    0, 0, (int)_clientSize.Width, (int)_clientSize.Height,
-                    0, 0, bitmap.Width, bitmap.Height,
-                    _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
-                    Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
-            }
+            // The software buffer is already updated only inside dirtyRects. Blit the
+            // complete retained buffer here: sub-rectangle StretchDIBits calls with a
+            // top-down DIB use source coordinates inconsistently across Windows GDI
+            // paths and can copy an unrelated (usually blank) row range over the dirty
+            // destination. That made focused controls disappear even though the
+            // retained buffer contained the correctly replayed background and siblings.
+            Win32Api.StretchDIBits(
+                dc,
+                0, 0, (int)_clientSize.Width, (int)_clientSize.Height,
+                0, 0, bitmap.Width, bitmap.Height,
+                _presentPixelsHandle.AddrOfPinnedObject(), ref _presentInfo,
+                Win32Api.DIB_RGB_COLORS, Win32Api.SRCCOPY);
         }
         finally
         {

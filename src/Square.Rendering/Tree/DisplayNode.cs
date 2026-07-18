@@ -18,13 +18,15 @@ public sealed class DisplayNode
     public Element? Element { get; set; }
     public List<DisplayNode> Children { get; } = [];
     public List<DrawCommand> Commands { get; } = [];
+    public Rect VisualBounds { get; private set; }
+    public Rect PopupBounds { get; set; }
 
     public bool IsDirty { get; set; } = true;
 
     public void Render(IRenderContext ctx) => Render(ctx, dirtyClip: null);
 
     /// <summary>
-    /// 渲染本节点及子树。<paramref name="dirtyClip"/> 非 null 时跳过与脏区不相交的分支。
+    /// 渲染本节点及子树。<paramref name="dirtyClip"/> 非 null 时由 DisplayTree 作为真实裁剪区应用。
     /// </summary>
     public void Render(IRenderContext ctx, Rect? dirtyClip)
     {
@@ -32,28 +34,13 @@ public sealed class DisplayNode
         if (Element != null)
             Bounds = Element.Geometry;
 
-        // 根或 Geometry 仍为空时：不要因不相交测试而丢弃整枝（layout 后首帧常见）
-        // Bounds.IsEmpty 时仍继续遍历子节点
-        if (dirtyClip is { } clip && !Bounds.IsEmpty && !Bounds.IntersectsWith(clip))
-            return;
-
         if (IsDirty || Commands.Count == 0)
         {
-            Commands.Clear();
-            CollectCommands(Element, Commands);
-            SortChildrenByZIndex();
-            // 帧循环：Paint 内 RequestAnimationFrame 会再 InvalidatePaint；
-            // Host Tick 在到期时也会 InvalidatePaint。此处清除本轮脏标记即可。
-            Element?.ClearPaintDirty();
-            IsDirty = false;
+            RebuildCommands();
         }
 
-        // 仅当本节点与脏区相交（或全帧）时执行自身命令
-        var executeSelf = dirtyClip is null
-            || Bounds.IsEmpty
-            || Bounds.IntersectsWith(dirtyClip.Value);
-        if (executeSelf)
-            ExecuteCommands(ctx);
+        // 重放全部命令，避免文本、焦点框、阴影等越过 Geometry 的视觉内容在局部重绘时被跳过。
+        ExecuteCommands(ctx);
 
         var overflowClip = Element?.GetOverflowClipRect() ?? Rect.Empty;
         var clipsChildren = !overflowClip.IsEmpty;
@@ -61,6 +48,20 @@ public sealed class DisplayNode
         foreach (var child in Children)
             child.Render(ctx, dirtyClip);
         if (clipsChildren) ctx.PopClip();
+    }
+
+    internal void RebuildCommands()
+    {
+        if (Element != null)
+            Bounds = Element.Geometry;
+        Commands.Clear();
+        CollectCommands(Element, Commands);
+        VisualBounds = DrawCommandBounds.Calculate(Commands, Bounds);
+        SortChildrenByZIndex();
+        // 帧循环：Paint 内 RequestAnimationFrame 会再 InvalidatePaint；
+        // Host Tick 在到期时也会 InvalidatePaint。此处清除本轮脏标记即可。
+        Element?.ClearPaintDirty();
+        IsDirty = false;
     }
 
     private static void CollectCommands(Element? element, List<DrawCommand> commands)
