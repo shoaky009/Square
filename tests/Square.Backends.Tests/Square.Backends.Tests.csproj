@@ -15,7 +15,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
     <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
+    <ProjectReference Include="..\..\src\Square.Graphics\Square.Graphics.csproj" />
     <ProjectReference Include="..\..\src\Square.Rendering\Square.Rendering.csproj" />
+    <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
     <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
   </ItemGroup>
 

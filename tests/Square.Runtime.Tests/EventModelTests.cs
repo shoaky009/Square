@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Square.Events;
 using Xunit;
 

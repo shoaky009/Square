@@ -1,3 +1,4 @@
+using System;
 using Square.Platform;
 using Xunit;
 

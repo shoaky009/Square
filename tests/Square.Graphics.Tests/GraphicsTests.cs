@@ -1,6 +1,8 @@
+using System;
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using System.Buffers.Binary;
+using System.IO;
 using Xunit;
 
 namespace Square.Graphics.Tests;
