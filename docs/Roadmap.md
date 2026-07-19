@@ -12,7 +12,7 @@
 | **M0 脚手架** | 解决方案与全部 `Square.*` 空项目、目录规范、AOT/Trim 发布配置 | 空项目可编译 | ✅ 完成 |
 | **M1 Phase 1 MVP** | 编译优先可运行 Demo：`.sqx`→C#、Props、ref、基础 CSS、flex 布局、纯 C# 软件渲染、基础控件、事件、Win32 宿主、构建层裁剪、生命周期、NativeAOT 验证 | `.sqx` 示例经 Source Generator 编译为 AOT 可执行，窗口渲染并响应交互；Props 传值校验、ref 操作、`<Show>`/`<For>` 可用 | ✅ 完成 |
 | **M2 CSS 完整化 + 组件组合 + 动画 + 主题** | 默认/具名 Slot、fallback、嵌套组件；`Signal<T>` 跨组件/跨线程通信；完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | 插槽保持调用方作用域且不产生隐式布局容器；后台信号经 Dispatcher 安全送达 UI；CSS 测试套件通过 | ✅ 完成 |
-| **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；基于 Slot 的 Tabs；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Window/Swiper | 路由可前进/后退并正确切换生命周期；Tabs 可组合页面且保留状态；各控件可交互 | 🔄 进行中 |
+| **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；基于 Slot 的 Tabs；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Swiper | 路由可前进/后退并正确切换生命周期；Tabs 可组合页面且保留状态；各控件可交互 | 🔄 进行中 |
 | **M4 图形后端扩展** | Impeller / Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 | ⏳ 计划 |
 | **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 | 🔄 部分完成 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI | ⏳ 计划 |
@@ -87,7 +87,21 @@
 
 ---
 
-## 6. 风险与缓解
+## 6. 扩展能力（M2 之后增量）
+
+M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M0–M8 阶段编号：
+
+- **`.sqv` Vue 模板前端**：在保留 `.sqx` 原生语法的前提下，新增 Vue 3 模板语法兼容前端。`SqvParser` 将 `{{ }}` 插值、`:prop` / `v-bind`、`@event` / `v-on`、`v-if` / `v-else-if` / `v-else`、`v-for` / `:key`、`ref` 及事件修饰符（`.stop` / `.prevent`）规范化为与 `.sqx` 相同的中间表示，运行时仍是纯 C#。配套 `samples/Square.Sample.Vue` 提供控件、表单、媒体、Markdown、路由、信号、溢出等示例页面。完整设计与后续里程碑见 `docs/vue-plan.md`。
+- **`Square.Extensions` 扩展模块**：新增可选项目，承载第三方集成与高级控件。首个组件 `MarkdownViewer` 基于 Markdig 将 Markdown 解析为 Square 元素树（标题、段落、列表、引用、代码块、分隔线、链接）。通过 `ExtensionRegistration.RegisterDefaults()` 注册扩展控件标签。
+- **平台截图**：`PlatformScreenshot.CaptureByProcessId` / `TryCaptureByProcessId` 按进程 ID 捕获窗口位图，Win32 与 X11 各有实现，按构建层 `PLATFORM_*` 裁剪。
+- **PNG 编码与 BMP 解码**：`Square.Graphics.Codecs` 命名空间下，`BitmapPngEncoder` 将 `Bitmap` 编码为 8 位 RGBA PNG（zlib 压缩），`BmpPngConverter` 提供非压缩 24/32 位 BMP 加载与 BMP→PNG 转换，纯 C# 无外部依赖。
+- **DOM `Range` 与 `TextFragment`**：`Square.UI.Range` 提供最小 DOM Range 文本选择模型（`SetStart` / `SetEnd` / `SelectNodeContents` / `Collapse` / 边界点比较）；`Square.Rendering.TextFragment` 提供字符级命中测试（`HitTestOffset`），为富文本编辑与选择奠定基础。
+- **Software Renderer 性能优化**：`RenderContext` 缓存位图像素指针与尺寸、裁剪区域缓存（避免栈查找）、批量 BGRA 填充；`LayoutEngine` 与 `StyleAccessor` 同步优化。
+- **`DesktopApplication.RenderingMode`**：新增 `RenderMode` 枚举（`FullFrame` / `Auto` / `DirtyRegion`），控制每帧重绘策略，可通过 `--render-mode` 参数或 `SQUARE_RENDER_MODE` 环境变量配置。
+
+---
+
+## 7. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
@@ -100,17 +114,19 @@
 
 ---
 
-## 7. 下一步
+## 8. 下一步
 
-M2 和架构重建已完成。当前重点：
-- M3 扩展控件（List/Tree/Menu/Dialog/ScrollViewer/Popup/Window/Swiper）
+M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文本命中测试与渲染优化等增量已落地。当前重点：
+
+- M3 扩展控件（List/Tree/Menu/Dialog/ScrollViewer/Popup/Swiper）
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
-- M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作
+- M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作（基于已落地的 `Range` 与 `TextFragment`）
+- `.sqv` 前端继续推进：独立 Template IR、`v-model`、slots 与 scoped props、动态参数等（见 `docs/vue-plan.md` 里程碑 D–G）
 - 继续扩展 CSS Grid / Animation 到更完整规范
 
 ---
 
-## 8. M5 跨平台桌面进度
+## 9. M5 跨平台桌面进度
 
 [~] Linux / X11 平台宿主：窗口、消息循环、鼠标/键盘/滚轮、剪贴板（CLIPBOARD + PRIMARY 中键粘贴）、Software Renderer 通过 `XPutImage` 上屏、构建层 `PLATFORM_X11` 裁剪 ✓ / IME 待实现 / 高 DPI 待实现
 [~] 跨平台字形栅格化：Windows 走 GDI `GetGlyphOutline` ✓ / Linux 与 macOS 走 StbTrueTypeSharp（纯 C#，无 native 依赖）✓ / 字体回退按脚本（CJK/日/韩）映射到 Noto/Source Han ✓ / Fontconfig 集成待实现

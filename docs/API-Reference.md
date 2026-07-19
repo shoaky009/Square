@@ -20,6 +20,7 @@ public sealed class DesktopApplication : Application
     public DesktopApplication(Element contentRoot, PlatformHostCreateInfo hostCreateInfo); // 兼容：内容挂到新 UIDocument.Body
     public UIDocument Document { get; }
     public Color Background { get; set; }   // 默认 Color.White
+    public RenderMode RenderingMode { get; set; } = RenderMode.FullFrame;
 }
 ```
 
@@ -28,6 +29,7 @@ public sealed class DesktopApplication : Application
 | 构造函数 | 接收 `UIDocument`（或兼容地接收内容 `Element` 并包进 Body）与窗口创建信息 |
 | `Document` | 当前 UI 文档 |
 | `Background` | 窗口背景色，默认白色 |
+| `RenderingMode` | 每帧重绘策略，默认 `FullFrame`；可通过 `--render-mode` 参数或 `SQUARE_RENDER_MODE` 环境变量配置 |
 | `Dispatcher`（继承自 `Application`） | UI 线程调度器，用于 Signal 跨线程投递 |
 | `Run()`（继承自 `Application`） | 启动应用：注册默认后端/平台/控件 → 构建文档 → 创建窗口 → 消息循环 |
 | `Shutdown()`（继承自 `Application`） | 请求关闭消息循环 |
@@ -39,6 +41,27 @@ public sealed class DesktopApplication : Application
 3. 创建 `IPlatformHost` 并绑定所有输入事件
 4. `OnLoaded()` → 首帧渲染 → `PumpEvents()` 消息循环
 5. 退出时 `OnUnloaded()` → `OnDetached()`
+
+### RenderMode
+
+```csharp
+namespace Square.Hosting;
+
+public enum RenderMode
+{
+    FullFrame,      // 每帧全量重绘
+    Auto,           // 自动选择（按脏区/布局状态）
+    DirtyRegion     // 仅重绘脏区
+}
+```
+
+| 值 | 说明 |
+|---|---|
+| `FullFrame` | 默认；每帧全量构建 DisplayTree 并提交 |
+| `Auto` | 按布局脏标记与绘制脏标记自动决定全量或增量 |
+| `DirtyRegion` | 仅重绘 `NeedsPaint` 标记的脏区域 |
+
+`Sample.Vue` 等示例通过 `--render-mode=DirtyRegion` 或 `SQUARE_RENDER_MODE=DirtyRegion` 切换。
 
 ---
 
@@ -467,6 +490,41 @@ public sealed class UIDocument : Document
 ```
 
 壳结构：`DocumentElement = UI`（只读）→ 子节点 `Head` + `Body`。应用内容挂在 `Body` 下，**不是** documentElement。
+
+### Range
+
+```csharp
+namespace Square.UI;
+
+public sealed class Range
+{
+    public Range(Document ownerDocument);
+
+    public Document OwnerDocument { get; }
+    public Node StartContainer { get; }
+    public int StartOffset { get; }
+    public Node EndContainer { get; }
+    public int EndOffset { get; }
+    public bool Collapsed { get; }
+
+    public void SetStart(Node node, int offset);
+    public void SetEnd(Node node, int offset);
+    public void SelectNodeContents(Node node);
+    public void Collapse(bool toStart);
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `StartContainer` / `StartOffset` | 起始边界点（节点 + 偏移） |
+| `EndContainer` / `EndOffset` | 结束边界点 |
+| `Collapsed` | 起始与结束边界点重合 |
+| `SetStart` / `SetEnd` | 设置边界点；越界或跨文档抛异常，起>终时自动折叠 |
+| `SelectNodeContents` | 选中某节点的全部内容 |
+| `Collapse(toStart)` | 折叠到起始或结束边界点 |
+| `ToString()` | 提取范围内文本（遍历公共根下的文本节点） |
+
+最小 DOM Range 模型，用于文本选择。边界点按文档顺序比较，支持祖先/兄弟关系判定。
 
 ### HTMLElement / SVGElement（占位）
 
@@ -1081,6 +1139,42 @@ public static class RenderBackendRegistry
 }
 ```
 
+### BitmapPngEncoder
+
+```csharp
+namespace Square.Graphics.Codecs;
+
+public static class BitmapPngEncoder
+{
+    public static void Save(Bitmap bitmap, string path);
+    public static void Save(Bitmap bitmap, Stream stream);
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `Save(bitmap, path)` | 将 `Bitmap` 编码为 PNG 写入文件 |
+| `Save(bitmap, stream)` | 将 `Bitmap` 编码为 PNG 写入流 |
+
+输出 8 位 RGBA PNG（IHDR + zlib 压缩 IDAT + IEND），纯 C# 实现，含 CRC32 校验。
+
+### BmpPngConverter
+
+```csharp
+namespace Square.Graphics.Codecs;
+
+public static class BmpPngConverter
+{
+    public static void Convert(string bmpPath, string pngPath);
+    public static Bitmap LoadBmp(string path);
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `Convert(bmpPath, pngPath)` | 读取 BMP 并写出为 PNG |
+| `LoadBmp(path)` | 加载非压缩 24/32 位 BMP 为 `Bitmap`（自上而下/自下而上均支持） |
+
 ---
 
 ## 7. Square.Platform — 平台宿主
@@ -1182,6 +1276,25 @@ public static class PlatformRegistration
 
 根据 `PLATFORM_WIN32` 等编译常量注册对应平台工厂。`DesktopApplication` 在启动时自动调用。
 
+### PlatformScreenshot
+
+```csharp
+namespace Square.Platform;
+
+public static class PlatformScreenshot
+{
+    public static Bitmap CaptureByProcessId(int processId);
+    public static bool TryCaptureByProcessId(int processId, out Bitmap? bitmap);
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `CaptureByProcessId(pid)` | 按进程 ID 捕获其顶层窗口位图；找不到可捕获窗口时抛 `InvalidOperationException` |
+| `TryCaptureByProcessId(pid, out bitmap)` | 尝试捕获，返回是否成功 |
+
+实现按构建层裁剪：`PLATFORM_WIN32` 走 `Win32WindowScreenshot`，`PLATFORM_X11` 走 `X11WindowScreenshot`。配合 `BitmapPngEncoder` 可将截图保存为 PNG。
+
 ---
 
 ## 8. Square.Rendering — 布局引擎
@@ -1263,6 +1376,32 @@ public sealed class DisplayTree
 | `Render(ctx)` | 遍历 DisplayNode，收集并提交 DrawCommand |
 
 `DesktopApplication` 在 `RenderFrame()` 中按需调用 `BuildFrom` 或 `UpdateDirty`，随后 `Render`。`DisplayNode.Source` / `Element` 指向对应文档元素。
+
+### TextFragment
+
+```csharp
+namespace Square.Rendering;
+
+public sealed record TextFragment(
+    Element Element, string Text, Font Font, Rect Bounds,
+    IReadOnlyList<TextCharacterFragment> Characters)
+{
+    public int HitTestOffset(Point point);
+}
+
+public readonly record struct TextCharacterFragment(int StartOffset, int EndOffset, Rect Bounds);
+```
+
+| 成员 | 说明 |
+|---|---|
+| `Element` | 该文本片段所属的元素 |
+| `Text` | 片段文本内容 |
+| `Font` | 渲染字体 |
+| `Bounds` | 片段整体边界矩形 |
+| `Characters` | 逐字符边界信息，用于精确命中 |
+| `HitTestOffset(point)` | 返回点对应的文本偏移量；命中字符内时按中点判定左右，否则取最近字符的起/止偏移 |
+
+为富文本编辑、光标定位与选择提供字符级几何信息。配合 `Square.UI.Range` 构建文本选择模型。
 
 
 ---
@@ -1445,7 +1584,55 @@ public sealed class Clock
 
 ---
 
-## 12. 枚举与对齐辅助
+## 12. Square.Extensions — 扩展模块
+
+可选扩展组件与第三方集成。引用 `Square.Extensions` 后调用 `ExtensionRegistration.RegisterDefaults()` 注册扩展控件标签。
+
+### ExtensionRegistration
+
+```csharp
+namespace Square.Extensions.Registration;
+
+public static class ExtensionRegistration
+{
+    public static void RegisterDefaults();
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `RegisterDefaults()` | 注册扩展控件标签（当前为 `MarkdownViewer`）。幂等，重复调用安全 |
+
+应用启动时调用一次即可让扩展控件在 `.sqx` / `.sqv` 中按标签使用：
+
+```csharp
+ExtensionRegistration.RegisterDefaults();
+var app = new DesktopApplication(document, createInfo);
+app.Run();
+```
+
+### MarkdownViewer
+
+```csharp
+namespace Square.Extensions.Markdown;
+
+public sealed class MarkdownViewer : UIElement
+{
+    [Prop] public string Content { get; set; }   // Markdown 文本
+    [Prop] public string Markdown { get; set; }  // Content 的别名
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `Content` | Markdown 源文本；设置后自动重建子元素 |
+| `Markdown` | `Content` 的语义别名，二者同步 |
+
+基于 Markdig 解析 Markdown，渲染为 Square 元素树（标题 H1–H6、段落、有序/无序列表、引用、围栏代码块、分隔线、链接与行内格式）。容器默认 `display:flex; flex-direction:column; gap:8px`，各块带 `markdown-*` class 可在 `<style>` 中定制。挂载（`OnAttached`）或 Prop 变化时自动重新渲染。
+
+---
+
+## 13. 枚举与对齐辅助
 
 ### HorizontalAlignment / VerticalAlignment
 
@@ -1458,7 +1645,7 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 
 ---
 
-## 13. 注册与初始化
+## 14. 注册与初始化
 
 应用启动时 `DesktopApplication` 自动调用以下注册：
 
@@ -1466,12 +1653,13 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 |---|---|---|
 | `BackendRegistration` | `RegisterDefaults()` | `BACKEND_SOFTWARE` 等编译常量 |
 | `PlatformRegistration` | `RegisterDefaults()` | `PLATFORM_WIN32` 等编译常量 |
+| `ExtensionRegistration` | `RegisterDefaults()` | 手动调用（引用 `Square.Extensions` 后） |
 
-应用代码通常不需要手动调用这些方法。仅在自定义后端或平台时才需要额外注册。
+应用代码通常不需要手动调用 `BackendRegistration` / `PlatformRegistration`，仅在自定义后端或平台时才需额外注册。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展控件标签。
 
 ---
 
-## 14. 事件签名约定
+## 15. 事件签名约定
 
 SQX 中的事件处理方法支持（由 Source Generator 适配）：
 
@@ -1484,23 +1672,26 @@ private void OnClick(Event e) { }
 
 ---
 
-## 15. 命名空间速查
+## 16. 命名空间速查
 
 | 命名空间 | 主要类型 |
 |---|---|
-| `Square.Hosting` | `DesktopApplication` |
+| `Square.Hosting` | `DesktopApplication`, `RenderMode` |
 | `Square.Runtime` | `Application`, `Dispatcher`, `IComponentLifecycle` |
 | `Square.Runtime.Binding` | `ObservableValue<T>`, `ObservableCollection<T>`, `PropAttribute` |
 | `Square.Runtime.Signals` | `Signal<T>`, `SignalHub` |
 | `Square.Events` | `EventTarget`, `Event`, `EventInit`, `EventPhase`, `StandardEvents`, `FrameRequestEvent` |
 | `Square.Directives` | `SqxDirectiveAttribute`（编译期指令发现） |
-| `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
+| `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
 | `Square.Controls.Controls` | `View`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
-| `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `RenderBackendRegistry` |
-| `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `DisplayTree`, `DisplayNode` |
-| `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformRegistration` |
+| `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `Bitmap`, `RenderBackendRegistry` |
+| `Square.Graphics.Codecs` | `BitmapPngEncoder`, `BmpPngConverter`, `Crc32` |
+| `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `DisplayTree`, `DisplayNode`, `TextFragment`, `TextCharacterFragment` |
+| `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformRegistration`, `PlatformScreenshot` |
 | `Square.Router` | `Router`, `RouteContext`, `RouteDefinition`, `Link`, `INavigationHistory` |
 | `Square.Controls.Animation` | `Animation<T>`, `Clock`, `Easing` |
+| `Square.Extensions.Markdown` | `MarkdownViewer` |
+| `Square.Extensions.Registration` | `ExtensionRegistration` |

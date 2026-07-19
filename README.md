@@ -2,7 +2,9 @@
 
 Square 是一个用纯 C# 编写的实验性跨平台 UI 框架。它借鉴 HTML 与 CSS 的开发体验，但不是浏览器，也不在运行时解析模板。
 
-UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期生成普通 C# 类型。框架以 NativeAOT、可裁剪、保留模式渲染和后端可替换为主要设计约束。
+UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端）描述，由 Roslyn Incremental Source Generator 在编译期生成普通 C# 类型。框架以 NativeAOT、可裁剪、保留模式渲染和后端可替换为主要设计约束。
+
+> `.sqv` 是 Vue 3 模板语法的兼容前端：`{{ }}` 插值、`:prop`、`@event`、`v-if` / `v-for` 等在编译期规范化为与 `.sqx` 相同的中间表示，运行时仍是纯 C#，不引入 Vue 运行时或 JavaScript 引擎。设计与阶段规划见 [`docs/vue-plan.md`](docs/vue-plan.md)。
 
 > Square 仍处于早期开发阶段，API 和 SQX 语法可能调整。目前支持 Windows / Win32 与 Linux / X11 两个桌面平台宿主。
 
@@ -42,6 +44,12 @@ UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期�
 - `FontFace` / `FontFaceSet` CSS Font Loading 子集
 - 自定义指令 SDK（`[SqxDirective]` + `DirectiveCatalog` + `DirectiveEmitPipeline`）
 - `Reconciler` 批量脏标记与更新调度
+- `.sqv` Vue 模板语法前端：`{{ }}` 插值、`:prop` / `v-bind`、`@event` / `v-on`、`v-if` / `v-else-if` / `v-else`、`v-for`、`:key`、`ref` 及事件修饰符（`.stop` / `.prevent`）
+- `Square.Extensions` 扩展模块：`MarkdownViewer` 控件（基于 Markdig，将 Markdown 渲染为 Square 元素树）
+- PNG 编码（`BitmapPngEncoder`）与 BMP 解码（`BmpPngConverter`），纯 C# 无外部依赖
+- 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
+- DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
+- Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）
 
 完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
 
@@ -188,6 +196,7 @@ Square.SourceGenerator ──► C# Component
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer 及后续图形后端 |
 | `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
+| `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`（Markdig）等，按需引用 |
 
 更详细的模块关系见 [`docs/Architecture.md`](docs/Architecture.md)。
 
@@ -247,6 +256,12 @@ dotnet build Square.slnx
 
 ```bash
 dotnet run --project samples/Square.Sample/Square.Sample.csproj
+```
+
+运行 Vue 模板语法示例（`.sqv`）：
+
+```bash
+dotnet run --project samples/Square.Sample.Vue/Square.Sample.Vue.csproj
 ```
 
 ## 测试
@@ -311,6 +326,7 @@ Square 通过构建层 `DefineConstants`（`PLATFORM_WIN32` / `PLATFORM_X11`）�
 - [入门指南](docs/Getting-Started.md)
 - [API 参考](docs/API-Reference.md)
 - [SQX 语言规范](docs/Sqx-Spec.md)
+- [SQV / Vue 模板计划](docs/vue-plan.md)
 - [CSS 规范](docs/CSS-Spec.md)
 - [布局](docs/Layout.md)
 - [渲染](docs/Rendering.md)
