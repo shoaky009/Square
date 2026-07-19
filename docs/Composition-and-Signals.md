@@ -1,6 +1,6 @@
 # 组件组合与信号通信
 
-> 适用版本：Square 0.1 开发版  
+> 适用版本：Square 0.3 开发版  
 > 相关规范：`Sqx-Spec.md`、`Architecture.md`、`Generator.md`
 
 本文说明如何使用 Slot 组合组件、用 Slot 构建 Tabs，以及如何通过 `Signal<T>` 在组件和线程之间传递状态。

@@ -7,6 +7,9 @@ namespace Square.Backends;
 
 internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 {
+    private const int CoverageSampleGrid = 4;
+    private const int CoverageSampleCount = CoverageSampleGrid * CoverageSampleGrid;
+
     private Bitmap _bitmap;
     private readonly float _dpiScale;
     private readonly PresentFrameHandler? _presentFrame;
@@ -310,33 +313,113 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 
     private void FillRoundedRect(Rect rect, float rx, float ry, Color color)
     {
-        var cx = rect.X + rect.Width / 2f;
-        var cy = rect.Y + rect.Height / 2f;
-        rx = Math.Min(rx, rect.Width / 2f);
-        ry = Math.Min(ry, rect.Height / 2f);
-
-        // 中心矩形
-        BlendRect(new Rect(rect.X + rx, rect.Y, rect.Width - rx * 2, rect.Height), color);
-        // 左右矩形
-        BlendRect(new Rect(rect.X, rect.Y + ry, rx, rect.Height - ry * 2), color);
-        BlendRect(new Rect(rect.Right - rx, rect.Y + ry, rx, rect.Height - ry * 2), color);
-        // 四角圆弧
-        FillEllipse(new Point(rect.X + rx, rect.Y + ry), rx, ry, color);
-        FillEllipse(new Point(rect.Right - rx, rect.Y + ry), rx, ry, color);
-        FillEllipse(new Point(rect.X + rx, rect.Bottom - ry), rx, ry, color);
-        FillEllipse(new Point(rect.Right - rx, rect.Bottom - ry), rx, ry, color);
+        RasterizeRoundedRect(rect, rx, ry, strokeWidth: 0, color);
     }
 
     private void DrawRoundedRect(Rect rect, float rx, float ry, Pen pen)
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
-        var w = pen.Width;
-        // 顶底
-        BlendRect(new Rect(rect.X + rx, rect.Y, rect.Width - rx * 2, w), color);
-        BlendRect(new Rect(rect.X + rx, rect.Bottom - w, rect.Width - rx * 2, w), color);
-        // 左右
-        BlendRect(new Rect(rect.X, rect.Y + ry, w, rect.Height - ry * 2), color);
-        BlendRect(new Rect(rect.Right - w, rect.Y + ry, w, rect.Height - ry * 2), color);
+        if (pen.Width <= 0) return;
+        RasterizeRoundedRect(rect, rx, ry, pen.Width, color);
+    }
+
+    private void RasterizeRoundedRect(Rect rect, float rx, float ry, float strokeWidth, Color color)
+    {
+        if (rect.IsEmpty) return;
+        rx = Math.Clamp(rx, 0, rect.Width / 2f);
+        ry = Math.Clamp(ry, 0, rect.Height / 2f);
+        if (rx <= 0 || ry <= 0)
+        {
+            if (strokeWidth > 0) DrawRectPixels(rect, strokeWidth, color);
+            else BlendRect(rect, color);
+            return;
+        }
+
+        if (strokeWidth <= 0)
+        {
+            FillRoundedRectFast(rect, rx, ry, color);
+            return;
+        }
+
+        DrawRoundedRectFast(rect, rx, ry, strokeWidth, color);
+    }
+
+    private void FillRoundedRectFast(Rect rect, float rx, float ry, Color color)
+    {
+        BlendRect(new Rect(rect.X + rx, rect.Y, Math.Max(0, rect.Width - rx * 2), rect.Height), color);
+        BlendRect(new Rect(rect.X, rect.Y + ry, rx, Math.Max(0, rect.Height - ry * 2)), color);
+        BlendRect(new Rect(rect.Right - rx, rect.Y + ry, rx, Math.Max(0, rect.Height - ry * 2)), color);
+        RasterizeRoundedRectCorners(rect, rx, ry, Rect.Empty, 0, 0, hasInner: false, color);
+    }
+
+    private void DrawRoundedRectFast(Rect rect, float rx, float ry, float strokeWidth, Color color)
+    {
+        var width = Math.Min(strokeWidth, Math.Min(rect.Width, rect.Height) / 2f);
+        BlendRect(new Rect(rect.X + rx, rect.Y, Math.Max(0, rect.Width - rx * 2), width), color);
+        BlendRect(new Rect(rect.X + rx, rect.Bottom - width, Math.Max(0, rect.Width - rx * 2), width), color);
+        BlendRect(new Rect(rect.X, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
+        BlendRect(new Rect(rect.Right - width, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
+
+        var hasInner = rect.Width > width * 2 && rect.Height > width * 2;
+        var inner = hasInner ? rect.Inflate(-width, -width) : Rect.Empty;
+        RasterizeRoundedRectCorners(rect, rx, ry, inner, Math.Max(0, rx - width), Math.Max(0, ry - width), hasInner, color);
+    }
+
+    private void RasterizeRoundedRectCorners(Rect rect, float rx, float ry, Rect inner, float innerRx, float innerRy, bool hasInner, Color color)
+    {
+        RasterizeRoundedRectCorner(new Rect(rect.X, rect.Y, rx, ry), rect, rx, ry, inner, innerRx, innerRy, hasInner, color);
+        RasterizeRoundedRectCorner(new Rect(rect.Right - rx, rect.Y, rx, ry), rect, rx, ry, inner, innerRx, innerRy, hasInner, color);
+        RasterizeRoundedRectCorner(new Rect(rect.X, rect.Bottom - ry, rx, ry), rect, rx, ry, inner, innerRx, innerRy, hasInner, color);
+        RasterizeRoundedRectCorner(new Rect(rect.Right - rx, rect.Bottom - ry, rx, ry), rect, rx, ry, inner, innerRx, innerRy, hasInner, color);
+    }
+
+    private void RasterizeRoundedRectCorner(Rect cornerBounds, Rect rect, float rx, float ry, Rect inner, float innerRx, float innerRy, bool hasInner, Color color)
+    {
+        var x0 = Math.Max(0, (int)MathF.Floor(rect.X));
+        x0 = Math.Max(x0, (int)MathF.Floor(cornerBounds.X));
+        var y0 = Math.Max(0, (int)MathF.Floor(cornerBounds.Y));
+        var x1 = Math.Min(_bitmap.Width - 1, (int)MathF.Ceiling(cornerBounds.Right));
+        var y1 = Math.Min(_bitmap.Height - 1, (int)MathF.Ceiling(cornerBounds.Bottom));
+
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                var covered = 0;
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
+                {
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / CoverageSampleGrid;
+                        var py = y + (sy + 0.5f) / CoverageSampleGrid;
+                        if (!IsInsideRoundedRect(px, py, rect, rx, ry)) continue;
+                        if (hasInner && IsInsideRoundedRect(px, py, inner, innerRx, innerRy)) continue;
+                        covered++;
+                    }
+                }
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+            }
+        }
+    }
+
+    private static bool IsInsideRoundedRect(float x, float y, Rect rect, float rx, float ry)
+    {
+        if (x < rect.X || x > rect.Right || y < rect.Y || y > rect.Bottom) return false;
+        if (rx <= 0 || ry <= 0) return true;
+        var cx = Math.Clamp(x, rect.X + rx, rect.Right - rx);
+        var cy = Math.Clamp(y, rect.Y + ry, rect.Bottom - ry);
+        var dx = x - cx;
+        var dy = y - cy;
+        return dx * dx / (rx * rx) + dy * dy / (ry * ry) <= 1f;
+    }
+
+    private void DrawRectPixels(Rect rect, float width, Color color)
+    {
+        var w = (int)Math.Ceiling(width);
+        BlendRect(new Rect(rect.X, rect.Y, rect.Width, w), color);
+        BlendRect(new Rect(rect.X, rect.Bottom - w, rect.Width, w), color);
+        BlendRect(new Rect(rect.X, rect.Y + w, w, rect.Height - w * 2), color);
+        BlendRect(new Rect(rect.Right - w, rect.Y + w, w, rect.Height - w * 2), color);
     }
 
     // ── 椭圆 ──
@@ -381,14 +464,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             return;
         }
 
-        // Thin line: Bresenham-style without 4×4 supersampling (huge win for ticks/hands)
-        if (width <= 1.5f)
-        {
-            DrawLineThin(x0, y0, x1, y1, color);
-            return;
-        }
-
-        // Thick line: distance field with 2×2 samples (was 4×4)
+        // Thick line: distance field with 4x4 samples.
         var radius = Math.Max(0.5, width / 2.0);
         var minX = (int)Math.Floor(Math.Min(x0, x1) - radius - 1);
         var maxX = (int)Math.Ceiling(Math.Max(x0, x1) + radius + 1);
@@ -404,12 +480,12 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             for (var x = minX; x <= maxX; x++)
             {
                 var covered = 0;
-                for (var sy = 0; sy < 2; sy++)
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
                 {
-                    for (var sx = 0; sx < 2; sx++)
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
                     {
-                        var px = x + (sx + 0.5) / 2.0;
-                        var py = y + (sy + 0.5) / 2.0;
+                        var px = x + (sx + 0.5) / CoverageSampleGrid;
+                        var py = y + (sy + 0.5) / CoverageSampleGrid;
                         var t = Math.Clamp(((px - x0) * dx + (py - y0) * dy) / lengthSquared, 0, 1);
                         var closestX = x0 + t * dx;
                         var closestY = y0 + t * dy;
@@ -418,30 +494,8 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                         if (distanceX * distanceX + distanceY * distanceY <= radius * radius) covered++;
                     }
                 }
-                BlendPixelCoverage(x, y, color, covered, 4);
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
             }
-        }
-    }
-
-    private void DrawLineThin(double x0, double y0, double x1, double y1, Color color)
-    {
-        // Integer Bresenham with optional clip via BlendPixel
-        var ix0 = (int)Math.Round(x0);
-        var iy0 = (int)Math.Round(y0);
-        var ix1 = (int)Math.Round(x1);
-        var iy1 = (int)Math.Round(y1);
-        var dx = Math.Abs(ix1 - ix0);
-        var dy = Math.Abs(iy1 - iy0);
-        var sx = ix0 < ix1 ? 1 : -1;
-        var sy = iy0 < iy1 ? 1 : -1;
-        var err = dx - dy;
-        while (true)
-        {
-            BlendPixel(ix0, iy0, color);
-            if (ix0 == ix1 && iy0 == iy1) break;
-            var e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; ix0 += sx; }
-            if (e2 < dx) { err += dx; iy0 += sy; }
         }
     }
 
@@ -456,7 +510,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             return;
         }
 
-        // Stroke: 2×2 samples only on the ring bounding box
+        // Stroke: 4x4 samples only on the ring bounding box.
         var halfStroke = strokeWidth / 2f;
         var outerRx = rx + halfStroke;
         var outerRy = ry + halfStroke;
@@ -477,25 +531,25 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             for (var x = x0; x <= x1; x++)
             {
                 var covered = 0;
-                for (var sy = 0; sy < 2; sy++)
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
                 {
-                    for (var sx = 0; sx < 2; sx++)
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
                     {
-                        var px = x + (sx + 0.5f) / 2f - center.X;
-                        var py = y + (sy + 0.5f) / 2f - center.Y;
+                        var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
+                        var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
                         var insideOuter = px * px / outerRx2 + py * py / outerRy2 <= 1;
                         var insideInner = hasInner && px * px / innerRx2 + py * py / innerRy2 < 1;
                         if (insideOuter && !insideInner) covered++;
                     }
                 }
-                BlendPixelCoverage(x, y, color, covered, 4);
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
             }
         }
     }
 
     private void FillEllipseScanline(Point center, float rx, float ry, Color color)
     {
-        // Fast scanline + 2×2 edge AA (good enough for UI, much cheaper than full 4×4)
+        // Fast scanline + 4x4 edge AA.
         var halfStroke = 0f;
         var outerRx = rx + halfStroke;
         var outerRy = ry + halfStroke;
@@ -512,16 +566,16 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             for (var x = x0; x <= x1; x++)
             {
                 var covered = 0;
-                for (var sy = 0; sy < 2; sy++)
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
                 {
-                    for (var sx = 0; sx < 2; sx++)
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
                     {
-                        var px = x + (sx + 0.5f) / 2f - center.X;
-                        var py = y + (sy + 0.5f) / 2f - center.Y;
+                        var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
+                        var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
                         if (px * px / outerRx2 + py * py / outerRy2 <= 1) covered++;
                     }
                 }
-                BlendPixelCoverage(x, y, color, covered, 4);
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
             }
         }
     }

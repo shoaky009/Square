@@ -1,6 +1,6 @@
 # Source Generator
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Sqx-Spec.md`
 
 ---

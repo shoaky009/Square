@@ -1,0 +1,52 @@
+<template>
+  <View ref="Root" class="markdown-viewer" />
+</template>
+<script lang="csharp" namespace="Square.Extensions.Markdown">
+  [Prop]
+  public string Content
+  {
+    get => GetProperty<string>(nameof(Content)) ?? GetProperty<string>("content") ?? "";
+    set => SetProperty(nameof(Content), value ?? "");
+  }
+
+  [Prop]
+  public string Markdown
+  {
+    get => Content;
+    set => Content = value;
+  }
+
+  protected override void OnPropChanged(string name)
+  {
+    base.OnPropChanged(name);
+    if (name == nameof(Content) || name == nameof(Markdown))
+      RenderMarkdown();
+  }
+
+  protected override void OnAttachedCore()
+  {
+    base.OnAttachedCore();
+    RenderMarkdown();
+  }
+
+  private void RenderMarkdown()
+  {
+    if (Root == null) return;
+    MarkdownRenderer.Render(Content, Root);
+  }
+</script>
+<style>
+  .markdown-viewer { display: flex; flex-direction: column; gap: 8px; color: #202124; user-select: text; }
+  .markdown-heading-1 { font-size: 28px; color: #111827; margin-bottom: 4px; }
+  .markdown-heading-2 { font-size: 24px; color: #111827; margin-bottom: 4px; }
+  .markdown-heading-3 { font-size: 20px; color: #111827; margin-bottom: 2px; }
+  .markdown-heading-4 { font-size: 18px; color: #111827; }
+  .markdown-heading-5 { font-size: 16px; color: #111827; }
+  .markdown-heading-6 { font-size: 14px; color: #374151; }
+  .markdown-paragraph { color: #374151; font-size: 14px; line-height: 22px; }
+  .markdown-list { display: flex; flex-direction: column; gap: 4px; }
+  .markdown-list-item { color: #374151; font-size: 14px; line-height: 22px; }
+  .markdown-quote { background: #f3f4f6; color: #4b5563; padding: 8px 10px; }
+  .markdown-code { background: #111827; color: #f9fafb; padding: 10px; font-size: 13px; line-height: 20px; }
+  .markdown-link { color: #175cd3; }
+</style>

@@ -33,7 +33,7 @@ public class M1IntegrationTests
         Assert.Equal("flex", root.Style.Get("display"));
         Assert.Contains("16", root.Style.Get("padding"));
         Assert.Equal(2, root.Children.Count);
-        Assert.Equal(5, tabs.QueryAll<Button>().Count(control => control.ClassList.Contains("tab-button")));
+        Assert.Equal(6, tabs.QueryAll<Button>().Count(control => control.ClassList.Contains("tab-button")));
         Assert.Equal(3, inputs.Count);
         Assert.Equal(2, root.QueryAll<TextArea>().Count);
         Assert.Equal("14px", inputs[1].Style.Get("line-height"));
@@ -47,6 +47,7 @@ public class M1IntegrationTests
         Assert.Single(root.QueryAll<Square.Controls.Controls.Image>());
         Assert.Single(root.QueryAll<Canvas>());
         var router = Assert.Single(root.QueryAll<RouterControl>());
+        Assert.Single(root.QueryAll<OverflowSamplesPage>());
         Assert.Equal("/", router.Current?.Path);
         Assert.Single(router.QueryAll<RouteHomePage>());
         Assert.Equal(["Blue", "Green", "Orange"], select.Options);
@@ -80,6 +81,33 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void GeneratedControlsPageScrollsWhenActivityItemsExceedPanelHeight()
+    {
+        var component = new Main();
+        component.BuildElementTree();
+        ((IComponentLifecycle)component).OnAttached();
+        var root = Assert.IsType<View>(Assert.Single(component.Children));
+        var tabs = Assert.Single(root.QueryAll<Tabs>());
+        tabs.SelectedIndex = 1;
+        var controlsPage = Assert.Single(root.QueryAll<ControlsSamplesPage>());
+        var button = Assert.Single(controlsPage.QueryAll<Button>());
+        var tabPanels = Assert.Single(root.QueryAll<View>(), view => view.ClassList.Contains("tab-panels"));
+
+        for (var i = 0; i < 60; i++)
+            button.DispatchEvent(StandardEvents.CreateClick());
+        Reconciler.Current.Flush();
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(900, 900));
+        layout.Arrange(root, new Rect(0, 0, 900, 900));
+
+        Assert.True(tabPanels.ScrollContentSize.Height > tabPanels.Geometry.Height);
+        Assert.True(tabPanels.ScrollBy(0, 120));
+        Assert.True(controlsPage.QueryAll<Button>().All(item => item.Geometry.Height >= 36));
+        ((IComponentLifecycle)component).OnDetached();
+    }
+
+    [Fact]
     public void TextInputsAcceptChineseAndJapaneseText()
     {
         var input = new Input();
@@ -91,6 +119,20 @@ public class M1IntegrationTests
 
         Assert.Equal("中文日本語", input.Value);
         Assert.Equal("中文\n日本語", textArea.Value);
+    }
+
+    [Fact]
+    public void TextInputDoesNotTreatKeypadVirtualKeysAsCharacters()
+    {
+        var input = new Input();
+
+        input.HandleKey(0x6A); // VK_MULTIPLY was previously inserted as 'j'.
+        input.HandleKey(0x6B); // VK_ADD was previously inserted as 'k'.
+        input.HandleKey(0x6D); // VK_SUBTRACT was previously inserted as 'm'.
+        input.HandleKey(0x6E); // VK_DECIMAL was previously inserted as 'n'.
+        input.HandleKey(0x6F); // VK_DIVIDE was previously inserted as 'o'.
+
+        Assert.Equal("", input.Value);
     }
 
     [Fact]
@@ -115,6 +157,42 @@ public class M1IntegrationTests
         Assert.Equal("A日B", input.SelectedText);
         Assert.True(input.DeleteSelection());
         Assert.Equal("", input.Value);
+    }
+
+    [Fact]
+    public void TextInputCutDeletesSelectionAndPasswordDisablesCopyCut()
+    {
+        var input = new Input { Value = "secret" };
+        input.SelectAll();
+
+        Assert.True(input.CanCopySelection);
+        Assert.True(input.CanCutSelection);
+        input.HandleKey(88, control: true);
+        Assert.Equal("", input.Value);
+
+        var password = new Input { Type = "password", Value = "secret" };
+        password.SelectAll();
+
+        Assert.False(password.CanCopySelection);
+        Assert.False(password.CanCutSelection);
+        Assert.Equal("secret", password.SelectedText);
+    }
+
+    [Fact]
+    public void UserSelectTextEnablesSelectableTextAndInheritsToChildren()
+    {
+        var parent = new View();
+        var child = new Square.Controls.Controls.Text("copy me") { Geometry = new Rect(0, 0, 200, 24) };
+        parent.Children.Add(child);
+
+        Assert.False(child.IsUserSelectText());
+
+        parent.Style.Set("user-select", "text");
+        Assert.True(child.IsUserSelectText());
+        Assert.Equal("copy me", Assert.IsAssignableFrom<ITextSelectable>(child).SelectableText);
+
+        child.Style.Set("user-select", "none");
+        Assert.False(child.IsUserSelectText());
     }
 
     [Fact]
@@ -361,6 +439,35 @@ public class M1IntegrationTests
 
         Assert.Same(verticalOverflow, root.HitTest(new Point(5, 13)));
         Assert.Same(root, root.HitTest(new Point(13, 5)));
+    }
+
+    [Fact]
+    public void WheelDefaultActionScrollsNearestOverflowContainer()
+    {
+        var scroller = new View { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.Style.Set("overflow-y", "auto");
+        scroller.SetScrollContentSize(new Size(100, 140));
+        var child = new Button { Geometry = new Rect(0, 80, 100, 20) };
+        scroller.Children.Add(child);
+
+        child.DispatchTrusted(StandardEvents.CreateWheel(0, 30));
+
+        Assert.Equal(30, scroller.ScrollTop);
+    }
+
+    [Fact]
+    public void WheelPreventDefaultSkipsOverflowScrolling()
+    {
+        var scroller = new View { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.Style.Set("overflow-y", "auto");
+        scroller.SetScrollContentSize(new Size(100, 140));
+        var child = new Button { Geometry = new Rect(0, 80, 100, 20) };
+        child.AddEventListener(StandardEvents.Wheel, e => e.PreventDefault());
+        scroller.Children.Add(child);
+
+        child.DispatchTrusted(StandardEvents.CreateWheel(0, 30));
+
+        Assert.Equal(0, scroller.ScrollTop);
     }
 
     [Fact]

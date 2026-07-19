@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Square.UI\Square.UI.csproj" />
     <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+    <ProjectReference Include="..\Square.Text\Square.Text.csproj" />
     <PackageReference Include="Yoga.Net" />
   </ItemGroup>
 

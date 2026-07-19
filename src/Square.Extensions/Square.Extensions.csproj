@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <Description>Square Extensions: optional components and integrations</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Square.UI\Square.UI.csproj" />
+    <ProjectReference Include="..\Square.Runtime\Square.Runtime.csproj" />
+    <ProjectReference Include="..\Square.Controls\Square.Controls.csproj" />
+    <ProjectReference Include="..\Square.CSS\Square.CSS.csproj" />
+    <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+    <ProjectReference Include="..\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="**\*.sqv" />
+  </ItemGroup>
+
+</Project>

@@ -1,8 +1,8 @@
 # Square Framework 需求说明
 
-> Version: 0.2 Draft  
+> Version: 0.3 Draft  
 > Status: Draft  
-> 变更（v0.2）：新增 §18 组件 Props 系统、§19 元素操作能力；§3 SQX 补充 Props/ref 语法说明
+> 变更（v0.3）：架构重建完成，事件系统切换为 DOM 风格，新增 Document/UIDocument 文档模型
 
 ---
 

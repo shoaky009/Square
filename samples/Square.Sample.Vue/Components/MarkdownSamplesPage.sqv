@@ -1,0 +1,34 @@
+<template>
+  <View class="markdown-page sample-page">
+    <Text class="page-title" text="Markdown extension" />
+    <Square.Extensions.Markdown.MarkdownViewer class="markdown-card" :content="Document" />
+  </View>
+</template>
+<script lang="csharp">
+  public ObservableValue<string> Document = new("""
+    # MarkdownViewer
+
+    Render Markdown inside a Square component with **Markdig**.
+
+    ## Supported blocks
+
+    - Headings
+    - Paragraphs
+    - Lists
+    - Quotes
+    - Code blocks
+
+    > MarkdownViewer is provided by Square.Extensions.
+
+    ```csharp
+    var viewer = new MarkdownViewer { Content = "# Hello" };
+    ```
+
+    [Square project](https://example.com)
+    """);
+</script>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+  .page-title { color: #202124; font-size: 18px; }
+  .markdown-card { background: #ffffff; padding: 12px; }
+</style>

@@ -1,6 +1,6 @@
 # SQX 语言规范
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Requirements.md`
 
 ---
@@ -396,7 +396,7 @@ Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Compos
 ### 6.6 阶段
 
 - M1：`<Show>`/`<For>` 基础形态
-- M2：`<Switch>`/`<Match>`/`<Index>` + keyed 复用
+- M2：`<Switch>`/`<Match>`/`<Index>` + keyed 复用 ✅ 已实现
 
 ---
 

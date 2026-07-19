@@ -1,7 +1,7 @@
 # Square 架构重建计划（Rebuild）
 
-> 分支：`rebuild`  
-> 状态：计划定稿，待实现  
+> 分支：`rebuild`（已合并至 `main`）  
+> 状态：已完成  
 > 原则：**严格参考 Web API / MDN DOM**；大刀阔斧改架构，不为兼容旧 Visual/Routed 模型保留别名（除非实现期短暂适配）
 
 配套：`Architecture.md`、`Rendering.md`、`API-Reference.md`、`plan.md`、`design.md`  
@@ -659,14 +659,14 @@ if (element.Kind == SqxNodeKind.Directive)
 
 建议：在 **P1 事件之后** 做 D0–D2；与 Element 重命名同步改生成字符串，避免两轮大改。
 
-### 8.11 指令 SDK 验收
+### 8.11 指令 SDK 验收 ✅ 全部通过
 
-- [ ] Parser/Emitter **无** `if (tag == "Show")` 等硬编码原语表  
-- [ ] 内置原语行为与现 sample/测试一致  
-- [ ] 引用程序集 + 特性即可让 SG 识别指令（含至少一个扫描验证路径）  
-- [ ] 重复 Tag 有诊断  
-- [ ] 生成代码为静态调用，无运行时指令发现  
-- [ ] 与 rebuild 其余 API 命名一致  
+- [x] Parser/Emitter **无** `if (tag == "Show")` 等硬编码原语表  
+- [x] 内置原语行为与现 sample/测试一致  
+- [x] 引用程序集 + 特性即可让 SG 识别指令（含至少一个扫描验证路径）  
+- [x] 重复 Tag 有诊断  
+- [x] 生成代码为静态调用，无运行时指令发现  
+- [x] 与 rebuild 其余 API 命名一致  
 
 ### 8.12 风险
 
@@ -681,14 +681,14 @@ if (element.Kind == SqxNodeKind.Directive)
 
 ## 9. 实施阶段
 
-### P0 — 文档
+### P0 — 文档 ✅ 已完成
 
 - [x] 本文件 `docs/rebuild-plan.md`  
 - [x] §8 自定义指令 SDK  
 - [x] 更新 `API-Reference` / `README` / Getting-Started / Sqx-Spec / Architecture / Rendering / Generator 等与代码一致  
 
 
-### P1 — 事件（可独立先做）
+### P1 — 事件 ✅ 已完成
 
 1. [x] 新建 `EventTarget`、`Event`、`EventInit`、`EventPhase`、`AddEventListenerOptions`  
 2. [x] 删除 `IEventTarget`、`RoutedEvent*`、`RoutingStrategy`、`EventDefinition`  
@@ -698,15 +698,16 @@ if (element.Kind == SqxNodeKind.Directive)
 6. [x] 单测通过  
 7. [x] 生成器与 sample 事件绑定  
 
-### P1.5 / D0–D2 — 指令 SDK
+### P1.5 / D0–D4 — 指令 SDK ✅ 已完成
 
 - [x] **D0** `[SqxDirective]` + `DirectiveCatalog` + BuiltIn 表 + 编译期扫描骨架  
 - [x] **D1** Parser 经 Catalog 解析指令（含别名）  
 - [x] **D2** `DirectiveEmitPipeline` 通用模板；`ComponentEmitter` 经 Catalog 分发（无 EmitShow/EmitFor/…）  
 - [x] **D3** `SqxNodeKind.Directive` + `DirectiveId`；诊断 SQXD001–005；父子/必需属性校验  
+- [x] **D4** 与 P2 命名对齐（`Element` / `BuildElementTree` 生成串）
 
 
-### P2 — 树与 Element（去掉 Visual）
+### P2 — 树与 Element（去掉 Visual）✅ 已完成
 
 1. [x] `Element` 替代 `Visual`；[x] `EventTarget → Node → Element|Document` 分叉  
 2. [x] 全库类型与术语替换  
@@ -714,7 +715,7 @@ if (element.Kind == SqxNodeKind.Directive)
 4. [x] `BuildElementTree` / `Paint` / `NeedsPaint` / `ElementState`  
 5. [x] CSS / Layout / Display / Hosting / Controls / Router  
 
-### P3 — Document 子集
+### P3 — Document 子集 ✅ 已完成
 
 1. [x] `Document` / `UIDocument`  
 2. [x] 固定壳 UI/Head/Body；`DocumentElement` 只读  
@@ -724,7 +725,7 @@ if (element.Kind == SqxNodeKind.Directive)
 6. [x] `DesktopApplication(UIDocument)`  
 7. [x] Sample 入口  
 
-### P4 — 渲染 Display 层与占位
+### P4 — 渲染 Display 层与占位 ✅ 已完成
 
 1. [x] `DisplayTree` / `DisplayNode`（`Source` 属性别名）  
 2. [x] `HTMLElement` / `SVGElement` abstract  

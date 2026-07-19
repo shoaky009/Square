@@ -45,8 +45,12 @@ public sealed class DisplayNode
         var overflowClip = Element?.GetOverflowClipRect() ?? Rect.Empty;
         var clipsChildren = !overflowClip.IsEmpty;
         if (clipsChildren) ctx.PushClip(overflowClip);
+        var scrollOffset = Element?.ScrollOffset ?? default;
+        var scrollsChildren = Element?.MapsScrollOffsetForChildren() == true;
+        if (scrollsChildren) ctx.PushTransform(Matrix3x2.CreateTranslation(-scrollOffset.X, -scrollOffset.Y));
         foreach (var child in Children)
             child.Render(ctx, dirtyClip);
+        if (scrollsChildren) ctx.PopTransform();
         if (clipsChildren) ctx.PopClip();
     }
 

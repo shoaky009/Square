@@ -14,6 +14,9 @@ namespace Square.Hosting;
 
 public sealed class DesktopApplication : Application
 {
+    private static readonly Color DefaultSelectionBackground = Color.FromRgb(51, 144, 255);
+    private static readonly Color DefaultSelectionForeground = Color.White;
+
     private readonly UIDocument _document;
     private readonly Element _root;
     private readonly PlatformHostCreateInfo _hostCreateInfo;
@@ -25,6 +28,7 @@ public sealed class DesktopApplication : Application
     private IRenderContext? _renderContext;
     private UIElement? _focusedInput;
     private ITextEditor? _focusedEditor;
+    private TextSelectionState? _textSelection;
     private bool _isSelectingText;
     private Element? _pointerDownTarget;
     private readonly List<UIElement> _hoverPath = [];
@@ -199,6 +203,7 @@ public sealed class DesktopApplication : Application
                     _renderContext.Clear(Background, LastRenderDiagnostics.DirtyUnion);
                     _renderContext.PushClip(LastRenderDiagnostics.DirtyUnion);
                     _displayTree.Render(_renderContext, LastRenderDiagnostics.DirtyUnion);
+                    RenderTextSelection();
                     _renderContext.PopClip();
                     RenderDiagnosticsOverlay();
                     _renderContext.Flush();
@@ -235,6 +240,7 @@ public sealed class DesktopApplication : Application
         if (_renderContext == null) return;
         _renderContext.Clear(Background);
         _displayTree.Render(_renderContext);
+        RenderTextSelection();
         RenderDiagnosticsOverlay();
         _renderContext.Flush();
         _renderContext.Present(null);
@@ -274,7 +280,7 @@ public sealed class DesktopApplication : Application
     {
         var hit = HitTest(point);
         if (UpdateHoverPath(hit)) RequestRender();
-        hit?.DispatchTrusted(StandardEvents.CreateWheel());
+        hit?.DispatchTrusted(StandardEvents.CreateWheel(0, -delta));
         RenderFrame();
     }
 
@@ -292,6 +298,10 @@ public sealed class DesktopApplication : Application
                 _focusedEditor.HandlePointerMove(point);
                 needsRender = true;
             }
+            else if (_textSelection is { IsSelecting: true } selection)
+            {
+                needsRender |= UpdateTextSelection(selection, point);
+            }
             foreach (var select in _root.QueryAll<Select>())
                 needsRender |= select.HandlePointerMove(point);
             if (needsRender) RequestRender();
@@ -304,6 +314,12 @@ public sealed class DesktopApplication : Application
             {
                 _focusedEditor.HandlePointerUp(point);
                 _isSelectingText = false;
+            }
+            if (_textSelection is { IsSelecting: true } selection)
+            {
+                UpdateTextSelection(selection, point);
+                selection.IsSelecting = false;
+                SyncDocumentSelection(selection);
             }
             if (_pointerDownTarget != null && hit == _pointerDownTarget)
                 hit?.DispatchTrusted(StandardEvents.CreateClick());
@@ -344,16 +360,35 @@ public sealed class DesktopApplication : Application
 
         if (hit is ITextEditor editor && hit is UIElement editorElement)
         {
+            ClearDocumentSelection();
             editor.HandlePointerDown(point, _host.Modifiers.HasFlag(KeyModifiers.Shift));
             _isSelectingText = true;
             return;
         }
 
+        if (TryStartTextSelection(hit, point))
+        {
+            _focusedInput?.Unfocus();
+            _focusedInput = null;
+            _focusedEditor = null;
+            _isSelectingText = false;
+            return;
+        }
+
         _isSelectingText = false;
+        ClearDocumentSelection();
     }
 
-    private static bool IsFocusable(UIElement element) => element.IsEnabled && element is
-        ITextEditor or Button or CheckBox or Radio or Select or Link;
+    private void ClearDocumentSelection()
+    {
+        if (_textSelection == null && _document.GetSelection().RangeCount == 0) return;
+        _textSelection = null;
+        _document.GetSelection().RemoveAllRanges();
+        RequestRender();
+    }
+
+    private static bool IsFocusable(UIElement element) => element.IsEnabled &&
+        (element is ITextEditor or Button or CheckBox or Radio or Select or Link);
 
     private static UIElement? FindFocusableAncestor(Element? hit)
     {
@@ -363,7 +398,7 @@ public sealed class DesktopApplication : Application
         return null;
     }
 
-    private static CursorKind ResolveCursor(Element? hit) => hit is ITextEditor ? CursorKind.Text : CursorKind.Arrow;
+    private static CursorKind ResolveCursor(Element? hit) => hit is ITextEditor || FindUserSelectRoot(hit) != null ? CursorKind.Text : CursorKind.Arrow;
 
     private bool UpdateHoverPath(Element? hit) => UpdateStatePath(_hoverPath, hit, ElementState.Hover);
 
@@ -419,18 +454,29 @@ public sealed class DesktopApplication : Application
 
         _focusedInput?.DispatchTrusted(
             action == KeyAction.Down ? StandardEvents.CreateKeyDown() : StandardEvents.CreateKeyUp());
-        if (action != KeyAction.Down || _focusedEditor == null) return;
+        if (action != KeyAction.Down) return;
 
         var shift = _host.Modifiers.HasFlag(KeyModifiers.Shift);
         var control = _host.Modifiers.HasFlag(KeyModifiers.Control);
+        if (_focusedEditor == null)
+        {
+            if (control && keyCode == 67)
+            {
+                var text = GetSelectedUserText();
+                if (!string.IsNullOrEmpty(text)) _host.SetClipboardText(text);
+            }
+            RenderFrame();
+            return;
+        }
+
         if (control && keyCode == 67)
         {
-            if (_focusedEditor.SelectionLength > 0)
+            if (_focusedEditor.CanCopySelection && _focusedEditor.SelectionLength > 0)
                 _host.SetClipboardText(_focusedEditor.SelectedText);
         }
         else if (control && keyCode == 88)
         {
-            if (_focusedEditor.SelectionLength > 0)
+            if (_focusedEditor.CanCutSelection && _focusedEditor.SelectionLength > 0)
             {
                 _host.SetClipboardText(_focusedEditor.SelectedText);
                 _focusedEditor.HandleKey(keyCode, shift, control);
@@ -454,6 +500,266 @@ public sealed class DesktopApplication : Application
         _focusedEditor?.HandleTextInput(text);
         RenderFrame();
     }
+
+    private bool TryStartTextSelection(Element? hit, Point point)
+    {
+        var root = FindUserSelectRoot(hit);
+        if (root == null) return false;
+
+        var selection = new TextSelectionState(root, CollectSelectableText(root));
+        var selectionPoint = FindTextSelectionPoint(selection, hit, point);
+        if (selectionPoint.Index < 0) return false;
+
+        selection.Anchor = selectionPoint;
+        selection.Focus = selectionPoint;
+        selection.IsSelecting = true;
+        _textSelection = selection;
+        SyncDocumentSelection(selection);
+        RequestRender();
+        return true;
+    }
+
+    private bool UpdateTextSelection(TextSelectionState selection, Point point)
+    {
+        var selectionPoint = FindTextSelectionPoint(selection, HitTest(point), point);
+        if (selectionPoint.Index < 0 || selectionPoint == selection.Focus) return false;
+        selection.Focus = selectionPoint;
+        SyncDocumentSelection(selection);
+        RequestRender();
+        return true;
+    }
+
+    private static Element? FindUserSelectRoot(Element? element)
+    {
+        Element? candidate = null;
+        for (var current = element; current != null; current = current.Parent)
+        {
+            var value = current.Style.Get("user-select")?.Trim();
+            if (string.Equals(value, "none", StringComparison.OrdinalIgnoreCase)) return null;
+            if (string.Equals(value, "text", StringComparison.OrdinalIgnoreCase)) candidate = current;
+        }
+
+        return candidate;
+    }
+
+    private List<TextSelectionItem> CollectSelectableText(Element root)
+    {
+        var items = new List<TextSelectionItem>();
+        var fragmentsByElement = _displayTree.CollectTextFragments(root)
+            .GroupBy(fragment => fragment.Element)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        CollectSelectableText(root, items, fragmentsByElement);
+        return items;
+    }
+
+    private static void CollectSelectableText(Element element, List<TextSelectionItem> items, Dictionary<Element, List<TextFragment>> fragmentsByElement)
+    {
+        if (!element.IsVisible || !element.IsUserSelectText()) return;
+        var selectableStart = items.Count;
+        if (fragmentsByElement.TryGetValue(element, out var fragments))
+        {
+            foreach (var fragment in fragments)
+                items.Add(new TextSelectionItem(element, fragment.Text, fragment.Bounds, fragment));
+        }
+        else if (element is ITextSelectable selectable && !string.IsNullOrEmpty(selectable.SelectableText))
+            items.Add(new TextSelectionItem(element, selectable.SelectableText, selectable.SelectableTextBounds, null));
+        foreach (var child in element.Children)
+            CollectSelectableText(child, items, fragmentsByElement);
+        if (items.Count > selectableStart + 1 && element is ITextSelectable)
+            items.RemoveAt(selectableStart);
+    }
+
+    private static TextSelectionPoint FindTextSelectionPoint(TextSelectionState selection, Element? hit, Point point)
+    {
+        for (var current = hit; current != null; current = current.Parent)
+        {
+            var direct = selection.Items.FindLastIndex(item => ReferenceEquals(item.Element, current) && !item.Bounds.IsEmpty && item.Bounds.Contains(point));
+            if (direct >= 0) return CreateSelectionPoint(selection.Items[direct], direct, point);
+        }
+
+        var containing = selection.Items
+            .Select((item, index) => (item, index))
+            .Where(pair => !pair.item.Bounds.IsEmpty && pair.item.Bounds.Contains(point))
+            .OrderBy(pair => pair.item.Bounds.Width * pair.item.Bounds.Height)
+            .Select(pair => pair.index)
+            .FirstOrDefault(-1);
+        if (containing >= 0) return CreateSelectionPoint(selection.Items[containing], containing, point);
+        if (selection.Items.Count == 0) return new TextSelectionPoint(-1, 0);
+
+        var bestIndex = -1;
+        var bestDistance = float.MaxValue;
+        for (var i = 0; i < selection.Items.Count; i++)
+        {
+            var bounds = selection.Items[i].Bounds;
+            var dy = point.Y < bounds.Top ? bounds.Top - point.Y : point.Y > bounds.Bottom ? point.Y - bounds.Bottom : 0;
+            var dx = point.X < bounds.Left ? bounds.Left - point.X : point.X > bounds.Right ? point.X - bounds.Right : 0;
+            var distance = dx * dx + dy * dy;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            bestIndex = i;
+        }
+
+        return bestIndex < 0
+            ? new TextSelectionPoint(-1, 0)
+            : CreateSelectionPoint(selection.Items[bestIndex], bestIndex, point);
+    }
+
+    private static TextSelectionPoint CreateSelectionPoint(TextSelectionItem item, int index, Point point)
+    {
+        if (item.Fragment != null)
+            return new TextSelectionPoint(index, item.Fragment.HitTestOffset(point));
+        var midpoint = item.Bounds.X + item.Bounds.Width / 2f;
+        return new TextSelectionPoint(index, point.X < midpoint ? 0 : item.Text.Length);
+    }
+
+    private string GetSelectedUserText()
+    {
+        var documentSelectionText = _document.GetSelection().ToString();
+        if (!string.IsNullOrEmpty(documentSelectionText)) return documentSelectionText;
+
+        if (_textSelection == null || _textSelection.Items.Count == 0) return "";
+        var (start, end) = GetOrderedSelectionPoints(_textSelection);
+        if (start.Index < 0 || end.Index < 0) return "";
+        if (start.Index == end.Index)
+        {
+            var item = _textSelection.Items[start.Index];
+            return start.Offset == end.Offset ? "" : item.Text[start.Offset..end.Offset];
+        }
+
+        var selected = new List<string>();
+        for (var i = start.Index; i <= end.Index; i++)
+        {
+            var item = _textSelection.Items[i];
+            if (i == start.Index) selected.Add(item.Text[start.Offset..]);
+            else if (i == end.Index) selected.Add(item.Text[..end.Offset]);
+            else selected.Add(item.Text);
+        }
+        return string.Join(Environment.NewLine, selected.Where(text => text.Length > 0));
+    }
+
+    private void SyncDocumentSelection(TextSelectionState selection)
+    {
+        var documentSelection = _document.GetSelection();
+        documentSelection.RemoveAllRanges();
+        if (selection.Items.Count == 0) return;
+
+        var (startPoint, endPoint) = GetOrderedSelectionPoints(selection);
+        var start = startPoint.Index;
+        var end = endPoint.Index;
+        if (start < 0 || end < 0) return;
+        var startItem = selection.Items[start];
+        var endItem = selection.Items[end];
+        var startElement = startItem.Element;
+        var endElement = endItem.Element;
+        if (startElement.OwnerDocument != _document || endElement.OwnerDocument != _document) return;
+
+        var range = _document.CreateRange();
+        if (TryGetTextNodeForSelectionItem(startItem, out var startText) &&
+            TryGetTextNodeForSelectionItem(endItem, out var endText))
+        {
+            range.SetStart(startText, Math.Clamp(startPoint.Offset, 0, startText.Length));
+            range.SetEnd(endText, Math.Clamp(endPoint.Offset, 0, endText.Length));
+        }
+        else
+        {
+            range.SetStart(startElement, 0);
+            range.SetEnd(endElement, endElement.ChildNodes.Count);
+        }
+        documentSelection.AddRange(range);
+    }
+
+    private static bool TryGetTextNodeForSelectionItem(TextSelectionItem item, out Square.UI.Text textNode)
+    {
+        var match = item.Element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault(node => node.Data == item.Text)
+            ?? item.Element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault();
+        if (match == null)
+        {
+            textNode = null!;
+            return false;
+        }
+
+        textNode = match;
+        return true;
+    }
+
+    private void RenderTextSelection()
+    {
+        if (_renderContext == null || _textSelection == null || _textSelection.Items.Count == 0) return;
+        var (startPoint, endPoint) = GetOrderedSelectionPoints(_textSelection);
+        if (startPoint.Index < 0 || endPoint.Index < 0) return;
+        for (var i = startPoint.Index; i <= endPoint.Index; i++)
+        {
+            var item = _textSelection.Items[i];
+            var startOffset = i == startPoint.Index ? startPoint.Offset : 0;
+            var endOffset = i == endPoint.Index ? endPoint.Offset : item.Text.Length;
+            if (startOffset == endOffset) continue;
+            var background = ResolveSelectionColor(item.Element, foreground: false);
+            var foreground = ResolveSelectionColor(item.Element, foreground: true);
+            var backgroundBrush = new SolidColorBrush(background);
+            var foregroundBrush = new SolidColorBrush(foreground);
+            if (item.Fragment == null)
+            {
+                _renderContext.FillRect(item.Bounds, backgroundBrush);
+                continue;
+            }
+
+            foreach (var character in item.Fragment.Characters)
+            {
+                if (character.EndOffset <= startOffset || character.StartOffset >= endOffset) continue;
+                _renderContext.FillRect(character.Bounds, backgroundBrush);
+                var selectedText = item.Text[character.StartOffset..character.EndOffset];
+                _renderContext.DrawText(
+                    new TextLayout(selectedText, item.Fragment.Font),
+                    character.Bounds.Position,
+                    foregroundBrush);
+            }
+        }
+    }
+
+    private static Color ResolveSelectionColor(Element element, bool foreground)
+    {
+        var value = foreground
+            ? FindStyleInPath(element, "selection-color")
+            : FindStyleInPath(element, "selection-background") ?? FindStyleInPath(element, "selection-background-color");
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            try { return Color.Parse(value.Replace(" ", "")); }
+            catch (FormatException) { }
+        }
+        return foreground ? DefaultSelectionForeground : DefaultSelectionBackground;
+    }
+
+    private static string? FindStyleInPath(Element element, string property)
+    {
+        for (var current = element; current != null; current = current.Parent)
+        {
+            var value = current.Style.Get(property);
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+        return null;
+    }
+
+    private static (TextSelectionPoint Start, TextSelectionPoint End) GetOrderedSelectionPoints(TextSelectionState selection)
+    {
+        var anchor = selection.Anchor;
+        var focus = selection.Focus;
+        if (anchor.Index < focus.Index || anchor.Index == focus.Index && anchor.Offset <= focus.Offset)
+            return (anchor, focus);
+        return (focus, anchor);
+    }
+
+    private sealed class TextSelectionState(Element root, List<TextSelectionItem> items)
+    {
+        public Element Root { get; } = root;
+        public List<TextSelectionItem> Items { get; } = items;
+        public TextSelectionPoint Anchor { get; set; }
+        public TextSelectionPoint Focus { get; set; }
+        public bool IsSelecting { get; set; }
+    }
+
+    private readonly record struct TextSelectionItem(Element Element, string Text, Rect Bounds, TextFragment? Fragment);
+
+    private readonly record struct TextSelectionPoint(int Index, int Offset);
 
     private void HandleTick()
     {

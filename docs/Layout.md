@@ -1,6 +1,6 @@
 # 布局引擎
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`CSS-Spec.md`
 
 ---
@@ -60,7 +60,7 @@ Arrange（排列：确定最终位置与尺寸）
 | `block` | 块级 | ✅ |
 | `flex` | 弹性 | ✅ |
 | `inline` | 行内 | M2 |
-| `grid` | 网格 | M2 |
+| `grid` | 网格 | ✅ |
 | `none` | 不渲染 | ✅ |
 
 ---

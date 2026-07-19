@@ -65,6 +65,23 @@ public class StyleAndFontTests
     }
 
     [Fact]
+    public void BorderRadiusStyleChangesDoNotInvalidateLayout()
+    {
+        var root = new View();
+        var child = new View();
+        root.Children.Add(child);
+        root.ClearLayoutDirty();
+        child.ClearLayoutDirty();
+        child.ClearPaintDirty();
+
+        child.Style.SetProperty("border-radius", "8px");
+
+        Assert.False(child.IsLayoutDirty);
+        Assert.False(root.IsLayoutDirty);
+        Assert.True(child.NeedsPaint);
+    }
+
+    [Fact]
     public void StyleAccessorCssTextRoundTrip()
     {
         var view = new View();

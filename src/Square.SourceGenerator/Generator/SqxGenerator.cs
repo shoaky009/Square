@@ -15,7 +15,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var inputs = context.AdditionalTextsProvider
-            .Where(file => file.Path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase))
+            .Where(file => IsTemplateFile(file.Path))
             .Combine(context.AnalyzerConfigOptionsProvider)
             .Select((pair, cancellationToken) =>
             {
@@ -64,7 +64,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
         string code;
         try
         {
-            var document = SqxParser.Parse(input.Content, input.Path);
+            var document = ParseDocument(input);
             ValidateRequiredProps(context, input, document, contracts);
             ValidateRefNames(context, input, document);
             DirectiveValidator.Validate(context, input.Path, input.Content, document, catalog);
@@ -119,6 +119,15 @@ public sealed class SqxGenerator : IIncrementalGenerator
         }
         return contracts;
     }
+
+    private static SqxDocument ParseDocument(SqxInput input) =>
+        input.Path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase)
+            ? SqvParser.Parse(input.Content, input.Path)
+            : SqxParser.Parse(input.Content, input.Path);
+
+    private static bool IsTemplateFile(string path) =>
+        path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase);
 
     private static string ExtractScript(string source)
     {

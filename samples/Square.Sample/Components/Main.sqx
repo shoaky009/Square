@@ -7,11 +7,13 @@
       <Button slot="tabs" class="tab-button">Media</Button>
       <Button slot="tabs" class="tab-button">Router</Button>
       <Button slot="tabs" class="tab-button">Signals</Button>
+      <Button slot="tabs" class="tab-button">Overflow</Button>
       <TextSamplesPage />
       <ControlsSamplesPage />
       <MediaSamplesPage />
       <RouterSamplesPage />
       <SignalsSamplesPage />
+      <OverflowSamplesPage />
     </Tabs>
   </View>
 </template>

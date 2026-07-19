@@ -1,7 +1,7 @@
 # Square Framework 总体架构
 
-> Version: 0.2  
-> 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`plan.md`（分阶段计划）
+> Version: 0.3  
+> 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
 
 ---
 
@@ -60,13 +60,13 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
 | `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
 | `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
-| `Square.UI` | `Element`/`UIElement`/`Document`/`UIDocument`、属性 | Element Tree；Style/ClassList/Children；HTMLElement/SVGElement 占位 |
+| `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`、属性 | Element Tree；Style/ClassList/Children；HTMLElement/SVGElement 占位；Reconciler 批量更新 |
 | `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
-| `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
+| `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；Animation；Theme；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
 | `Square.Rendering` | Element→Layout→Display Tree→DrawCommand | Flex/Block 经 Yoga.Net（Meta Yoga C# 移植）；Grid 内置；保留模式、脏区/增量 |
-| `Square.Text` | 文本引擎 | Unicode/Glyph/Font/Layout/Caret/Selection/HitTest/BiDi |
+| `Square.Text` | 文本引擎 | Unicode/Glyph/Font/Layout/Caret/Selection/HitTest/BiDi；FontFace/FontFaceSet |
 | `Square.Platform` | 平台宿主抽象 | `IPlatformHost`：窗口/消息循环/输入泵；`LibraryImport` 源生成；现含 Win32 与 X11 两个实现，按构建层 `PLATFORM_*` 裁剪 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
 | `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |

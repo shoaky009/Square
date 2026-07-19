@@ -47,6 +47,53 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void DisplayTreeCollectTextFragmentsUsesDrawTextCommands()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 200, 40) };
+        var text = new Square.Controls.Controls.Text("AB")
+        {
+            FontSize = 20,
+            Geometry = new Rect(10, 5, 20, 24)
+        };
+        root.Children.Add(text);
+        var tree = new DisplayTree();
+
+        tree.BuildFrom(root);
+
+        var fragment = Assert.Single(tree.CollectTextFragments(root));
+        var advanceA = fragment.Characters[0].Bounds.Width;
+        var advanceB = fragment.Characters[1].Bounds.Width;
+        Assert.Same(text, fragment.Element);
+        Assert.Equal("AB", fragment.Text);
+        Assert.Equal(new Rect(10, 5, advanceA + advanceB, 24), fragment.Bounds);
+        Assert.Equal(2, fragment.Characters.Count);
+        Assert.Equal(new Rect(10, 5, advanceA, 24), fragment.Characters[0].Bounds);
+        Assert.Equal(new Rect(10 + advanceA, 5, advanceB, 24), fragment.Characters[1].Bounds);
+        Assert.Equal(0, fragment.HitTestOffset(new Point(11, 10)));
+        Assert.Equal(1, fragment.HitTestOffset(new Point(10 + advanceA - 1, 10)));
+        Assert.Equal(2, fragment.HitTestOffset(new Point(10 + advanceA + advanceB - 1, 10)));
+    }
+
+    [Fact]
+    public void DisplayTreeTextFragmentsUseRenderedGlyphAdvances()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 200, 40) };
+        var text = new Square.Controls.Controls.Text("Ma")
+        {
+            FontSize = 20,
+            Geometry = new Rect(0, 0, 80, 24)
+        };
+        root.Children.Add(text);
+        var tree = new DisplayTree();
+
+        tree.BuildFrom(root);
+
+        var fragment = Assert.Single(tree.CollectTextFragments(root));
+        Assert.Equal(2, fragment.Characters.Count);
+        Assert.True(fragment.Characters[0].Bounds.Width > fragment.Characters[1].Bounds.Width);
+    }
+
+    [Fact]
     public void DrawTextUsesReadableSeparatedGlyphs()
     {
         var context = CreateContext(180, 40);
@@ -153,6 +200,28 @@ public class SoftwareRendererTests
         var bitmap = context.GetBitmap();
         Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 35 * 4 + 2]);
         Assert.Equal(0, bitmap.Pixels[5 * bitmap.Stride + 45 * 4 + 3]);
+    }
+
+    [Fact]
+    public void OverflowScrollTranslatesRenderedChildrenAndClipsToViewport()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 20, 20) };
+        root.Style.Set("overflow-y", "auto");
+        root.SetScrollContentSize(new Size(20, 60));
+        root.ScrollTop = 20;
+        var child = new View { Geometry = new Rect(0, 20, 20, 20) };
+        child.Style.Set("background", "#ff0000");
+        root.Children.Add(child);
+        var context = CreateContext(30, 30);
+        context.Clear(Color.Transparent);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 5 * 4 + 2]);
+        Assert.Equal(0, bitmap.Pixels[25 * bitmap.Stride + 5 * 4 + 3]);
     }
 
     [Fact]
@@ -709,11 +778,89 @@ public class SoftwareRendererTests
         Assert.Contains(AlphaValues(lineContext.GetBitmap()), alpha => alpha is > 0 and < 255);
     }
 
+    [Fact]
+    public void ThinDiagonalLineHasAntialiasedEdges()
+    {
+        var context = CreateContext(24, 24);
+        context.Clear(Color.Transparent);
+        context.DrawPath(
+            PathGeometry.Create().MoveTo(new Point(3, 5)).LineTo(new Point(20, 16)),
+            Pen.FromColor(Color.White, 1));
+
+        Assert.Contains(AlphaValues(context.GetBitmap()), alpha => alpha is > 0 and < 255);
+    }
+
+    [Fact]
+    public void RoundedRectFillLeavesCornersTransparent()
+    {
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+
+        context.FillGeometry(
+            new RoundedRectGeometry(new Rect(4, 4, 24, 24), 8, 8),
+            new SolidColorBrush(Color.White));
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, AlphaAt(bitmap, 4, 4));
+        Assert.Equal(255, AlphaAt(bitmap, 16, 16));
+        Assert.True(AlphaAt(bitmap, 12, 4) > 0);
+    }
+
+    [Fact]
+    public void RoundedRectStrokeDrawsCornerArcs()
+    {
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+
+        context.DrawGeometry(
+            new RoundedRectGeometry(new Rect(4, 4, 24, 24), 8, 8),
+            Pen.FromColor(Color.White, 2));
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, AlphaAt(bitmap, 4, 4));
+        Assert.True(AlphaAt(bitmap, 8, 6) > 0);
+        Assert.Equal(0, AlphaAt(bitmap, 16, 16));
+    }
+
+    [Fact]
+    public void WideRoundedRectStrokeUsesFastPath()
+    {
+        var context = CreateContext(640, 80);
+        context.Clear(Color.Transparent);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 200; i++)
+            context.DrawGeometry(
+                new RoundedRectGeometry(new Rect(8, 8, 600, 38), 6, 6),
+                Pen.FromColor(Color.White, 2));
+        sw.Stop();
+
+        Assert.True(sw.ElapsedMilliseconds < 500, $"Rounded rect stroke took {sw.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public void StyledViewUsesBorderRadiusForBackground()
+    {
+        var view = new View { Geometry = new Rect(4, 4, 24, 24) };
+        view.Style.Set("background", "#ffffff");
+        view.Style.Set("border-radius", "8px");
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+
+        view.Paint(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, AlphaAt(bitmap, 4, 4));
+        Assert.Equal(255, AlphaAt(bitmap, 16, 16));
+    }
+
     private static IEnumerable<byte> AlphaValues(Bitmap bitmap)
     {
         for (var i = 3; i < bitmap.Pixels.Length; i += 4)
             yield return bitmap.Pixels[i];
     }
+
+    private static byte AlphaAt(Bitmap bitmap, int x, int y) => bitmap.Pixels[y * bitmap.Stride + x * 4 + 3];
 
     [Fact]
     public void DrawText()

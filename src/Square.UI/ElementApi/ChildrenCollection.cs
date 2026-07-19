@@ -1,131 +1,85 @@
 namespace Square.UI.ElementApi;
 
-using Square.Runtime;
-
 /// <summary>
-/// 元素子节点列表（对齐 DOM 子节点集合；支持 Add/Insert/Remove）。
-/// 维护 <see cref="Element.Parent"/> 与 <see cref="Node.OwnerDocument"/>，并触发生命周期挂卸。
+/// Element-only children view, aligned with DOM <c>children</c>.
 /// </summary>
 public sealed class ChildrenCollection : IList<Element>
 {
-    private readonly Element _owner;
-    private readonly List<Element> _list = [];
+    private readonly ChildNodeCollection _nodes;
 
-    internal ChildrenCollection(Element owner) { _owner = owner; }
+    internal ChildrenCollection(ChildNodeCollection nodes) { _nodes = nodes; }
 
-    /// <summary>按下标访问子元素；设置器不可用，请使用 Insert/RemoveAt。</summary>
     public Element this[int index]
     {
-        get => _list[index];
+        get => Elements().ElementAt(index);
         set => throw new NotSupportedException("Use Insert/RemoveAt to manage children");
     }
 
-    /// <summary>子节点数量。</summary>
-    public int Count => _list.Count;
+    public int Count => Elements().Count();
 
-    /// <summary>始终为 false（可修改）。</summary>
     public bool IsReadOnly => false;
 
-    /// <summary>追加子元素（类似 appendChild；已有父节点时抛错）。</summary>
-    public void Add(Element item)
-    {
-        if (item.Parent != null)
-            throw new InvalidOperationException("Element already has a parent");
-        _list.Add(item);
-        item.Parent = _owner;
-        item.OwnerDocument = _owner.OwnerDocument;
-        if (_owner.OwnerDocument != null)
-            _owner.OwnerDocument.AssignOwnerDocument(item);
-        _owner.OnChildAdded(item);
-        AttachIfNeeded(item);
-        _owner.InvalidateLayout();
-    }
+    public void Add(Element item) => _nodes.Add(item);
 
-    /// <summary>批量追加子元素。</summary>
     public void AddRange(IEnumerable<Element> items)
     {
         foreach (var item in items) Add(item);
     }
 
-    /// <summary>在指定下标插入子元素。</summary>
-    public void Insert(int index, Element item)
-    {
-        if (item.Parent != null)
-            throw new InvalidOperationException("Element already has a parent");
-        _list.Insert(index, item);
-        item.Parent = _owner;
-        item.OwnerDocument = _owner.OwnerDocument;
-        if (_owner.OwnerDocument != null)
-            _owner.OwnerDocument.AssignOwnerDocument(item);
-        _owner.OnChildAdded(item);
-        AttachIfNeeded(item);
-        _owner.InvalidateLayout();
-    }
+    public void Insert(int index, Element item) => _nodes.Insert(ToNodeInsertIndex(index), item);
 
-    /// <summary>在参考子节点之前插入（类似 insertBefore）。</summary>
-    public void InsertBefore(Element newChild, Element refChild)
-    {
-        var index = _list.IndexOf(refChild);
-        if (index < 0) throw new ArgumentException("refChild not found");
-        Insert(index, newChild);
-    }
+    public void InsertBefore(Element newChild, Element refChild) => _nodes.InsertBefore(newChild, refChild);
 
-    /// <summary>移除指定子元素；不存在则返回 false。</summary>
-    public bool Remove(Element item)
-    {
-        var index = _list.IndexOf(item);
-        if (index < 0) return false;
-        RemoveAt(index);
-        return true;
-    }
+    public bool Remove(Element item) => _nodes.Remove(item);
 
-    /// <summary>按下标移除子元素并触发卸载生命周期。</summary>
-    public void RemoveAt(int index)
-    {
-        var item = _list[index];
-        DetachIfNeeded(item);
-        _list.RemoveAt(index);
-        item.Parent = null;
-        _owner.OnChildRemoved(item);
-        _owner.InvalidateLayout();
-    }
+    public void RemoveAt(int index) => _nodes.RemoveAt(ToNodeIndex(index));
 
-    /// <summary>清空全部子元素。</summary>
     public void Clear()
     {
-        foreach (var item in _list)
+        foreach (var element in Elements().ToArray()) _nodes.Remove(element);
+    }
+
+    public int IndexOf(Element item)
+    {
+        var index = 0;
+        foreach (var element in Elements())
         {
-            DetachIfNeeded(item);
-            item.Parent = null;
-            _owner.OnChildRemoved(item);
+            if (ReferenceEquals(element, item)) return index;
+            index++;
         }
-        _list.Clear();
-        _owner.InvalidateLayout();
+        return -1;
     }
 
-    /// <summary>子元素下标；未找到返回 -1。</summary>
-    public int IndexOf(Element item) => _list.IndexOf(item);
+    public bool Contains(Element item) => IndexOf(item) >= 0;
 
-    /// <summary>是否包含指定子元素。</summary>
-    public bool Contains(Element item) => _list.Contains(item);
-
-    /// <summary>复制到数组。</summary>
-    public void CopyTo(Element[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
-
-    /// <summary>枚举子元素。</summary>
-    public IEnumerator<Element> GetEnumerator() => _list.GetEnumerator();
-
-    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => _list.GetEnumerator();
-
-    private void AttachIfNeeded(Element item)
+    public void CopyTo(Element[] array, int arrayIndex)
     {
-        if (_owner.IsAttached) ((IComponentLifecycle)item).OnAttached();
-        if (_owner.IsLoaded) ((IComponentLifecycle)item).OnLoaded();
+        foreach (var element in Elements()) array[arrayIndex++] = element;
     }
 
-    private void DetachIfNeeded(Element item)
+    public IEnumerator<Element> GetEnumerator() => Elements().GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private IEnumerable<Element> Elements() => _nodes.OfType<Element>();
+
+    private int ToNodeIndex(int elementIndex)
     {
-        if (item.IsLoaded) ((IComponentLifecycle)item).OnUnloaded();
-        if (item.IsAttached) ((IComponentLifecycle)item).OnDetached();
+        if (elementIndex < 0) throw new ArgumentOutOfRangeException(nameof(elementIndex));
+        var currentElementIndex = 0;
+        for (var i = 0; i < _nodes.Count; i++)
+        {
+            if (_nodes[i] is not Element) continue;
+            if (currentElementIndex == elementIndex) return i;
+            currentElementIndex++;
+        }
+        throw new ArgumentOutOfRangeException(nameof(elementIndex));
+    }
+
+    private int ToNodeInsertIndex(int elementIndex)
+    {
+        if (elementIndex < 0) throw new ArgumentOutOfRangeException(nameof(elementIndex));
+        if (elementIndex == Count) return _nodes.Count;
+        return ToNodeIndex(elementIndex);
     }
 }

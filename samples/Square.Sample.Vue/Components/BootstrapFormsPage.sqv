@@ -1,0 +1,145 @@
+<template>
+  <View class="forms-page sample-page">
+    <View class="hero-panel">
+      <Text class="hero-eyebrow" text="Bootstrap inspired" />
+      <Text class="hero-title" text="Login and form controls" />
+      <Text class="hero-copy" text="Card layout, labels, help text, validation alert, password and number inputs." />
+    </View>
+
+    <View class="content-row">
+      <View class="login-card card">
+        <Text class="card-title" text="Sign in" />
+        <Text class="card-subtitle" text="Use the sample account to continue." />
+
+        <View class="form-group">
+          <Text class="form-label" text="Email address" />
+          <Input ref="EmailInput" class="form-control" value="demo@square.dev" placeholder="name@example.com" @input="OnEmailChanged" />
+          <Text class="form-text" text="We will never share your email." />
+        </View>
+
+        <View class="form-group">
+          <Text class="form-label" text="Password" />
+          <Input class="form-control" type="password" v-model="Password" placeholder="Password" @input="OnPasswordChanged" />
+          <Text class="form-text" :text="PasswordPreview" />
+        </View>
+
+        <View class="form-check-row">
+          <CheckBox ref="RememberCheck" text="Remember me" :checked="RememberMe" @change="OnRememberChanged" />
+        </View>
+
+        <Button class="btn-primary" @click="OnLogin">Sign in</Button>
+        <Text class="login-status" :text="LoginStatus" />
+      </View>
+
+      <View class="form-card card">
+        <Text class="card-title" text="Registration details" />
+        <View class="alert-info">
+          <Text class="alert-text" text="Number inputs accept only numeric values." />
+        </View>
+
+        <View class="form-row">
+          <View class="form-column">
+            <Text class="form-label" text="First name" />
+            <Input class="form-control" value="Ada" />
+          </View>
+          <View class="form-column">
+            <Text class="form-label" text="Last name" />
+            <Input class="form-control" value="Lovelace" />
+          </View>
+        </View>
+
+        <View class="form-group">
+          <Text class="form-label" text="Team size" />
+          <Input ref="TeamSizeInput" class="form-control" type="number" value="12" placeholder="0" @input="OnTeamSizeChanged" />
+        </View>
+
+        <View class="form-group">
+          <Text class="form-label" text="Plan" />
+          <Select ref="PlanSelect" class="form-select" :value="Plan" :options="PlanOptions" @change="OnPlanChanged" />
+        </View>
+
+        <Button class="btn-secondary" @click="OnSave">Save changes</Button>
+        <Text class="form-summary" :text="Summary" />
+      </View>
+    </View>
+  </View>
+</template>
+<script lang="csharp">
+  public ObservableValue<bool> RememberMe = new(true);
+  public ObservableValue<string> Password = new("square123");
+  public ObservableValue<string> PasswordPreview = new("Password: square123");
+  public ObservableValue<string> LoginStatus = new("Ready to sign in.");
+  public ObservableValue<string> Summary = new("Plan: Pro, team size: 12");
+  public ObservableValue<string> Plan = new("Pro");
+  public ObservableValue<string[]> PlanOptions = new(["Free", "Pro", "Enterprise"]);
+
+  private void OnEmailChanged()
+  {
+    LoginStatus.Value = "Email: " + EmailInput.Value;
+  }
+
+  private void OnPasswordChanged()
+  {
+    PasswordPreview.Value = "Password: " + Password.Value;
+    LoginStatus.Value = "Password: " + Password.Value;
+  }
+
+  private void OnRememberChanged()
+  {
+    RememberMe.Value = RememberCheck.IsChecked;
+  }
+
+  private void OnLogin()
+  {
+    LoginStatus.Value = RememberMe.Value ? "Signed in and remembered." : "Signed in for this session.";
+  }
+
+  private void OnTeamSizeChanged()
+  {
+    UpdateSummary();
+  }
+
+  private void OnPlanChanged()
+  {
+    Plan.Value = PlanSelect.Value;
+    UpdateSummary();
+  }
+
+  private void OnSave()
+  {
+    Summary.Value = "Saved: " + PlanSelect.Value + " plan for " + TeamSizeInput.Value + " users";
+  }
+
+  private void UpdateSummary()
+  {
+    Summary.Value = "Plan: " + PlanSelect.Value + ", team size: " + TeamSizeInput.Value;
+  }
+</script>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 14px; padding: 0; }
+  .forms-page { color: #212529; box-sizing: border-box; }
+  .hero-panel { display: flex; flex-direction: column; gap: 4px; background: #0d6efd; padding: 16px; border-radius: 8px; }
+  .hero-eyebrow { color: #cfe2ff; font-size: 13px; }
+  .hero-title { color: #ffffff; font-size: 24px; }
+  .hero-copy { color: #e7f1ff; font-size: 14px; }
+  .content-row { display: flex; flex-direction: row; gap: 16px; }
+  .card { display: flex; flex-direction: column; gap: 12px; background: #ffffff; padding: 16px; border-radius: 8px; }
+  .login-card { width: 360px; }
+  .form-card { width: 420px; }
+  .card-title { color: #212529; font-size: 20px; }
+  .card-subtitle { color: #6c757d; font-size: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-row { display: flex; flex-direction: row; gap: 12px; }
+  .form-column { display: flex; flex-direction: column; gap: 6px; flex-grow: 1; flex-basis: 0; min-width: 0; }
+  .form-label { color: #212529; font-size: 14px; }
+  .form-control { min-width: 0; height: 38px; color: #212529; line-height: 20px; border-radius: 6px; }
+  .form-select { min-width: 0; height: 38px; color: #212529; border-radius: 6px; }
+  .form-text { color: #6c757d; font-size: 12px; }
+  .form-check-row { height: 28px; }
+  .btn-primary { background: #0d6efd; color: #ffffff; border-radius: 6px; }
+  .btn-secondary { background: #6c757d; color: #ffffff; border-radius: 6px; }
+  .alert-info { background: #cff4fc; padding: 10px; border-radius: 6px; }
+  .alert-text { color: #055160; font-size: 14px; }
+  .login-status { color: #198754; font-size: 14px; }
+  .form-summary { color: #495057; font-size: 14px; }
+</style>

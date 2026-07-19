@@ -10,18 +10,23 @@ public class View : UIElement
     public override void Paint(IRenderContext ctx)
     {
         var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
-        if (background.A > 0) ctx.FillRect(Geometry, new SolidColorBrush(background));
+        ControlDrawing.DrawStyledBackground(ctx, this, background);
     }
 }
 
-public class Text : UIElement
+public class Text : UIElement, ITextSelectable
 {
+    private readonly DomTextContent _domText;
+
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
 
-    public Text() { }
-    public Text(string text) { TextContent = text; }
+    public Text() { _domText = new DomTextContent(this); }
+    public Text(string text) : this() { TextContent = text; }
+
+    public string SelectableText => TextContent;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, TextContent, FontSize, Geometry.Position);
 
     public override Size Measure(Size availableSize)
     {
@@ -34,10 +39,17 @@ public class Text : UIElement
         if (string.IsNullOrEmpty(TextContent)) return;
         ControlDrawing.DrawText(ctx, this, TextContent, Geometry.Position, Color, FontSize);
     }
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(TextContent))
+            _domText.Text = TextContent;
+    }
 }
 
 /// <summary>List item, similar to HTML <c>li</c>. Optional marker and text; may also host children.</summary>
-public class ListItem : UIElement
+public class ListItem : UIElement, ITextSelectable
 {
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
@@ -47,6 +59,9 @@ public class ListItem : UIElement
 
     public ListItem() { }
     public ListItem(string text) { TextContent = text; }
+
+    public string SelectableText => Marker + TextContent;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, Marker + TextContent, FontSize, Geometry.Position);
 
     public override Size Measure(Size availableSize)
     {
@@ -70,7 +85,7 @@ public class ListItem : UIElement
     public override void Paint(IRenderContext ctx)
     {
         var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
-        if (background.A > 0) ctx.FillRect(Geometry, new SolidColorBrush(background));
+        ControlDrawing.DrawStyledBackground(ctx, this, background);
 
         var label = Marker + TextContent;
         if (!string.IsNullOrEmpty(label.Trim()))
@@ -79,17 +94,22 @@ public class ListItem : UIElement
 }
 
 /// <summary>Hyperlink-style control, similar to HTML <c>a</c>. Use <see cref="Href"/> for the target URL/path.</summary>
-public class Link : UIElement
+public class Link : UIElement, ITextSelectable
 {
+    private readonly DomTextContent _domText;
+
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
     public string Href { get => GetProperty<string>(nameof(Href)) ?? ""; set => SetProperty(nameof(Href), value); }
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.FromRgb(0, 102, 204); set => SetProperty(nameof(Color), value); }
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
     public bool Underline { get => !Properties.HasValue(nameof(Underline)) || GetProperty<bool>(nameof(Underline)); set => SetProperty(nameof(Underline), value); }
 
-    public Link() { }
-    public Link(string text) { TextContent = text; }
-    public Link(string text, string href) { TextContent = text; Href = href; }
+    public Link() { _domText = new DomTextContent(this); }
+    public Link(string text) : this() { TextContent = text; }
+    public Link(string text, string href) : this() { TextContent = text; Href = href; }
+
+    public string SelectableText => TextContent;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, TextContent, FontSize, Geometry.Position);
 
     public override Size Measure(Size availableSize)
     {
@@ -115,16 +135,39 @@ public class Link : UIElement
             ctx.FillRect(new Rect(origin.X, y, underlineWidth, 1f), new SolidColorBrush(color));
         }
     }
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(TextContent))
+            _domText.Text = TextContent;
+    }
 }
 
-public class Button : UIElement
+public class Button : UIElement, ITextSelectable
 {
+    private readonly DomTextContent _domText;
+
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
     public Color Background { get => Properties.HasValue(nameof(Background)) ? GetProperty<Color>(nameof(Background)) : Color.FromRgb(0, 120, 212); set => SetProperty(nameof(Background), value); }
     public Color Foreground { get => Properties.HasValue(nameof(Foreground)) ? GetProperty<Color>(nameof(Foreground)) : Color.White; set => SetProperty(nameof(Foreground), value); }
 
-    public Button() { }
-    public Button(string text) { TextContent = text; }
+    public Button() { _domText = new DomTextContent(this); }
+    public Button(string text) : this() { TextContent = text; }
+
+    public string SelectableText => TextContent;
+    public Rect SelectableTextBounds
+    {
+        get
+        {
+            var textSize = ControlDrawing.MeasureText(this, TextContent, 14f);
+            return new Rect(
+                Geometry.X + (Geometry.Width - textSize.Width) / 2f,
+                Geometry.Y + (Geometry.Height - textSize.Height) / 2f,
+                textSize.Width,
+                textSize.Height);
+        }
+    }
 
     public override Size Measure(Size availableSize)
     {
@@ -140,7 +183,7 @@ public class Button : UIElement
         var foreground = IsEnabled
             ? ControlDrawing.GetStyledColor(this, "color", Foreground)
             : Color.FromRgb(235, 235, 235);
-        ctx.FillRect(Geometry, new SolidColorBrush(background));
+        ControlDrawing.DrawStyledBackground(ctx, this, background);
 
         var textSize = ControlDrawing.MeasureText(this, TextContent, 14f);
         var textPosition = new Point(
@@ -148,9 +191,16 @@ public class Button : UIElement
             Geometry.Y + (Geometry.Height - textSize.Height) / 2f);
         ControlDrawing.DrawText(ctx, this, TextContent, textPosition, foreground, 14f);
     }
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(TextContent))
+            _domText.Text = TextContent;
+    }
 }
 
-public class CheckBox : UIElement
+public class CheckBox : UIElement, ITextSelectable
 {
     public bool IsChecked { get => GetProperty<bool>(nameof(IsChecked)); set => SetProperty(nameof(IsChecked), value); }
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
@@ -159,6 +209,13 @@ public class CheckBox : UIElement
     {
         AddEventListener("click", ToggleFromInput);
     }
+
+    public string SelectableText => TextContent;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(
+        this,
+        TextContent,
+        14f,
+        new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f));
 
     public override Size Measure(Size availableSize)
     {
@@ -198,7 +255,7 @@ public class CheckBox : UIElement
     }
 }
 
-public class Radio : UIElement
+public class Radio : UIElement, ITextSelectable
 {
     public bool IsChecked { get => GetProperty<bool>(nameof(IsChecked)); set => SetProperty(nameof(IsChecked), value); }
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
@@ -208,6 +265,13 @@ public class Radio : UIElement
     {
         AddEventListener("click", SelectFromInput);
     }
+
+    public string SelectableText => TextContent;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(
+        this,
+        TextContent,
+        14f,
+        new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f));
 
     public override Size Measure(Size availableSize)
     {
@@ -245,7 +309,7 @@ public class Radio : UIElement
     }
 }
 
-public class Select : UIElement, IPopupElement
+public class Select : UIElement, IPopupElement, ITextSelectable
 {
     public string Value { get => GetProperty<string>(nameof(Value)) ?? ""; set => SetProperty(nameof(Value), value); }
     public string[] Options { get => GetProperty<string[]>(nameof(Options)) ?? []; set => SetProperty(nameof(Options), value ?? []); }
@@ -254,6 +318,9 @@ public class Select : UIElement, IPopupElement
     public bool IsPopupOpen => IsOpen && Options.Length > 0;
     public Rect PopupBounds => GetDropDownRect();
     private int _hoveredOption = -1;
+
+    public string SelectableText => string.IsNullOrEmpty(Value) ? Placeholder : Value;
+    public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, SelectableText, 14f, new Point(Geometry.X + 8, Geometry.Y + 8));
 
     public override int ZIndex
     {
@@ -356,10 +423,15 @@ public class Select : UIElement, IPopupElement
     private Rect GetDropDownRect() => new(Geometry.X, Geometry.Bottom + 2, Geometry.Width, Options.Length * 32 + 2);
 }
 
-public class Image : UIElement
+public class Image : UIElement, ITextSelectable
 {
     public string Source { get => GetProperty<string>(nameof(Source)) ?? ""; set => SetProperty(nameof(Source), value); }
     public Square.Graphics.Image? ImageContent { get => GetProperty<Square.Graphics.Image>(nameof(ImageContent)); set => SetProperty(nameof(ImageContent), value); }
+
+    public string SelectableText => Source;
+    public Rect SelectableTextBounds => string.IsNullOrEmpty(Source)
+        ? Rect.Empty
+        : ControlDrawing.GetTextBounds(this, Source, 12f, new Point(Geometry.X + 8, Geometry.Y + 8));
 
     public override Size Measure(Size availableSize) => ImageContent == null
         ? new Size(160, 96)
@@ -384,11 +456,14 @@ public class Image : UIElement
     }
 }
 
-public class Canvas : UIElement
+public class Canvas : UIElement, ITextSelectable
 {
     private Action<IRenderContext, Rect>? _animationFrameCallback;
 
     public Action<IRenderContext, Rect>? DrawContent { get; set; }
+
+    public string SelectableText => GetProperty<string>(nameof(SelectableText)) ?? "Canvas";
+    public Rect SelectableTextBounds => Geometry;
 
     /// <summary>请求后续帧；默认 30fps，避免软件全窗口 Present 时 CPU 过高。</summary>
     public void RequestFrame(double fps = 30d)
@@ -430,6 +505,22 @@ public class Canvas : UIElement
     }
 }
 
+internal sealed class DomTextContent
+{
+    private readonly global::Square.UI.Text _node = new();
+
+    public DomTextContent(Element owner)
+    {
+        owner.ChildNodes.Add(_node);
+    }
+
+    public string Text
+    {
+        get => _node.Data;
+        set => _node.Data = value ?? "";
+    }
+}
+
 internal static class ControlDrawing
 {
     private static readonly Square.Text.Glyph.SystemGlyphRasterizer GlyphRasterizer = new();
@@ -456,6 +547,13 @@ internal static class ControlDrawing
     {
         var font = ResolveFont(element, defaultSize);
         return new TextLayout(text, font).Measure();
+    }
+
+    internal static Rect GetTextBounds(Element element, string text, float defaultSize, Point origin)
+    {
+        if (string.IsNullOrEmpty(text)) return Rect.Empty;
+        var size = MeasureText(element, text, defaultSize);
+        return new Rect(origin.X, origin.Y, size.Width, size.Height);
     }
 
     internal static float MeasureRenderedTextWidth(string text, Font font)
@@ -494,8 +592,34 @@ internal static class ControlDrawing
     {
         var background = element.IsEnabled ? Color.White : Color.FromRgb(240, 240, 240);
         var border = element.IsFocused ? Color.FromRgb(0, 95, 184) : Color.FromRgb(165, 170, 176);
-        context.FillRect(element.Geometry, new SolidColorBrush(background));
-        context.DrawRect(element.Geometry, Pen.FromColor(border, element.IsFocused ? 2 : 1));
+        DrawStyledBackground(context, element, background);
+        DrawStyledBorder(context, element, border, element.IsFocused ? 2 : 1);
+    }
+
+    internal static void DrawStyledBackground(IRenderContext context, UIElement element, Color background)
+    {
+        if (background.A == 0) return;
+        var radius = GetStyledRadius(element, element.Geometry);
+        if (radius <= 0)
+        {
+            context.FillRect(element.Geometry, new SolidColorBrush(background));
+            return;
+        }
+
+        context.FillGeometry(new RoundedRectGeometry(element.Geometry, radius, radius), new SolidColorBrush(background));
+    }
+
+    internal static void DrawStyledBorder(IRenderContext context, UIElement element, Color color, float width)
+    {
+        if (width <= 0 || color.A == 0) return;
+        var radius = GetStyledRadius(element, element.Geometry);
+        if (radius <= 0)
+        {
+            context.DrawRect(element.Geometry, Pen.FromColor(color, width));
+            return;
+        }
+
+        context.DrawGeometry(new RoundedRectGeometry(element.Geometry, radius, radius), Pen.FromColor(color, width));
     }
 
     internal static float GetStyledFloat(Element element, string name, float fallback)
@@ -507,6 +631,35 @@ internal static class ControlDrawing
             System.Globalization.CultureInfo.InvariantCulture, out var value)
             ? value
             : fallback;
+    }
+
+    internal static float GetStyledRadius(Element element, Rect geometry)
+    {
+        var raw = element.Style.GetPropertyValue("border-radius");
+        if (string.IsNullOrWhiteSpace(raw)) return 0;
+
+        var token = raw.Trim().Split([' ', '/'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(token)) return 0;
+
+        var max = MathF.Max(0, MathF.Min(geometry.Width, geometry.Height) / 2f);
+        float value;
+        if (token.EndsWith("%", StringComparison.Ordinal))
+        {
+            var percent = token[..^1].Trim();
+            if (!float.TryParse(percent, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out value))
+                return 0;
+            value = MathF.Min(geometry.Width, geometry.Height) * value / 100f;
+        }
+        else
+        {
+            token = token.Replace("px", "", StringComparison.OrdinalIgnoreCase).Trim();
+            if (!float.TryParse(token, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out value))
+                return 0;
+        }
+
+        return Math.Clamp(value, 0, max);
     }
 
     internal static float GetStyledLineHeight(Element element, float fontSize)

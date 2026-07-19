@@ -1,8 +1,9 @@
 # Square Framework 设计文档
 
 > 配套计划：`plan.md`（分阶段路线图、排期、风险、交付）
-> 需求来源：`docs/Requirements.md`（v0.1 Draft）
+> 需求来源：`docs/Requirements.md`（v0.3 Draft）
 > 范围：总体架构、模块划分、Phase 1（M0+M1）详细设计、模板/绑定/流程控制规范、关键技术决策
+> 状态：M0–M2 已完成，架构重建（rebuild）已完成并合并至 main
 
 ---
 

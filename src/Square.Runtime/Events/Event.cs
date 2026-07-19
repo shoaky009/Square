@@ -114,3 +114,17 @@ public class Event
         CurrentTarget = null;
     }
 }
+
+/// <summary>滚轮事件（Square 对齐 DOM WheelEvent 的最小实现）。</summary>
+public sealed class WheelEvent : Event
+{
+    public WheelEvent(float deltaX, float deltaY, EventInit? init = null)
+        : base(StandardEvents.Wheel, init ?? StandardEvents.GetDefaultInit(StandardEvents.Wheel))
+    {
+        DeltaX = deltaX;
+        DeltaY = deltaY;
+    }
+
+    public float DeltaX { get; }
+    public float DeltaY { get; }
+}

@@ -1,0 +1,52 @@
+<template>
+  <View class="signal-publisher signal-section">
+    <Text class="signal-title" text="Publisher component" />
+    <Button @click="PublishFromUi">Publish on UI thread</Button>
+    <Button class="secondary" @click="StartBackgroundWorker">Start background worker</Button>
+  </View>
+</template>
+<script lang="csharp">
+  private int _sequence;
+  private CancellationTokenSource? _workerCancellation;
+
+  private void PublishFromUi()
+  {
+    _sequence++;
+    SampleSignals.Activity.Publish("UI message " + _sequence);
+  }
+
+  private void StartBackgroundWorker()
+  {
+    _workerCancellation?.Cancel();
+    _workerCancellation?.Dispose();
+    _workerCancellation = new CancellationTokenSource();
+    var token = _workerCancellation.Token;
+    _ = Task.Run(async () =>
+    {
+      try
+      {
+        for (var i = 1; i <= 5; i++)
+        {
+          await Task.Delay(350, token);
+          SampleSignals.Activity.Publish("Background message " + i);
+        }
+      }
+      catch (OperationCanceledException)
+      {
+      }
+    }, token);
+  }
+
+  protected override void OnDetachedCore()
+  {
+    _workerCancellation?.Cancel();
+    _workerCancellation?.Dispose();
+    _workerCancellation = null;
+  }
+</script>
+<style>
+  .signal-section { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #f5f7f9; }
+  .signal-title { color: #202124; font-size: 16px; }
+  .signal-publisher Button { background: #0078d4; color: #ffffff; }
+  .signal-publisher Button.secondary { background: #4b5563; }
+</style>

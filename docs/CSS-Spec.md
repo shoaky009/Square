@@ -1,6 +1,6 @@
 # CSS 支持范围
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Sqx-Spec.md`
 
 ---
@@ -185,7 +185,7 @@ View {
 
 ---
 
-## 10. Grid（M2）
+## 10. Grid（M2）✅ 已实现
 
 ```css
 View {
@@ -195,6 +195,11 @@ View {
   gap: 8px;
 }
 ```
+
+- 支持 `grid-template-columns`、`grid-template-rows`、`fr` 单位
+- 支持 `grid-column`、`grid-row`、`grid-column-span`、`grid-row-span`
+- 支持 `minmax()`、基础 auto-placement
+- 支持 `grid-template-areas` / `grid-area` 命名区域
 
 ---
 
@@ -214,7 +219,7 @@ View {
 
 ---
 
-## 12. Animation（M2）
+## 12. Animation（M2）✅ 已实现
 
 ```css
 @keyframes fade-in {

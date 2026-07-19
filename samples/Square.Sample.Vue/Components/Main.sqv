@@ -1,0 +1,29 @@
+<template>
+  <View class="app">
+    <Text class="app-title" text="Square Framework Vue Samples" />
+    <Tabs>
+      <template v-slot:tabs>
+        <Button class="tab-button">Text</Button>
+        <Button class="tab-button">Controls</Button>
+        <Button class="tab-button">Forms</Button>
+        <Button class="tab-button">Media</Button>
+        <Button class="tab-button">Markdown</Button>
+        <Button class="tab-button">Router</Button>
+        <Button class="tab-button">Signals</Button>
+        <Button class="tab-button">Overflow</Button>
+      </template>
+      <TextSamplesPage />
+      <ControlsSamplesPage />
+      <BootstrapFormsPage />
+      <MediaSamplesPage />
+      <MarkdownSamplesPage />
+      <RouterSamplesPage />
+      <SignalsSamplesPage />
+      <OverflowSamplesPage />
+    </Tabs>
+  </View>
+</template>
+<style>
+  .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .app-title { color: #202124; font-size: 22px; }
+</style>

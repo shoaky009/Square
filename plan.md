@@ -1,9 +1,9 @@
 # Square Framework 开发计划
 
 > 配套设计文档：`design.md`（总体架构、模块划分、Phase 1 详细设计、模板/绑定/流程控制规范、关键技术决策）
-> 需求来源：`docs/Requirements.md`（v0.1 Draft）
+> 需求来源：`docs/Requirements.md`（v0.3 Draft）
 > 范围：全模块分阶段路线图 + 里程碑排期 + 风险与缓解 + 交付说明
-> 状态：Approved（已评审通过）
+> 状态：M0–M2 已完成，架构重建（rebuild）已完成并合并至 main
 
 ---
 
@@ -26,7 +26,7 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
 | **M4 图形后端扩展** | Skia / Blend2D / Cairo 后端接入（保持 `IRenderContext` 不变） | Backends, Graphics | 同一 Demo 切换后端渲染一致 |
 | **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | Platform, Rendering, Text | 三桌面平台 AOT 可执行均运行 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | Platform, Backends, Runtime | 目标平台可启动并渲染基础 UI |
-| **M7 文本与 Canvas 完整** | BiDi、Font Fallback、Caret/Selection/HitTest、Canvas `CanvasRenderingContext2D` 兼容层→DrawCommand | Text, Controls(Canvas), Graphics | 复杂文本/编辑与 Canvas 绘图可运行 |
+| **M7 文本与 Canvas 完整** | BiDi、Font Fallback、Caret/Selection/HitTest、标准 RichTextBox/WYSIWYG 富文本模型与渲染、Canvas `CanvasRenderingContext2D` 兼容层→DrawCommand | Text, Controls(Canvas), Graphics, Extensions | 复杂文本/富文本编辑与 Canvas 绘图可运行 |
 | **M8 工具链** | 完整 Source Generator 诊断、IDE 智能提示/补全、编译期检查 | Tooling, SourceGenerator | IDE 内 `.sqx` 报错可定位、可补全 |
 
 > Phase 1（M0+M1）的详细设计（项目结构、各模块接口要点、模板/绑定/流程控制规范、示例应用、任务清单、关键技术决策）已独立成文于 `design.md` §4，本节仅保留路线图视图。

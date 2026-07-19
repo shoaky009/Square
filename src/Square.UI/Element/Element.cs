@@ -19,6 +19,8 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private bool _isVisible = true;
     private bool _isLayoutDirty = true;
     private bool _needsPaint = true;
+    private Size _scrollContentSize;
+    private Point _scrollOffset;
     private int _zIndex;
     private readonly List<IDisposable> _bindings = [];
 
@@ -51,7 +53,10 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>类名列表（对齐 DOMTokenList <c>classList</c>）。</summary>
     public ClassListAccessor ClassList { get; }
 
-    /// <summary>子元素集合（对齐 <c>children</c>；实现为可修改列表）。</summary>
+    /// <summary>子节点集合（对齐 <c>childNodes</c>；包含 Text 等非元素节点）。</summary>
+    public ChildNodeCollection ChildNodes { get; }
+
+    /// <summary>子元素集合（对齐 <c>children</c>；仅包含元素节点）。</summary>
     public ChildrenCollection Children { get; }
 
     /// <summary>标签名（对齐 <c>tagName</c>；默认取运行时类型名）。</summary>
@@ -107,6 +112,21 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         }
     }
 
+    public Point ScrollOffset => _scrollOffset;
+    public Size ScrollContentSize => _scrollContentSize;
+
+    public float ScrollLeft
+    {
+        get => _scrollOffset.X;
+        set => SetScrollOffset(value, _scrollOffset.Y);
+    }
+
+    public float ScrollTop
+    {
+        get => _scrollOffset.Y;
+        set => SetScrollOffset(_scrollOffset.X, value);
+    }
+
     /// <summary>是否参与布局与命中（Square 扩展；可映射 CSS 可见性）。</summary>
     public bool IsVisible
     {
@@ -146,7 +166,8 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     {
         Style = new StyleAccessor(this);
         ClassList = new ClassListAccessor(this);
-        Children = new ChildrenCollection(this);
+        ChildNodes = new ChildNodeCollection(this);
+        Children = new ChildrenCollection(ChildNodes);
     }
 
     /// <summary>
@@ -157,7 +178,14 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     public Element AppendChild(Element child)
     {
         ArgumentNullException.ThrowIfNull(child);
-        Children.Add(child);
+        ChildNodes.Add(child);
+        return child;
+    }
+
+    public Node AppendChild(Node child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        ChildNodes.Add(child);
         return child;
     }
 
@@ -170,7 +198,16 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         ArgumentNullException.ThrowIfNull(newChild);
         if (referenceChild == null)
             return AppendChild(newChild);
-        Children.InsertBefore(newChild, referenceChild);
+        ChildNodes.InsertBefore(newChild, referenceChild);
+        return newChild;
+    }
+
+    public Node InsertBefore(Node newChild, Node? referenceChild)
+    {
+        ArgumentNullException.ThrowIfNull(newChild);
+        if (referenceChild == null)
+            return AppendChild(newChild);
+        ChildNodes.InsertBefore(newChild, referenceChild);
         return newChild;
     }
 
@@ -179,7 +216,15 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     public Element RemoveChild(Element child)
     {
         ArgumentNullException.ThrowIfNull(child);
-        if (!Children.Remove(child))
+        if (!ChildNodes.Remove(child))
+            throw new InvalidOperationException("The node to be removed is not a child of this element.");
+        return child;
+    }
+
+    public Node RemoveChild(Node child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (!ChildNodes.Remove(child))
             throw new InvalidOperationException("The node to be removed is not a child of this element.");
         return child;
     }
@@ -187,9 +232,16 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>用新子节点列表替换全部子节点（对齐 <c>replaceChildren</c> 简化版）。</summary>
     public void ReplaceChildren(params Element[] nodes)
     {
-        Children.Clear();
+        ChildNodes.Clear();
         if (nodes is { Length: > 0 })
-            Children.AddRange(nodes);
+            ChildNodes.AddRange(nodes);
+    }
+
+    public void ReplaceChildren(params Node[] nodes)
+    {
+        ChildNodes.Clear();
+        if (nodes is { Length: > 0 })
+            ChildNodes.AddRange(nodes);
     }
 
     /// <summary>
@@ -249,9 +301,13 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         var inside = Geometry.Contains(point);
         if (!inside && ClipsOverflowAt(point)) return null;
 
+        var childPoint = MapsScrollOffsetForChildren()
+            ? new Point(point.X + _scrollOffset.X, point.Y + _scrollOffset.Y)
+            : point;
+
         foreach (var child in Children.OrderByDescending(child => child.ZIndex))
         {
-            var hit = child.HitTest(point);
+            var hit = child.HitTest(childPoint);
             if (hit != null) return hit;
         }
 
@@ -295,7 +351,80 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
 
     private static bool IsClippingOverflow(string? value) =>
         string.Equals(value, "hidden", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value, "clip", StringComparison.OrdinalIgnoreCase);
+        string.Equals(value, "clip", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "scroll", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsScrollContainer()
+    {
+        var (scrollX, scrollY) = GetScrollAxes();
+        return scrollX || scrollY;
+    }
+
+    public bool IsUserSelectText()
+    {
+        for (var current = this; current != null; current = current.Parent)
+        {
+            var value = current.Style.Get("user-select")?.Trim();
+            if (string.Equals(value, "text", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(value, "none", StringComparison.OrdinalIgnoreCase)) return false;
+        }
+
+        return false;
+    }
+
+    public bool MapsScrollOffsetForChildren() =>
+        IsScrollContainer() && (_scrollOffset.X != 0 || _scrollOffset.Y != 0);
+
+    public bool CanScroll(float deltaX, float deltaY)
+    {
+        var (maxX, maxY) = GetMaxScrollOffset();
+        var (scrollX, scrollY) = GetScrollAxes();
+        return scrollX && (deltaX < 0 && _scrollOffset.X > 0 || deltaX > 0 && _scrollOffset.X < maxX) ||
+            scrollY && (deltaY < 0 && _scrollOffset.Y > 0 || deltaY > 0 && _scrollOffset.Y < maxY);
+    }
+
+    public bool ScrollBy(float deltaX, float deltaY)
+    {
+        var old = _scrollOffset;
+        SetScrollOffset(_scrollOffset.X + deltaX, _scrollOffset.Y + deltaY);
+        return old.X != _scrollOffset.X || old.Y != _scrollOffset.Y;
+    }
+
+    public void SetScrollContentSize(Size size)
+    {
+        _scrollContentSize = new Size(Math.Max(0, size.Width), Math.Max(0, size.Height));
+        SetScrollOffset(_scrollOffset.X, _scrollOffset.Y);
+    }
+
+    private void SetScrollOffset(float x, float y)
+    {
+        var (maxX, maxY) = GetMaxScrollOffset();
+        var (scrollX, scrollY) = GetScrollAxes();
+        if (!scrollX) x = 0;
+        if (!scrollY) y = 0;
+        x = Math.Clamp(float.IsNaN(x) ? 0 : x, 0, maxX);
+        y = Math.Clamp(float.IsNaN(y) ? 0 : y, 0, maxY);
+        if (Math.Abs(_scrollOffset.X - x) < 0.01f && Math.Abs(_scrollOffset.Y - y) < 0.01f) return;
+        _scrollOffset = new Point(x, y);
+        InvalidatePaint();
+    }
+
+    private (float maxX, float maxY) GetMaxScrollOffset() =>
+        (Math.Max(0, _scrollContentSize.Width - Geometry.Width),
+            Math.Max(0, _scrollContentSize.Height - Geometry.Height));
+
+    private static bool IsScrollingOverflow(string? value) =>
+        string.Equals(value, "scroll", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase);
+
+    private (bool scrollX, bool scrollY) GetScrollAxes()
+    {
+        var overflow = Style.Get("overflow");
+        var scrollBoth = IsScrollingOverflow(overflow);
+        return (scrollBoth || IsScrollingOverflow(Style.Get("overflow-x")),
+            scrollBoth || IsScrollingOverflow(Style.Get("overflow-y")));
+    }
 
     /// <summary>
     /// 按类型与可选 class 查询第一个匹配后代（Square 强类型查询；接近 <c>querySelector</c>）。
@@ -414,6 +543,18 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
 
     /// <summary>Props 变更钩子（组件生命周期）。</summary>
     protected virtual void OnPropChanged(string name) { }
+
+    protected override void OnDefaultAction(Event e)
+    {
+        if (e is not WheelEvent wheel) return;
+        for (Element? current = this; current != null; current = current.Parent)
+        {
+            if (!current.IsScrollContainer() || !current.CanScroll(wheel.DeltaX, wheel.DeltaY)) continue;
+            current.ScrollBy(wheel.DeltaX, wheel.DeltaY);
+            e.PreventDefault();
+            return;
+        }
+    }
 
     /// <summary>挂载完成钩子。</summary>
     protected virtual void OnAttachedCore() { }

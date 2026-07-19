@@ -1,0 +1,36 @@
+<template>
+  <View class="text-page sample-page">
+    <Text class="page-title" text="Text editors" />
+    <Input ref="NameInput" class="editor-default" :value="Name" placeholder="Default input" @input="OnInput" />
+    <Input class="editor-default" type="password" value="secret123" placeholder="Password input" />
+    <Input class="editor-default" type="number" value="42.5" placeholder="Number input" />
+    <Input class="editor-tight" value="紧凑行高 / Compact 14px" />
+    <Input class="editor-roomy" value="宽松行高 / 28px line-height / 20px font" />
+    <TextArea ref="NotesInput" class="editor-multiline" :value="Notes" placeholder="Multiline input" @input="OnNotesInput" />
+    <TextArea class="editor-multiline-roomy" :value="StyledNotes" />
+  </View>
+</template>
+<script lang="csharp">
+  public ObservableValue<string> Name = new("Default line-height - editable text");
+  public ObservableValue<string> Notes = new("TextArea - 22px line-height\nClick to place the caret");
+  public ObservableValue<string> StyledNotes = new("多行文本 30px 行高\nDifferent color and line-height");
+
+  private void OnInput()
+  {
+    Name.Value = NameInput.Value;
+  }
+
+  private void OnNotesInput()
+  {
+    Notes.Value = NotesInput.Value;
+  }
+</script>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+  .page-title { color: #202124; font-size: 18px; }
+  .editor-default { line-height: 1.2; color: #202124; }
+  .editor-tight { height: 30px; line-height: 14px; color: #b42318; caret-color: #b42318; }
+  .editor-roomy { height: 44px; font-size: 20px; line-height: 28px; color: #067647; caret-color: #067647; }
+  .editor-multiline { height: 112px; line-height: 22px; color: #175cd3; }
+  .editor-multiline-roomy { height: 132px; line-height: 30px; color: #6938a8; selection-background: #b692f6; selection-color: #1f1235; }
+</style>

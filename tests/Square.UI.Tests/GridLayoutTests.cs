@@ -99,6 +99,147 @@ public class GridLayoutTests
     }
 
     [Fact]
+    public void FlexLayoutAppliesCssPaddingShorthandEdges()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        root.Style.Set("padding", "16px 0 0");
+        var child = new MeasuredBox(10, 10);
+        child.Style.Set("width", "10px");
+        child.Style.Set("height", "10px");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(100, 100));
+        layout.Arrange(root, new Rect(0, 0, 100, 100));
+
+        Assert.Equal(new Rect(0, 16, 10, 10), child.Geometry);
+    }
+
+    [Fact]
+    public void WidthDefaultsToBorderBoxWithPadding()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        var child = new View();
+        child.Style.Set("width", "100px");
+        child.Style.Set("padding", "10px");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 100));
+        layout.Arrange(root, new Rect(0, 0, 200, 100));
+
+        Assert.Equal(100, child.Geometry.Width);
+    }
+
+    [Fact]
+    public void ContentBoxAddsPaddingToSpecifiedWidth()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        var child = new View();
+        child.Style.Set("box-sizing", "content-box");
+        child.Style.Set("width", "100px");
+        child.Style.Set("padding", "10px");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 100));
+        layout.Arrange(root, new Rect(0, 0, 200, 100));
+
+        Assert.Equal(120, child.Geometry.Width);
+    }
+
+    [Fact]
+    public void ExplicitZeroMinWidthAllowsLeafControlToShrink()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("width", "188px");
+        var input = new Input();
+        input.Style.Set("min-width", "0");
+        root.Children.Add(input);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(188, 60));
+        layout.Arrange(root, new Rect(0, 0, 188, 60));
+
+        Assert.Equal(188, input.Geometry.Width);
+    }
+
+    [Fact]
+    public void FlexColumnDoesNotShrinkLeafControlsBelowIntrinsicHeight()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        root.Style.Set("gap", "10px");
+        var first = new Button("One");
+        var second = new Button("Two");
+        var third = new Button("Three");
+
+        root.Children.Add(first);
+        root.Children.Add(second);
+        root.Children.Add(third);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 60));
+        layout.Arrange(root, new Rect(0, 0, 200, 60));
+
+        Assert.True(first.Geometry.Height >= 36);
+        Assert.True(second.Geometry.Height >= 36);
+        Assert.True(third.Geometry.Height >= 36);
+        Assert.True(second.Geometry.Top >= first.Geometry.Bottom + 10);
+        Assert.True(third.Geometry.Top >= second.Geometry.Bottom + 10);
+    }
+
+    [Fact]
+    public void OverflowAutoTracksContentSizeAndScrollOffset()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        root.Style.Set("overflow-y", "auto");
+        var first = new Button("One");
+        var second = new Button("Two");
+        var third = new Button("Three");
+
+        root.Children.Add(first);
+        root.Children.Add(second);
+        root.Children.Add(third);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 60));
+        layout.Arrange(root, new Rect(0, 0, 200, 60));
+
+        Assert.True(root.ScrollContentSize.Height > root.Geometry.Height);
+        Assert.True(root.ScrollBy(0, 30));
+        Assert.True(root.ScrollTop > 0);
+        Assert.Same(second, root.HitTest(new Point(10, second.Geometry.Top - root.ScrollTop + 1)));
+    }
+
+    [Fact]
+    public void OverflowAutoKeepsDynamicControlsMeasurableWhenContentExceedsHeight()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        root.Style.Set("overflow-y", "auto");
+
+        for (var i = 0; i < 30; i++)
+            root.Children.Add(new Button("Click " + i));
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 120));
+        layout.Arrange(root, new Rect(0, 0, 200, 120));
+
+        Assert.True(root.ScrollContentSize.Height > root.Geometry.Height);
+        Assert.All(root.QueryAll<Button>(), button => Assert.True(button.Geometry.Height >= 36));
+    }
+
+    [Fact]
     public void GridMinMaxAndAutoPlacementFillCellsInOrder()
     {
         var root = new View();
@@ -145,5 +286,105 @@ public class GridLayoutTests
 
         Assert.Equal(new Rect(0, 0, 300, 40), header.Geometry);
         Assert.Equal(new Rect(100, 40, 200, 60), main.Geometry);
+    }
+
+    [Fact]
+    public void FlexShorthandDistributesRemainingSpace()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("width", "300px");
+        var first = new View();
+        first.Style.Set("flex", "1");
+        var second = new View();
+        second.Style.Set("flex", "2");
+        root.Children.Add(first);
+        root.Children.Add(second);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(300, 40));
+        layout.Arrange(root, new Rect(0, 0, 300, 40));
+
+        Assert.Equal(100, first.Geometry.Width);
+        Assert.Equal(200, second.Geometry.Width);
+    }
+
+    [Fact]
+    public void AspectRatioDerivesMissingDimension()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        var child = new View();
+        child.Style.Set("width", "160px");
+        child.Style.Set("aspect-ratio", "16 / 9");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(300, 300));
+        layout.Arrange(root, new Rect(0, 0, 300, 300));
+
+        Assert.Equal(160, child.Geometry.Width);
+        Assert.Equal(90, child.Geometry.Height);
+    }
+
+    [Fact]
+    public void InsetShorthandPositionsAbsoluteChild()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("width", "200px");
+        root.Style.Set("height", "100px");
+        var child = new View();
+        child.Style.Set("position", "absolute");
+        child.Style.Set("inset", "10px 20px 30px 40px");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 100));
+        layout.Arrange(root, new Rect(0, 0, 200, 100));
+
+        Assert.Equal(new Rect(40, 10, 140, 60), child.Geometry);
+    }
+
+    [Fact]
+    public void BorderWidthParticipatesInYogaLayout()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("border-width", "10px");
+        var child = new View();
+        child.Style.Set("width", "20px");
+        child.Style.Set("height", "20px");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(100, 100));
+        layout.Arrange(root, new Rect(0, 0, 100, 100));
+
+        Assert.Equal(new Rect(10, 10, 20, 20), child.Geometry);
+    }
+
+    [Fact]
+    public void AlignContentAppliesToWrappedFlexLines()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-wrap", "wrap");
+        root.Style.Set("align-content", "center");
+        for (var i = 0; i < 4; i++)
+        {
+            var child = new View();
+            child.Style.Set("width", "40px");
+            child.Style.Set("height", "20px");
+            root.Children.Add(child);
+        }
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(100, 100));
+        layout.Arrange(root, new Rect(0, 0, 100, 100));
+
+        Assert.Equal(30, root.Children[0].Geometry.Y);
+        Assert.Equal(30, root.Children[1].Geometry.Y);
+        Assert.Equal(50, root.Children[2].Geometry.Y);
     }
 }

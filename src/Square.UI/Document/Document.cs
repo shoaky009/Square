@@ -13,6 +13,7 @@ public abstract class Document : Node
     private Element? _documentElement;
     private string _title = "";
     private FontFaceSet? _fonts;
+    private Selection? _selection;
 
     /// <summary>
     /// 文档元素根，只读（对齐 <c>document.documentElement</c>）。
@@ -37,6 +38,9 @@ public abstract class Document : Node
         get => _fonts ??= FontFaceSet.Default;
         set => _fonts = value ?? FontFaceSet.Default;
     }
+
+    /// <summary>当前文档选择（对齐 <c>getSelection()</c>）。</summary>
+    public Selection Selection => _selection ??= new Selection();
 
     /// <inheritdoc />
     public override NodeType NodeTypeValue => NodeType.Document;
@@ -98,6 +102,12 @@ public abstract class Document : Node
             ? null
             : CssSelector.QuerySelector(_documentElement, selectors, includeRoot: true);
 
+    /// <summary>创建空 Range（对齐 <c>document.createRange()</c>）。</summary>
+    public Range CreateRange() => new(this);
+
+    /// <summary>获取当前选择（对齐 <c>document.getSelection()</c>）。</summary>
+    public Selection GetSelection() => Selection;
+
     /// <summary>
     /// 按 CSS 选择器子集查找文档中全部匹配元素（对齐 <c>document.querySelectorAll</c>）。
     /// </summary>
@@ -107,10 +117,11 @@ public abstract class Document : Node
             : CssSelector.QuerySelectorAll(_documentElement, selectors, includeRoot: true);
 
     /// <summary>递归设置子树 <see cref="Node.OwnerDocument"/>。</summary>
-    internal void AssignOwnerDocument(Element element)
+    internal void AssignOwnerDocument(Node node)
     {
-        element.OwnerDocument = this;
-        foreach (var child in element.Children)
+        node.OwnerDocument = this;
+        if (node is not Element element) return;
+        foreach (var child in element.ChildNodes)
             AssignOwnerDocument(child);
     }
 

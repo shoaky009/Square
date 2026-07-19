@@ -1,11 +1,15 @@
 using Square.Graphics;
 using Square.UI;
 using Square.Rendering.Tree;
+using Square.Text.Glyph;
+using System.Text;
 
 namespace Square.Rendering;
 
 public sealed class DisplayTree
 {
+    private static readonly SystemGlyphRasterizer TextFragmentGlyphRasterizer = new();
+
     private readonly DisplayNode _root = new();
     private readonly List<Rect> _dirtyRects = [];
     private readonly List<IPopupElement> _popups = [];
@@ -209,6 +213,85 @@ public sealed class DisplayTree
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    public List<TextFragment> CollectTextFragments(Element root)
+    {
+        var fragments = new List<TextFragment>();
+        CollectTextFragments(_root, root, fragments);
+        return fragments;
+    }
+
+    private static void CollectTextFragments(DisplayNode node, Element root, List<TextFragment> fragments)
+    {
+        if (node.Element != null && IsDescendantOrSelf(node.Element, root))
+        {
+            foreach (var command in node.Commands.OfType<Commands.DrawTextCommand>())
+            {
+                var fragment = CreateTextFragment(node.Element, command);
+                if (fragment != null) fragments.Add(fragment);
+            }
+        }
+
+        foreach (var child in node.Children)
+            CollectTextFragments(child, root, fragments);
+    }
+
+    private static TextFragment? CreateTextFragment(Element element, Commands.DrawTextCommand command)
+    {
+        var text = command.Text.Text;
+        if (string.IsNullOrEmpty(text)) return null;
+
+        var lineHeight = command.Text.Font.Size * command.Text.LineHeight;
+        var x = command.Origin.X;
+        var y = command.Origin.Y;
+        var maxRight = x;
+        var characters = new List<TextCharacterFragment>();
+
+        for (var offset = 0; offset < text.Length;)
+        {
+            var status = Rune.DecodeFromUtf16(text.AsSpan(offset), out var rune, out var consumed);
+            if (status != System.Buffers.OperationStatus.Done) break;
+            var startOffset = offset;
+            offset += consumed;
+
+            if (rune.Value == '\n')
+            {
+                maxRight = Math.Max(maxRight, x);
+                x = command.Origin.X;
+                y += lineHeight;
+                continue;
+            }
+
+            var advance = MeasureRenderedAdvance(command.Text.Font, rune);
+            var bounds = new Rect(x, y, advance, lineHeight);
+            characters.Add(new TextCharacterFragment(startOffset, offset, bounds));
+            x += advance;
+            maxRight = Math.Max(maxRight, x);
+        }
+
+        if (characters.Count == 0) return null;
+        var bottom = characters.Max(character => character.Bounds.Bottom);
+        var boundsAll = new Rect(command.Origin.X, command.Origin.Y, maxRight - command.Origin.X, bottom - command.Origin.Y);
+        return new TextFragment(element, text, command.Text.Font, boundsAll, characters);
+    }
+
+    private static float MeasureRenderedAdvance(Font font, Rune rune)
+    {
+        if (TextFragmentGlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
+        {
+            var glyph = TextFragmentGlyphRasterizer.Rasterize(font, (char)rune.Value);
+            if (glyph != null) return glyph.AdvanceX;
+        }
+
+        return TextLayout.MeasureRuneAdvance(rune, font.Size);
+    }
+
+    private static bool IsDescendantOrSelf(Element element, Element root)
+    {
+        for (var current = element; current != null; current = current.Parent)
+            if (ReferenceEquals(current, root)) return true;
+        return false;
     }
 
     private void RenderPopups(IRenderContext ctx, Rect? dirtyClip)

@@ -155,6 +155,22 @@ public class CssParserTests
     }
 
     [Fact]
+    public void SelectionPseudoElementMapsToSelectionStyles()
+    {
+        var sheet = new CssParser(new CssTokenizer(".target::selection { background: #123456; color: #ffffff; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var text = new Square.Controls.Controls.Text("item");
+        text.ClassList.Add("target");
+
+        engine.ApplyStyles(text);
+
+        Assert.Equal("#123456", text.Style.Get("selection-background-color"));
+        Assert.Equal("#ffffff", text.Style.Get("selection-color"));
+        Assert.Null(text.Style.Get("background"));
+    }
+
+    [Fact]
     public void StyleReconcilerReappliesDynamicClassMatchesAndRemovals()
     {
         var sheet = new CssParser(new CssTokenizer(".active { color: red; width: 120px; }").Tokenize()).Parse();

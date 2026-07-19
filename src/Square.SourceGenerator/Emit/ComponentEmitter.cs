@@ -182,6 +182,12 @@ namespace Square.SourceGenerator.Emit
                 }
                 else if (node is SqxElement element)
                 {
+                    if (IsTemplateFragment(element))
+                    {
+                        EmitNodes(element.Children, indent, parentName, localName);
+                        continue;
+                    }
+
                     // Catalog-driven structural directives (Show/For/Switch/Slot/Router/…)
                     if (_catalog.IsDirective(element.TagName))
                     {
@@ -279,8 +285,7 @@ namespace Square.SourceGenerator.Emit
 
         private bool EmitTextContent(SqxElement element, string variableName, string indent, string localName)
         {
-            if (element.TagName != "Text" && element.TagName != "Button" && element.TagName != "Link" &&
-                element.TagName != "ListItem") return false;
+            if (!IsTextContentElement(element.TagName)) return false;
             if (FindAttr(element, "text") != null) return true;
 
             var content = element.Children.Where(node => !IsWrapperExpression(node)).ToList();
@@ -309,17 +314,22 @@ namespace Square.SourceGenerator.Emit
             {
                 if (IsWrapperExpression(child)) continue;
                 var slotName = "";
+                var slotNodes = new List<SqxNode> { child };
                 if (child is SqxElement childElement)
+                {
                     slotName = FindAttr(childElement, "slot")?.RawValue ?? "";
+                    if (IsTemplateFragment(childElement))
+                        slotNodes = childElement.Children;
+                }
 
                 var groupIndex = groups.FindIndex(pair => pair.Key == slotName);
                 if (groupIndex < 0)
                 {
-                    groups.Add(new KeyValuePair<string, List<SqxNode>>(slotName, new List<SqxNode> { child }));
+                    groups.Add(new KeyValuePair<string, List<SqxNode>>(slotName, new List<SqxNode>(slotNodes)));
                 }
                 else
                 {
-                    groups[groupIndex].Value.Add(child);
+                    groups[groupIndex].Value.AddRange(slotNodes);
                 }
             }
 
@@ -438,6 +448,10 @@ namespace Square.SourceGenerator.Emit
             return value.EndsWith("=>", StringComparison.Ordinal) || value == "}";
         }
 
+        private static bool IsTemplateFragment(SqxElement element) =>
+            string.Equals(element.TagName, "Fragment", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(element.TagName, "template", StringComparison.OrdinalIgnoreCase);
+
         private static SqxAttribute FindAttr(SqxElement element, string name) =>
             element.Attributes.FirstOrDefault(attribute => string.Equals(attribute.Name, name, StringComparison.OrdinalIgnoreCase));
 
@@ -447,27 +461,28 @@ namespace Square.SourceGenerator.Emit
         private static string Escape(string value) =>
             value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
 
-        private static string MapTagName(string tag) => tag switch
+        private static string MapTagName(string tag) => tag.ToLowerInvariant() switch
         {
-            "View" => "Square.Controls.Controls.View",
-            "Text" => "Square.Controls.Controls.Text",
-            "ListItem" => "Square.Controls.Controls.ListItem",
-            "Button" => "Square.Controls.Controls.Button",
-            "Input" => "Square.Controls.Controls.Input",
-            "TextArea" => "Square.Controls.Controls.TextArea",
-            "CheckBox" => "Square.Controls.Controls.CheckBox",
-            "Radio" => "Square.Controls.Controls.Radio",
-            "Select" => "Square.Controls.Controls.Select",
-            "Image" => "Square.Controls.Controls.Image",
-            "Canvas" => "Square.Controls.Controls.Canvas",
-            "Link" => "Square.Router.Link",
-            "Router" => "Square.Router.Router",
+            "view" => "Square.Controls.Controls.View",
+            "text" => "Square.Controls.Controls.Text",
+            "listitem" => "Square.Controls.Controls.ListItem",
+            "button" => "Square.Controls.Controls.Button",
+            "input" => "Square.Controls.Controls.Input",
+            "textarea" => "Square.Controls.Controls.TextArea",
+            "checkbox" => "Square.Controls.Controls.CheckBox",
+            "radio" => "Square.Controls.Controls.Radio",
+            "select" => "Square.Controls.Controls.Select",
+            "image" => "Square.Controls.Controls.Image",
+            "canvas" => "Square.Controls.Controls.Canvas",
+            "link" => "Square.Router.Link",
+            "router" => "Square.Router.Router",
             _ => tag
         };
 
-        private static bool IsBuiltInTag(string tag) => tag == "View" || tag == "Text" || tag == "ListItem" ||
-            tag == "Button" || tag == "Input" || tag == "TextArea" || tag == "CheckBox" || tag == "Radio" ||
-            tag == "Select" || tag == "Image" || tag == "Canvas" || tag == "Link";
+        private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "text" or "listitem" or
+            "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "link";
+
+        private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem";
 
         private static string MapPropName(string name) => name switch
         {
@@ -487,6 +502,7 @@ namespace Square.SourceGenerator.Emit
             "color" => "Color",
             "background" => "Background",
             "underline" => "Underline",
+            "type" => "Type",
             _ => name
         };
 

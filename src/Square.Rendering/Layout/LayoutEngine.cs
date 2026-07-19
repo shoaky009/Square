@@ -22,6 +22,9 @@ public enum JustifyContent { FlexStart, Center, FlexEnd, SpaceBetween, SpaceArou
 /// <summary>交叉轴对齐（对齐 <c>align-items</c> 子集）。</summary>
 public enum AlignItems { Stretch, FlexStart, Center, FlexEnd }
 
+/// <summary>CSS 盒尺寸计算方式。</summary>
+public enum BoxSizing { BorderBox, ContentBox }
+
 /// <summary>从 CSS 推导的布局样式快照。</summary>
 public sealed class ComputedStyle
 {
@@ -36,7 +39,16 @@ public sealed class ComputedStyle
     public float Width { get; set; } = float.NaN;
     public float Height { get; set; } = float.NaN;
     public float Padding { get; set; }
+    public float PaddingLeft { get; set; }
+    public float PaddingTop { get; set; }
+    public float PaddingRight { get; set; }
+    public float PaddingBottom { get; set; }
     public float Margin { get; set; }
+    public float MarginLeft { get; set; }
+    public float MarginTop { get; set; }
+    public float MarginRight { get; set; }
+    public float MarginBottom { get; set; }
+    public BoxSizing BoxSizing { get; set; } = BoxSizing.BorderBox;
     public string GridTemplateColumns { get; set; } = "";
     public string GridTemplateRows { get; set; } = "";
     public int GridColumn { get; set; } = 1;
@@ -94,7 +106,7 @@ public sealed class LayoutEngine
 
         if (style.Display == DisplayMode.Grid)
         {
-            var inner = finalRect.Inflate(-style.Padding, -style.Padding);
+            var inner = Inset(finalRect, style.PaddingLeft, style.PaddingTop, style.PaddingRight, style.PaddingBottom);
             ArrangeGrid(element, style, inner);
             element.Arrange(finalRect);
             return;
@@ -167,7 +179,9 @@ public sealed class LayoutEngine
         }
 
         ApplyFlexItem(element, node, parentW, parentH, em, rem);
+        ApplyDirectionAndAspectRatio(element, node);
         ApplyBoxModel(element, node, parentW, parentH, em, rem);
+        ApplyBorder(element, node, parentW, parentH, em, rem);
         ApplyGap(element, node, parentW, parentH, em, rem);
         ApplyPosition(element, node, parentW, parentH, em, rem);
         ApplyOverflow(element, node);
@@ -176,6 +190,7 @@ public sealed class LayoutEngine
         if (children.Length == 0)
         {
             YGNodeSetMeasureFunc(node, LeafMeasureCallback);
+            ApplyIntrinsicLeafMinSize(element, node);
         }
         else
         {
@@ -185,12 +200,36 @@ public sealed class LayoutEngine
             foreach (var child in children)
             {
                 var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
+                if (element.IsScrollContainer() && child.Style.Get("flex-shrink") == null)
+                    YGNodeStyleSetFlexShrink(childNode, 0);
                 YGNodeInsertChild(node, childNode, i++);
             }
         }
 
         return node;
     }
+
+    private static void ApplyIntrinsicLeafMinSize(Element element, YogaNode node)
+    {
+        if (!HasCustomMeasure(element)) return;
+
+        var measured = element.Measure(new Size(float.MaxValue, float.MaxValue));
+        if (element.Style.Get("min-width") == null && element.Style.Get("width") == null && IsFiniteLayoutSize(measured.Width))
+            YGNodeStyleSetMinWidth(node, measured.Width);
+        if (element.Style.Get("min-height") == null && element.Style.Get("height") == null && IsFiniteLayoutSize(measured.Height))
+            YGNodeStyleSetMinHeight(node, measured.Height);
+    }
+
+    private static bool HasCustomMeasure(Element element)
+    {
+        var method = element.GetType().GetMethod(nameof(Element.Measure), [typeof(Size)]);
+        if (method == null) return false;
+        var declaringType = method.DeclaringType;
+        return declaringType != typeof(Element) && declaringType != typeof(UIElement);
+    }
+
+    private static bool IsFiniteLayoutSize(float value) =>
+        !float.IsNaN(value) && !float.IsInfinity(value) && value >= 0 && value < 1_000_000f;
 
     private static YGSize LeafMeasureCallback(
         YogaNode node, float availableWidth, MeasureMode widthMode,
@@ -260,8 +299,7 @@ public sealed class LayoutEngine
         if (string.Equals(display, "grid", StringComparison.OrdinalIgnoreCase))
         {
             var style = GetComputedStyle(element, width, height);
-            var padding = style.Padding;
-            var inner = rect.Inflate(-padding, -padding);
+            var inner = Inset(rect, style.PaddingLeft, style.PaddingTop, style.PaddingRight, style.PaddingBottom);
             ArrangeGrid(element, style, inner);
             element.Arrange(rect);
             return;
@@ -277,6 +315,26 @@ public sealed class LayoutEngine
             if (childYoga != null)
                 ApplyYogaLayout(children[i], childYoga, absX, absY);
         }
+        UpdateScrollContentSize(element, rect);
+    }
+
+    private static void UpdateScrollContentSize(Element element, Rect rect)
+    {
+        if (!element.IsScrollContainer())
+        {
+            element.SetScrollContentSize(rect.Size);
+            return;
+        }
+
+        var right = rect.Width;
+        var bottom = rect.Height;
+        foreach (var child in element.Children.Where(child => child.IsVisible))
+        {
+            right = Math.Max(right, child.Geometry.Right - rect.X);
+            bottom = Math.Max(bottom, child.Geometry.Bottom - rect.Y);
+        }
+
+        element.SetScrollContentSize(new Size(right, bottom));
     }
 
     private static void ApplyFlexContainer(Element element, YogaNode node)
@@ -305,6 +363,17 @@ public sealed class LayoutEngine
             "baseline" => YGAlign.Baseline,
             _ => YGAlign.Stretch
         });
+        YGNodeStyleSetAlignContent(node, element.Style.Get("align-content")?.Trim() switch
+        {
+            "center" => YGAlign.Center,
+            "flex-start" or "start" => YGAlign.FlexStart,
+            "flex-end" or "end" => YGAlign.FlexEnd,
+            "space-between" => YGAlign.SpaceBetween,
+            "space-around" => YGAlign.SpaceAround,
+            "space-evenly" => YGAlign.SpaceEvenly,
+            "stretch" => YGAlign.Stretch,
+            _ => YGAlign.Auto
+        });
         YGNodeStyleSetFlexWrap(node, element.Style.Get("flex-wrap")?.Trim() switch
         {
             "wrap" => YGWrap.Wrap,
@@ -315,6 +384,8 @@ public sealed class LayoutEngine
 
     private static void ApplyFlexItem(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
     {
+        ApplyFlexShorthand(element.Style.Get("flex"), node, parentW, parentH, em, rem);
+
         var grow = element.Style.Get("flex-grow");
         if (grow != null && float.TryParse(grow, NumberStyles.Float, CultureInfo.InvariantCulture, out var g))
             YGNodeStyleSetFlexGrow(node, g);
@@ -347,36 +418,107 @@ public sealed class LayoutEngine
         }
     }
 
+    private static void ApplyFlexShorthand(string? value, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var text = value.Trim();
+        if (string.Equals(text, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetFlexGrow(node, 0);
+            YGNodeStyleSetFlexShrink(node, 0);
+            YGNodeStyleSetFlexBasisAuto(node);
+            return;
+        }
+        if (string.Equals(text, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetFlexGrow(node, 1);
+            YGNodeStyleSetFlexShrink(node, 1);
+            YGNodeStyleSetFlexBasisAuto(node);
+            return;
+        }
+
+        var parts = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1 && float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var singleGrow))
+        {
+            YGNodeStyleSetFlexGrow(node, singleGrow);
+            YGNodeStyleSetFlexShrink(node, 1);
+            YGNodeStyleSetFlexBasisPercent(node, 0);
+            return;
+        }
+
+        var numericIndex = 0;
+        foreach (var part in parts)
+        {
+            if (float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+            {
+                if (numericIndex == 0) YGNodeStyleSetFlexGrow(node, number);
+                else if (numericIndex == 1) YGNodeStyleSetFlexShrink(node, number);
+                numericIndex++;
+                continue;
+            }
+
+            ApplyFlexBasis(part, node, parentW, parentH, em, rem);
+        }
+    }
+
+    private static void ApplyFlexBasis(string? value, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var t = value.Trim();
+        if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            YGNodeStyleSetFlexBasisAuto(node);
+            return;
+        }
+        if (TryParsePercent(t, out var pct))
+        {
+            YGNodeStyleSetFlexBasisPercent(node, pct);
+            return;
+        }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts))
+            YGNodeStyleSetFlexBasis(node, pts);
+    }
+
+    private static void ApplyDirectionAndAspectRatio(Element element, YogaNode node)
+    {
+        var direction = element.Style.Get("direction")?.Trim();
+        if (string.Equals(direction, "rtl", StringComparison.OrdinalIgnoreCase))
+            YGNodeStyleSetDirection(node, YGDirection.RTL);
+        else if (string.Equals(direction, "ltr", StringComparison.OrdinalIgnoreCase))
+            YGNodeStyleSetDirection(node, YGDirection.LTR);
+
+        var aspectRatio = element.Style.Get("aspect-ratio")?.Trim();
+        if (!string.IsNullOrWhiteSpace(aspectRatio) && TryParseAspectRatio(aspectRatio, out var ratio))
+            YGNodeStyleSetAspectRatio(node, ratio);
+    }
+
     private static void ApplyBoxModel(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
     {
-        ApplyDim(element.Style.Get("width"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetWidth(node, v), p => YGNodeStyleSetWidthPercent(node, p), () => YGNodeStyleSetWidthAuto(node));
-        ApplyDim(element.Style.Get("height"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetHeight(node, v), p => YGNodeStyleSetHeightPercent(node, p), () => YGNodeStyleSetHeightAuto(node));
-        ApplyMinMax(element.Style.Get("min-width"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetMinWidth(node, v), p => YGNodeStyleSetMinWidthPercent(node, p));
-        ApplyMinMax(element.Style.Get("min-height"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetMinHeight(node, v), p => YGNodeStyleSetMinHeightPercent(node, p));
-        ApplyMinMax(element.Style.Get("max-width"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetMaxWidth(node, v), p => YGNodeStyleSetMaxWidthPercent(node, p));
-        ApplyMinMax(element.Style.Get("max-height"), parentW, parentH, em, rem,
-            v => YGNodeStyleSetMaxHeight(node, v), p => YGNodeStyleSetMaxHeightPercent(node, p));
+        var padding = ResolvePadding(element, parentW, parentH, em, rem);
+        var contentBox = ParseBoxSizing(element.Style.Get("box-sizing")) == BoxSizing.ContentBox;
+        var horizontalPadding = contentBox ? padding.Left + padding.Right : 0;
+        var verticalPadding = contentBox ? padding.Top + padding.Bottom : 0;
 
-        if (TryParsePoints(element.Style.Get("padding"), parentW, parentH, em, rem, out var pad))
-            YGNodeStyleSetPadding(node, YGEdge.All, pad);
+        ApplyDim(element.Style.Get("width"), parentW, parentH, em, rem, horizontalPadding,
+            v => YGNodeStyleSetWidth(node, v), v => YGNodeStyleSetWidthPercent(node, v), () => YGNodeStyleSetWidthAuto(node));
+        ApplyDim(element.Style.Get("height"), parentW, parentH, em, rem, verticalPadding,
+            v => YGNodeStyleSetHeight(node, v), v => YGNodeStyleSetHeightPercent(node, v), () => YGNodeStyleSetHeightAuto(node));
+        ApplyMinMax(element.Style.Get("min-width"), parentW, parentH, em, rem, horizontalPadding,
+            v => YGNodeStyleSetMinWidth(node, v), v => YGNodeStyleSetMinWidthPercent(node, v));
+        ApplyMinMax(element.Style.Get("min-height"), parentW, parentH, em, rem, verticalPadding,
+            v => YGNodeStyleSetMinHeight(node, v), v => YGNodeStyleSetMinHeightPercent(node, v));
+        ApplyMinMax(element.Style.Get("max-width"), parentW, parentH, em, rem, horizontalPadding,
+            v => YGNodeStyleSetMaxWidth(node, v), v => YGNodeStyleSetMaxWidthPercent(node, v));
+        ApplyMinMax(element.Style.Get("max-height"), parentW, parentH, em, rem, verticalPadding,
+            v => YGNodeStyleSetMaxHeight(node, v), v => YGNodeStyleSetMaxHeightPercent(node, v));
+
+        ApplyBoxShorthand(element.Style.Get("padding"), node, isPadding: true, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("padding-left"), YGEdge.Left, true, node, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("padding-top"), YGEdge.Top, true, node, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("padding-right"), YGEdge.Right, true, node, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("padding-bottom"), YGEdge.Bottom, true, node, parentW, parentH, em, rem);
 
-        var margin = element.Style.Get("margin");
-        if (margin != null)
-        {
-            if (string.Equals(margin.Trim(), "auto", StringComparison.OrdinalIgnoreCase))
-                YGNodeStyleSetMarginAuto(node, YGEdge.All);
-            else if (TryParsePoints(margin, parentW, parentH, em, rem, out var m))
-                YGNodeStyleSetMargin(node, YGEdge.All, m);
-        }
+        ApplyBoxShorthand(element.Style.Get("margin"), node, isPadding: false, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("margin-left"), YGEdge.Left, false, node, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("margin-top"), YGEdge.Top, false, node, parentW, parentH, em, rem);
         ApplyEdge(element.Style.Get("margin-right"), YGEdge.Right, false, node, parentW, parentH, em, rem);
@@ -393,6 +535,27 @@ public sealed class LayoutEngine
             YGNodeStyleSetGap(node, YGGutter.Column, colGap);
     }
 
+    private static void ApplyBorder(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (TryParseBoxShorthand(element.Style.Get("border-width"), parentW, parentH, em, rem, allowAuto: false, out var border))
+        {
+            YGNodeStyleSetBorder(node, YGEdge.Top, border.Top);
+            YGNodeStyleSetBorder(node, YGEdge.Right, border.Right);
+            YGNodeStyleSetBorder(node, YGEdge.Bottom, border.Bottom);
+            YGNodeStyleSetBorder(node, YGEdge.Left, border.Left);
+        }
+        ApplyBorderEdge(element.Style.Get("border-left-width"), YGEdge.Left, node, parentW, parentH, em, rem);
+        ApplyBorderEdge(element.Style.Get("border-top-width"), YGEdge.Top, node, parentW, parentH, em, rem);
+        ApplyBorderEdge(element.Style.Get("border-right-width"), YGEdge.Right, node, parentW, parentH, em, rem);
+        ApplyBorderEdge(element.Style.Get("border-bottom-width"), YGEdge.Bottom, node, parentW, parentH, em, rem);
+    }
+
+    private static void ApplyBorderEdge(string? value, YGEdge edge, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (TryParsePoints(value, parentW, parentH, em, rem, out var points))
+            YGNodeStyleSetBorder(node, edge, points);
+    }
+
     private static void ApplyPosition(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
     {
         var pos = element.Style.Get("position")?.Trim();
@@ -401,10 +564,11 @@ public sealed class LayoutEngine
         else if (string.Equals(pos, "relative", StringComparison.OrdinalIgnoreCase))
             YGNodeStyleSetPositionType(node, YGPositionType.Relative);
 
-        ApplyInset(element.Style.Get("top"), YGEdge.Top, node, parentW, parentH, em, rem);
-        ApplyInset(element.Style.Get("right"), YGEdge.Right, node, parentW, parentH, em, rem);
-        ApplyInset(element.Style.Get("bottom"), YGEdge.Bottom, node, parentW, parentH, em, rem);
-        ApplyInset(element.Style.Get("left"), YGEdge.Left, node, parentW, parentH, em, rem);
+        ApplyInsetShorthand(element.Style.Get("inset"), node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("inset-block-start") ?? element.Style.Get("top"), YGEdge.Top, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("inset-inline-end") ?? element.Style.Get("right"), YGEdge.Right, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("inset-block-end") ?? element.Style.Get("bottom"), YGEdge.Bottom, node, parentW, parentH, em, rem);
+        ApplyInset(element.Style.Get("inset-inline-start") ?? element.Style.Get("left"), YGEdge.Left, node, parentW, parentH, em, rem);
     }
 
     private static void ApplyOverflow(Element element, YogaNode node)
@@ -730,6 +894,7 @@ public sealed class LayoutEngine
         if (display == "flex") style.Display = DisplayMode.Flex;
         if (display == "grid") style.Display = DisplayMode.Grid;
         if (display == "none") style.Display = DisplayMode.None;
+        style.BoxSizing = ParseBoxSizing(element.Style.Get("box-sizing"));
 
         style.FlexDirection = element.Style.Get("flex-direction")?.Trim() switch
         {
@@ -760,8 +925,22 @@ public sealed class LayoutEngine
             style.Gap = gapVal;
         if (TryParsePoints(element.Style.Get("padding"), parentWidth, parentHeight, emSize, remSize, out var paddingVal))
             style.Padding = paddingVal;
+        if (TryParseBoxShorthand(element.Style.Get("padding"), parentWidth, parentHeight, emSize, remSize, allowAuto: false, out var padding))
+        {
+            style.PaddingTop = padding.Top;
+            style.PaddingRight = padding.Right;
+            style.PaddingBottom = padding.Bottom;
+            style.PaddingLeft = padding.Left;
+        }
         if (TryParsePoints(element.Style.Get("margin"), parentWidth, parentHeight, emSize, remSize, out var marginVal))
             style.Margin = marginVal;
+        if (TryParseBoxShorthand(element.Style.Get("margin"), parentWidth, parentHeight, emSize, remSize, allowAuto: false, out var margin))
+        {
+            style.MarginTop = margin.Top;
+            style.MarginRight = margin.Right;
+            style.MarginBottom = margin.Bottom;
+            style.MarginLeft = margin.Left;
+        }
         if (TryParsePoints(element.Style.Get("width"), parentWidth, parentHeight, emSize, remSize, out var widthVal))
             style.Width = widthVal;
         if (TryParsePoints(element.Style.Get("height"), parentWidth, parentHeight, emSize, remSize, out var heightVal))
@@ -802,39 +981,107 @@ public sealed class LayoutEngine
         if (int.TryParse(spanPart, out var span)) setSpan(Math.Max(1, span));
     }
 
-    private static void ApplyDim(string? value, float parentW, float parentH, float em, float rem,
-        Action<float> setPts, Action<float> setPct, Action setAuto)
+    private static void ApplyDim(string? value, float parentW, float parentH, float em, float rem, float paddingAdjustment,
+        Action<float> setPts, Action<float> setPercent, Action setAuto)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
         var t = value.Trim();
         if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase)) { setAuto(); return; }
-        if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
-        { setPct(pct); return; }
-        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts);
+        if (paddingAdjustment == 0 && TryParsePercent(t, out var pct))
+        { setPercent(pct); return; }
+        if (TryParsePercent(t, out pct))
+        { setPts(parentW * pct / 100f + paddingAdjustment); return; }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts + paddingAdjustment);
     }
 
-    private static void ApplyMinMax(string? value, float parentW, float parentH, float em, float rem,
-        Action<float> setPts, Action<float> setPct)
+    private static void ApplyBoxShorthand(string? value, YogaNode node, bool isPadding,
+        float parentW, float parentH, float em, float rem)
+    {
+        if (!TryParseBoxShorthand(value, parentW, parentH, em, rem, allowAuto: !isPadding, out var box))
+            return;
+
+        ApplyBoxEdge(node, YGEdge.Top, box.Top, box.TopAuto, isPadding);
+        ApplyBoxEdge(node, YGEdge.Right, box.Right, box.RightAuto, isPadding);
+        ApplyBoxEdge(node, YGEdge.Bottom, box.Bottom, box.BottomAuto, isPadding);
+        ApplyBoxEdge(node, YGEdge.Left, box.Left, box.LeftAuto, isPadding);
+    }
+
+    private static void ApplyBoxEdge(YogaNode node, YGEdge edge, float value, bool auto, bool isPadding)
+    {
+        if (auto)
+        {
+            if (!isPadding) YGNodeStyleSetMarginAuto(node, edge);
+            return;
+        }
+
+        if (isPadding) YGNodeStyleSetPadding(node, edge, value);
+        else YGNodeStyleSetMargin(node, edge, value);
+    }
+
+    private static void ApplyMinMax(string? value, float parentW, float parentH, float em, float rem, float paddingAdjustment,
+        Action<float> setPts, Action<float> setPercent)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
         var t = value.Trim();
-        if (t.EndsWith('%') && float.TryParse(t[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct))
-        { setPct(pct); return; }
-        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts);
+        if (paddingAdjustment == 0 && TryParsePercent(t, out var pct))
+        { setPercent(pct); return; }
+        if (TryParsePercent(t, out pct))
+        { setPts(parentW * pct / 100f + paddingAdjustment); return; }
+        if (TryParsePoints(t, parentW, parentH, em, rem, out var pts)) setPts(pts + paddingAdjustment);
+    }
+
+    private static BoxSizing ParseBoxSizing(string? value) => value?.Trim() switch
+    {
+        "content-box" => BoxSizing.ContentBox,
+        _ => BoxSizing.BorderBox
+    };
+
+    private static BoxEdges ResolvePadding(Element element, float parentW, float parentH, float em, float rem)
+    {
+        var result = new BoxEdges(0, 0, 0, 0, false, false, false, false);
+        if (TryParseBoxShorthand(element.Style.Get("padding"), parentW, parentH, em, rem, allowAuto: false, out var shorthand))
+            result = shorthand;
+        ApplyResolvedPaddingEdge(element.Style.Get("padding-top"), parentW, parentH, em, rem, v => result = result with { Top = v });
+        ApplyResolvedPaddingEdge(element.Style.Get("padding-right"), parentW, parentH, em, rem, v => result = result with { Right = v });
+        ApplyResolvedPaddingEdge(element.Style.Get("padding-bottom"), parentW, parentH, em, rem, v => result = result with { Bottom = v });
+        ApplyResolvedPaddingEdge(element.Style.Get("padding-left"), parentW, parentH, em, rem, v => result = result with { Left = v });
+        return result;
+    }
+
+    private static void ApplyResolvedPaddingEdge(string? value, float parentW, float parentH, float em, float rem, Action<float> set)
+    {
+        if (TryParsePoints(value, parentW, parentH, em, rem, out var points))
+            set(points);
     }
 
     private static void ApplyEdge(string? value, YGEdge edge, bool isPadding, YogaNode node,
         float parentW, float parentH, float em, float rem)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
-        if (string.Equals(value.Trim(), "auto", StringComparison.OrdinalIgnoreCase) && !isPadding)
+        var t = value.Trim();
+        if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase) && !isPadding)
         {
             YGNodeStyleSetMarginAuto(node, edge);
             return;
         }
-        if (!TryParsePoints(value, parentW, parentH, em, rem, out var pts)) return;
+        if (TryParsePercent(t, out var pct))
+        {
+            if (isPadding) YGNodeStyleSetPaddingPercent(node, edge, pct);
+            else YGNodeStyleSetMarginPercent(node, edge, pct);
+            return;
+        }
+        if (!TryParsePoints(t, parentW, parentH, em, rem, out var pts)) return;
         if (isPadding) YGNodeStyleSetPadding(node, edge, pts);
         else YGNodeStyleSetMargin(node, edge, pts);
+    }
+
+    private static void ApplyInsetShorthand(string? value, YogaNode node, float parentW, float parentH, float em, float rem)
+    {
+        if (!TryParseInsetShorthand(value, out var parts)) return;
+        ApplyInset(parts.Top, YGEdge.Top, node, parentW, parentH, em, rem);
+        ApplyInset(parts.Right, YGEdge.Right, node, parentW, parentH, em, rem);
+        ApplyInset(parts.Bottom, YGEdge.Bottom, node, parentW, parentH, em, rem);
+        ApplyInset(parts.Left, YGEdge.Left, node, parentW, parentH, em, rem);
     }
 
     private static void ApplyInset(string? value, YGEdge edge, YogaNode node, float parentW, float parentH, float em, float rem)
@@ -859,6 +1106,78 @@ public sealed class LayoutEngine
     {
         result = ParseLength(value, parentW, parentH, em, rem);
         return !float.IsNaN(result);
+    }
+
+    private static bool TryParsePercent(string? value, out float percent)
+    {
+        percent = 0;
+        var text = value?.Trim();
+        return !string.IsNullOrEmpty(text) &&
+            text.EndsWith('%') &&
+            float.TryParse(text[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out percent);
+    }
+
+    private static bool TryParseAspectRatio(string value, out float ratio)
+    {
+        ratio = 0;
+        var parts = value.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 2 &&
+            float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) &&
+            float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var height) &&
+            width > 0 && height > 0)
+        {
+            ratio = width / height;
+            return true;
+        }
+        return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out ratio) && ratio > 0;
+    }
+
+    private static bool TryParseInsetShorthand(string? value, out InsetValues result)
+    {
+        result = default;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var parts = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length is < 1 or > 4) return false;
+
+        var top = parts[0];
+        var right = parts.Length > 1 ? parts[1] : top;
+        var bottom = parts.Length > 2 ? parts[2] : top;
+        var left = parts.Length > 3 ? parts[3] : right;
+        result = new InsetValues(top, right, bottom, left);
+        return true;
+    }
+
+    private static bool TryParseBoxShorthand(string? value, float parentW, float parentH, float em, float rem,
+        bool allowAuto, out BoxEdges result)
+    {
+        result = default;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var parts = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length is < 1 or > 4) return false;
+
+        Span<float> values = stackalloc float[4];
+        Span<bool> autos = stackalloc bool[4];
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (allowAuto && string.Equals(parts[i], "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                autos[i] = true;
+                continue;
+            }
+
+            if (!TryParsePoints(parts[i], parentW, parentH, em, rem, out values[i]))
+                return false;
+        }
+
+        var top = 0;
+        var right = parts.Length > 1 ? 1 : 0;
+        var bottom = parts.Length > 2 ? 2 : 0;
+        var left = parts.Length > 3 ? 3 : right;
+        result = new BoxEdges(
+            values[top], values[right], values[bottom], values[left],
+            autos[top], autos[right], autos[bottom], autos[left]);
+        return true;
     }
 
     private static float ParseLength(string? value, float parentW, float parentH, float em, float rem)
@@ -888,6 +1207,13 @@ public sealed class LayoutEngine
     {
         var v = ParseLength(css, parentW, parentH, em, rem);
         return float.IsNaN(v) ? fallback : v;
+    }
+
+    private static Rect Inset(Rect rect, float left, float top, float right, float bottom)
+    {
+        var width = Math.Max(0, rect.Width - left - right);
+        var height = Math.Max(0, rect.Height - top - bottom);
+        return new Rect(rect.X + left, rect.Y + top, width, height);
     }
 
     private static float GetFontSize(Element element)
@@ -928,4 +1254,16 @@ public sealed class LayoutEngine
                 YGNodeFreeRecursive(Root);
         }
     }
+
+    private readonly record struct BoxEdges(
+        float Top,
+        float Right,
+        float Bottom,
+        float Left,
+        bool TopAuto,
+        bool RightAuto,
+        bool BottomAuto,
+        bool LeftAuto);
+
+    private readonly record struct InsetValues(string Top, string Right, string Bottom, string Left);
 }

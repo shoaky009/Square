@@ -15,6 +15,8 @@ public abstract class Node : EventTarget
     {
         /// <summary>元素节点。</summary>
         Element = 1,
+        /// <summary>文本节点。</summary>
+        Text = 3,
         /// <summary>文档节点。</summary>
         Document = 9
     }

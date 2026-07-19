@@ -13,6 +13,8 @@ public interface ITextEditor
     int SelectionStart { get; }
     int SelectionLength { get; }
     string SelectedText { get; }
+    bool CanCopySelection { get; }
+    bool CanCutSelection { get; }
     Rect CaretRect { get; }
 
     void HandleTextInput(string text);
@@ -44,6 +46,11 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private readonly System.Diagnostics.Stopwatch _caretClock = System.Diagnostics.Stopwatch.StartNew();
 
     protected abstract bool IsMultiline { get; }
+    protected virtual bool CanEditText => true;
+    protected virtual bool PaintEditorChrome => true;
+    protected virtual bool ShowCaret => true;
+    protected virtual float TextPaddingX => ContentPaddingX;
+    protected virtual float TextPaddingY => ContentPaddingY;
 
     protected TextEditorBase()
     {
@@ -63,10 +70,14 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         set => SetProperty(nameof(Placeholder), value);
     }
 
+    protected virtual string DisplayValue => Value;
+
     public int CaretIndex => _caretIndex;
     public int SelectionStart => Math.Min(_caretIndex, _selectionAnchor);
     public int SelectionLength => Math.Abs(_caretIndex - _selectionAnchor);
     public string SelectedText => SelectionLength == 0 ? "" : Value.Substring(SelectionStart, SelectionLength);
+    public virtual bool CanCopySelection => true;
+    public virtual bool CanCutSelection => true;
     public Rect CaretRect => GetCaretRect();
     public Color SelectionBackground
     {
@@ -83,9 +94,11 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     public override void Paint(IRenderContext context)
     {
-        ControlDrawing.DrawInputFrame(context, this);
+        if (PaintEditorChrome) ControlDrawing.DrawInputFrame(context, this);
         EnsureCaretVisible();
-        context.PushClip(new Rect(Geometry.X + 1, Geometry.Y + 1, Math.Max(0, Geometry.Width - 2), Math.Max(0, Geometry.Height - 2)));
+        context.PushClip(PaintEditorChrome
+            ? new Rect(Geometry.X + 1, Geometry.Y + 1, Math.Max(0, Geometry.Width - 2), Math.Max(0, Geometry.Height - 2))
+            : Geometry);
 
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
@@ -102,21 +115,22 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         }
         else
         {
-            var selectionRects = GetSelectionRects();
+            var displayValue = DisplayValue;
+            var selectionRects = GetSelectionRects(displayValue);
             foreach (var rect in selectionRects)
                 context.FillRect(rect, new SolidColorBrush(selectionBackground));
-            ControlDrawing.DrawText(context, this, Value, GetTextOrigin(fontSize, lineHeight), textColor, fontSize, lineHeight);
+            ControlDrawing.DrawText(context, this, displayValue, GetTextOrigin(fontSize, lineHeight), textColor, fontSize, lineHeight);
             foreach (var rect in selectionRects)
             {
                 context.PushClip(rect);
                 ControlDrawing.DrawText(
-                    context, this, Value, GetTextOrigin(fontSize, lineHeight),
+                    context, this, displayValue, GetTextOrigin(fontSize, lineHeight),
                     selectionForeground, fontSize, lineHeight, useStyledColor: false);
                 context.PopClip();
             }
         }
 
-        if (IsFocused && SelectionLength == 0 && _caretOpacity > 0.01f)
+        if (ShowCaret && IsFocused && SelectionLength == 0 && _caretOpacity > 0.01f)
         {
             var caretColor = ControlDrawing.GetStyledColor(this, "caret-color", textColor);
             context.FillRect(CaretRect, new SolidColorBrush(Color.FromRgba(caretColor.R, caretColor.G, caretColor.B, (byte)Math.Clamp(_caretOpacity * 255f, 0f, 255f))));
@@ -127,22 +141,25 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     public void HandleTextInput(string text)
     {
-        if (!IsEnabled || string.IsNullOrEmpty(text)) return;
+        if (!CanEditText || !IsEnabled || string.IsNullOrEmpty(text)) return;
         text = NormalizeNewlines(text);
         if (!IsMultiline) text = text.Replace("\n", "");
+        text = FilterInput(text);
         if (text.Length == 0) return;
         ReplaceSelection(text);
     }
+
+    protected virtual string FilterInput(string text) => text;
 
     public void HandleKey(int keyCode, bool shift = false, bool control = false)
     {
         if (!IsEnabled) return;
         switch (keyCode)
         {
-            case 8:
+            case 8 when CanEditText:
                 Backspace();
                 return;
-            case 13 when IsMultiline:
+            case 13 when CanEditText && IsMultiline:
                 ReplaceSelection("\n");
                 return;
             case 35:
@@ -165,17 +182,25 @@ public abstract class TextEditorBase : UIElement, ITextEditor
                 return;
             case 38 or 40:
                 return;
-            case 46:
+            case 46 when CanEditText:
                 DeleteForward();
                 return;
             case 65 when control:
                 SelectAll();
                 return;
+            case 88 when CanEditText && control:
+                DeleteSelection();
+                return;
         }
 
-        if (!control && keyCode is >= 32 and <= 126)
+        if (CanEditText && !control && IsPrintableKeyCode(keyCode))
             HandleTextInput(((char)keyCode).ToString());
     }
+
+    private static bool IsPrintableKeyCode(int keyCode) => keyCode is
+        32 or
+        >= 48 and <= 57 or
+        >= 65 and <= 90;
 
     public void HandlePointerDown(Point point, bool extendSelection = false)
     {
@@ -219,7 +244,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     public bool DeleteSelection()
     {
-        if (SelectionLength == 0) return false;
+        if (!CanEditText || SelectionLength == 0) return false;
         ReplaceSelection("");
         return true;
     }
@@ -347,24 +372,25 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     private int HitTestIndex(Point point)
     {
-        var lines = GetLines(Value);
+        var displayValue = DisplayValue;
+        var lines = GetLines(displayValue);
         var lineHeight = GetLineHeight(GetFontSize());
         var lineIndex = IsMultiline
             ? Math.Clamp((int)MathF.Floor((point.Y - GetFirstLineTop(lineHeight)) / lineHeight), 0, lines.Count - 1)
             : 0;
         var line = lines[lineIndex];
-        var localX = point.X - Geometry.X - ContentPaddingX + _horizontalScroll;
-        return line.Start + HitTestLine(Value.AsSpan(line.Start, line.Length), localX);
+        var localX = point.X - Geometry.X - TextPaddingX + _horizontalScroll;
+        return line.Start + HitTestLine(displayValue.AsSpan(line.Start, line.Length), localX);
     }
 
-    private List<Rect> GetSelectionRects()
+    private List<Rect> GetSelectionRects(string displayValue)
     {
         var result = new List<Rect>();
         if (SelectionLength == 0) return result;
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
         var origin = GetTextOrigin(fontSize, lineHeight);
-        var lines = GetLines(Value);
+        var lines = GetLines(displayValue);
         var selectionEnd = SelectionStart + SelectionLength;
         for (var i = 0; i < lines.Count; i++)
         {
@@ -373,8 +399,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             var end = Math.Min(selectionEnd, line.End);
             var includesNewline = i < lines.Count - 1 && selectionEnd > line.End;
             if (end < start || end == start && !includesNewline) continue;
-            var x = MeasureRange(Value, line.Start, start - line.Start);
-            var width = MeasureRange(Value, start, end - start);
+            var x = MeasureRange(displayValue, line.Start, start - line.Start);
+            var width = MeasureRange(displayValue, start, end - start);
             if (includesNewline) width += 6;
             var visualLineBox = GetVisualLineBox(fontSize, lineHeight, i);
             result.Add(new Rect(
@@ -391,14 +417,15 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         EnsureCaretVisible();
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
-        var lines = GetLines(Value);
+        var displayValue = DisplayValue;
+        var lines = GetLines(displayValue);
         var lineIndex = FindLineIndex(lines, _caretIndex);
         var line = lines[lineIndex];
-        var width = MeasureRange(Value, line.Start, Math.Max(0, _caretIndex - line.Start));
+        var width = MeasureRange(displayValue, line.Start, Math.Max(0, _caretIndex - line.Start));
         var visualLineBox = GetVisualLineBox(fontSize, lineHeight, lineIndex);
         var inset = Math.Min(2f, Math.Max(0, (visualLineBox.Height - 1) / 2));
         return new Rect(
-            MathF.Round(Geometry.X + ContentPaddingX - _horizontalScroll + width),
+            MathF.Round(Geometry.X + TextPaddingX - _horizontalScroll + width),
             MathF.Round(visualLineBox.Top + inset),
             1,
             Math.Max(1, Math.Min(
@@ -411,12 +438,12 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var naturalLineHeight = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
         var textOffset = (lineHeight - naturalLineHeight) / 2f;
         return new Point(
-            Geometry.X + ContentPaddingX - _horizontalScroll,
+            Geometry.X + TextPaddingX - _horizontalScroll,
             GetFirstLineTop(lineHeight) + textOffset);
     }
 
     private float GetFirstLineTop(float lineHeight) => IsMultiline
-        ? Geometry.Y + ContentPaddingY
+        ? Geometry.Y + TextPaddingY
         : Geometry.Y + Math.Max(1, (Geometry.Height - lineHeight) / 2f);
 
     private (float Top, float Height) GetVisualLineBox(float fontSize, float lineHeight, int lineIndex)
@@ -438,8 +465,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             _horizontalScroll = 0;
             return;
         }
-        var width = MeasureRange(Value, 0, _caretIndex);
-        var viewport = Math.Max(0, Geometry.Width - ContentPaddingX * 2 - 2);
+        var width = MeasureRange(DisplayValue, 0, _caretIndex);
+        var viewport = Math.Max(0, Geometry.Width - TextPaddingX * 2 - 2);
         if (width - _horizontalScroll > viewport) _horizontalScroll = width - viewport;
         if (width - _horizontalScroll < 0) _horizontalScroll = width;
         _horizontalScroll = Math.Max(0, _horizontalScroll);
@@ -567,7 +594,73 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 public class Input : TextEditorBase
 {
     protected override bool IsMultiline => false;
+
+    public string Type
+    {
+        get => GetProperty<string>(nameof(Type)) ?? "text";
+        set => SetProperty(nameof(Type), NormalizeType(value));
+    }
+
+    protected override string DisplayValue => Type == "password" ? new string('*', Value.Length) : Value;
+
+    public override bool CanCopySelection => Type != "password";
+
+    public override bool CanCutSelection => Type != "password";
+
+    protected override string FilterInput(string text) => Type == "number" ? FilterNumberInput(text) : text;
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(Type) && Type == "number")
+            Value = NormalizeNumber(Value);
+        if (name == nameof(Value) && Type == "number")
+        {
+            var normalized = NormalizeNumber(Value);
+            if (normalized != Value) Value = normalized;
+        }
+    }
+
     public override Size Measure(Size availableSize) => new(200, 36);
+
+    private string FilterNumberInput(string text)
+    {
+        var current = Value.Remove(SelectionStart, SelectionLength);
+        var result = new System.Text.StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            var candidate = current.Insert(SelectionStart, result.ToString() + ch);
+            if (IsNumberCandidate(candidate)) result.Append(ch);
+        }
+        return result.ToString();
+    }
+
+    private static string NormalizeType(string? value)
+    {
+        value = value?.Trim().ToLowerInvariant();
+        return value is "password" or "number" ? value : "text";
+    }
+
+    private static string NormalizeNumber(string value)
+    {
+        var result = new System.Text.StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            var candidate = result.ToString() + ch;
+            if (IsNumberCandidate(candidate)) result.Append(ch);
+        }
+        return result.ToString();
+    }
+
+    private static bool IsNumberCandidate(string value)
+    {
+        if (value.Length == 0 || value == "-" || value == "." || value == "-.") return true;
+        return double.TryParse(
+            value,
+            System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out _);
+    }
 }
 
 public class TextArea : TextEditorBase

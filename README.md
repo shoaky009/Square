@@ -17,25 +17,31 @@ UI 使用 `.sqx` 描述，由 Roslyn Incremental Source Generator 在编译期�
 
 ## 当前能力
 
-仓库目前包含以下基础实现：
+仓库目前包含以下实现：
 
 - `.sqx` 词法分析、语法分析和 Source Generator
 - `template`、C# `script`、组件级 `style`
 - 强类型属性和 `ObservableValue<T>` / `ObservableCollection<T>`
-- `<Show>`、`<For>` 编译期结构原语
+- `<Show>`、`<For>`、`<Switch>`、`<Match>` 编译期结构原语
 - 默认插槽、具名插槽和 fallback
 - `ref` 元素引用和命令式元素 API
-- View、Text、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
-- CSS 选择器、级联、变量、伪类及基础样式
-- Box / Flex 布局基础
+- View、Text、ListItem、Link、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
+- CSS 选择器、级联、变量、伪类、属性选择器及基础样式
+- Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
-- Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板基础
+- Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板
 - X11 窗口宿主（Linux）、键盘、鼠标、滚轮、剪贴板（CLIPBOARD + PRIMARY）和 Software Renderer 上屏
-- Direct / Tunnel / Bubble 路由事件及强类型事件参数
+- DOM 风格事件系统：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent` + 捕获/冒泡
 - 内存路由、参数、通配符、嵌套布局和 Link
 - `Signal<T>`、`SignalHub` 和 Dispatcher 跨线程投递
 - 基础文本编辑、光标和选择区域
 - `Canvas.RequestFrame()` 下一帧重绘请求
+- CSS Animation / `@keyframes` 基础支持
+- Theme 系统（`ThemeProvider` 主题切换）
+- `Document` / `UIDocument` 文档模型（UI/Head/Body 壳）
+- `FontFace` / `FontFaceSet` CSS Font Loading 子集
+- 自定义指令 SDK（`[SqxDirective]` + `DirectiveCatalog` + `DirectiveEmitPipeline`）
+- `Reconciler` 批量脏标记与更新调度
 
 完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
 
@@ -127,11 +133,12 @@ Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏�
 | `:not(...)` | 部分支持（简单参数） |
 | 属性选择器 `[name]` / `[name=value]` | 基础支持 |
 | 颜色、背景、字体、边框、间距、尺寸 | 基础支持 |
-| `display: block` / `flex` | 基础支持 |
+| `display: block` / `flex` / `grid` | 基础支持 |
 | Flex 方向、对齐、伸缩、换行和 `gap` | 基础支持 |
-| `px`、`%`、`auto`、`rp`、`vw`、`vh` | 基础支持 |
-| Grid | 计划支持 |
-| CSS Animation / `@keyframes` | 计划支持 |
+| `px`、`%`、`auto`、`rp`、`vw`、`vh`、`rem`、`em` | 基础支持 |
+| Grid（`grid-template-*`、`fr`、`gap`、`grid-column`/`grid-row` span、`minmax()`、`grid-template-areas`） | 基础支持 |
+| CSS Animation / `@keyframes` | 基础支持 |
+| Theme 系统（`ThemeProvider` 主题切换） | 基础支持 |
 | 属性选择器高级操作符、伪元素 | 计划支持 |
 | Container Query、Subgrid | 长期计划 |
 
@@ -170,7 +177,7 @@ Square.SourceGenerator ──► C# Component
 |---|---|
 | `Square.Markup` | SQX 词法、语法和 AST |
 | `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
-| `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的平台无关路由事件协议 |
+| `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的 DOM 风格事件协议（`EventTarget`/`Event`/`addEventListener`/`dispatchEvent`） |
 | `Square.UI` | Element Tree、属性系统和元素操作 API |
 | `Square.Controls` | 控件、结构原语和基础动画时钟 |
 | `Square.Router` | 内存路由、历史、Link 和 RouteContext |

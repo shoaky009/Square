@@ -59,11 +59,14 @@ public sealed class CssEngine
 
         foreach (var (rule, specificity, _) in matched)
         {
+            var isSelectionRule = IsSelectionRule(rule.Selector);
             foreach (var decl in rule.Declarations)
             {
                 if (decl.Property.StartsWith("--", StringComparison.Ordinal)) continue;
                 var value = ResolveVariables(decl.Value);
-                ApplyDeclaration(Element, decl.Property, value,
+                var property = isSelectionRule ? MapSelectionProperty(decl.Property) : decl.Property;
+                if (property == null) continue;
+                ApplyDeclaration(Element, property, value,
                     decl.Important ? int.MaxValue : specificity);
             }
         }
@@ -307,9 +310,22 @@ public sealed class CssEngine
             "last-child" => Element.Parent?.Children[^1] == Element,
             "only-child" => Element.Parent?.Children.Count == 1,
             "root" => Element.Parent == null,
+            "selection" => true,
             _ => false
         };
     }
+
+    private static bool IsSelectionRule(ComplexSelector selector) => selector.Steps.Any(step =>
+        step.Selector.Parts.Any(part => part.Kind == SimpleSelectorKind.PseudoClass &&
+            string.Equals(part.Name, "selection", StringComparison.OrdinalIgnoreCase)));
+
+    private static string? MapSelectionProperty(string property) => property.ToLowerInvariant() switch
+    {
+        "background" or "background-color" => "selection-background-color",
+        "color" => "selection-color",
+        "selection-background" or "selection-background-color" or "selection-color" => property,
+        _ => null
+    };
 
     private static bool MatchSimpleArgument(Element Element, string selector)
     {

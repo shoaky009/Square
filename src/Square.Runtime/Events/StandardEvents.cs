@@ -74,7 +74,7 @@ public static class StandardEvents
     /// <summary>创建 pointermove 事件。</summary>
     public static Event CreatePointerMove() => Create(PointerMove);
     /// <summary>创建 wheel 事件。</summary>
-    public static Event CreateWheel() => Create(Wheel);
+    public static WheelEvent CreateWheel(float deltaX = 0, float deltaY = 0) => new(deltaX, deltaY);
     /// <summary>创建 keydown 事件。</summary>
     public static Event CreateKeyDown() => Create(KeyDown);
     /// <summary>创建 keyup 事件。</summary>

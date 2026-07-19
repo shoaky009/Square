@@ -186,7 +186,7 @@ public sealed class CssParser
             {
                 parts.Add(new SimpleSelector(SimpleSelectorKind.Id, Advance().Text));
             }
-            else if (token.Type == CssTokenType.Colon)
+            else if (token.Type is CssTokenType.Colon or CssTokenType.DoubleColon)
             {
                 Advance();
                 while (Peek().Type == CssTokenType.Whitespace) Advance();

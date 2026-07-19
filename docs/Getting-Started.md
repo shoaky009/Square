@@ -1,6 +1,6 @@
 # 入门指南
 
-> Version: 0.1
+> Version: 0.3
 > 配套：`Architecture.md`、`Sqx-Spec.md`、`API-Reference.md`
 
 本文带你从零创建一个 Square 桌面应用，涵盖项目搭建、SQX 组件编写、事件处理、样式和发布。

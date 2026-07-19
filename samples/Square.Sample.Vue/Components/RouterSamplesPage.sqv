@@ -1,0 +1,17 @@
+<template>
+  <View class="router-page sample-page">
+    <Text class="page-title" text="Router and component slots" />
+    <Router class="router-demo" initialPath="/">
+      <Route path="/" :component="RouteShell">
+        <Route path="/" :component="RouteHomePage" />
+        <Route path="users/:id" :component="RouteUserPage" />
+      </Route>
+      <Route path="*" :component="RouteHomePage" />
+    </Router>
+  </View>
+</template>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
+  .page-title { color: #202124; font-size: 18px; }
+  .router-demo { height: 180px; }
+</style>

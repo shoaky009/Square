@@ -1,6 +1,6 @@
 # API 参考
 
-> Version: 0.1
+> Version: 0.3  
 > 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`
 
 本文按模块列出 Square 框架的公共 API。所有类型签名基于源码，以 `命名空间.类型名` 组织。
