@@ -11,6 +11,12 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     private const int CoverageSampleCount = CoverageSampleGrid * CoverageSampleGrid;
 
     private Bitmap _bitmap;
+    private int _bitmapWidth;
+    private int _bitmapHeight;
+    private byte[] _bitmapPixels;
+    private int _bitmapStride;
+    private bool _hasClip;
+    private float _clipLeft, _clipTop, _clipRight, _clipBottom;
     private readonly float _dpiScale;
     private readonly PresentFrameHandler? _presentFrame;
     private readonly Stack<Rect> _clipStack = new();
@@ -18,12 +24,16 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     private Matrix3x2 _currentTransform = Matrix3x2.Identity;
     private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
-    public Size CanvasSize => new(_bitmap.Width, _bitmap.Height);
+    public Size CanvasSize => new(_bitmapWidth, _bitmapHeight);
     public float DpiScale => _dpiScale;
 
     internal RenderContext(Bitmap bitmap, float dpiScale, PresentFrameHandler? presentFrame = null)
     {
         _bitmap = bitmap;
+        _bitmapWidth = bitmap.Width;
+        _bitmapHeight = bitmap.Height;
+        _bitmapPixels = bitmap.Pixels;
+        _bitmapStride = bitmap.Stride;
         _dpiScale = dpiScale;
         _presentFrame = presentFrame;
     }
@@ -53,17 +63,35 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         if (_clipStack.Count > 0)
             rect = Rect.Intersect(_clipStack.Peek(), rect);
         _clipStack.Push(rect);
+        UpdateClipCache();
     }
 
     public void PushClip(Geometry geometry) => PushClip(geometry is RectGeometry rg ? rg.Rect : Rect.Empty);
-    public void PopClip() { if (_clipStack.Count > 0) _clipStack.Pop(); }
+    public void PopClip() { if (_clipStack.Count > 0) _clipStack.Pop(); UpdateClipCache(); }
+
+    private void UpdateClipCache()
+    {
+        if (_clipStack.Count > 0)
+        {
+            _hasClip = true;
+            var clip = _clipStack.Peek();
+            _clipLeft = clip.X;
+            _clipTop = clip.Y;
+            _clipRight = clip.Right;
+            _clipBottom = clip.Bottom;
+        }
+        else
+        {
+            _hasClip = false;
+        }
+    }
 
     public void Clear(Color color)
     {
         // BGRA packed fill — far cheaper than per-channel byte loop on full window
         var packed = PackBgra(color);
-        var pixels = MemoryMarshal.Cast<byte, uint>(_bitmap.Pixels.AsSpan());
-        pixels.Fill(packed);
+        var pixels = MemoryMarshal.Cast<byte, uint>(_bitmapPixels.AsSpan());
+        FillPackedBgra(pixels, packed);
     }
 
     public void Clear(Color color, Rect rect)
@@ -185,10 +213,14 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     {
         var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * _dpiScale));
         var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * _dpiScale));
-        if (_bitmap.Width == width && _bitmap.Height == height) return;
+        if (_bitmapWidth == width && _bitmapHeight == height) return;
 
         var previous = _bitmap;
         _bitmap = new Bitmap(width, height);
+        _bitmapWidth = width;
+        _bitmapHeight = height;
+        _bitmapPixels = _bitmap.Pixels;
+        _bitmapStride = _bitmap.Stride;
         previous.Dispose();
     }
 
@@ -209,15 +241,14 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 
         var x0 = Math.Max(0, (int)Math.Round(rect.X));
         var y0 = Math.Max(0, (int)Math.Round(rect.Y));
-        var x1 = Math.Min(_bitmap.Width, (int)Math.Round(rect.Right));
-        var y1 = Math.Min(_bitmap.Height, (int)Math.Round(rect.Bottom));
-        if (_clipStack.Count > 0)
+        var x1 = Math.Min(_bitmapWidth, (int)Math.Round(rect.Right));
+        var y1 = Math.Min(_bitmapHeight, (int)Math.Round(rect.Bottom));
+        if (_hasClip)
         {
-            var clip = _clipStack.Peek();
-            x0 = Math.Max(x0, (int)Math.Ceiling(clip.X));
-            y0 = Math.Max(y0, (int)Math.Ceiling(clip.Y));
-            x1 = Math.Min(x1, (int)Math.Floor(clip.Right));
-            y1 = Math.Min(y1, (int)Math.Floor(clip.Bottom));
+            x0 = Math.Max(x0, (int)Math.Ceiling(_clipLeft));
+            y0 = Math.Max(y0, (int)Math.Ceiling(_clipTop));
+            x1 = Math.Min(x1, (int)Math.Floor(_clipRight));
+            y1 = Math.Min(y1, (int)Math.Floor(_clipBottom));
         }
         if (x0 >= x1 || y0 >= y1) return;
 
@@ -226,17 +257,19 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             // Opaque solid fill via uint row writes
             var packed = (uint)(pb | (pg << 8) | (pr << 16) | (255 << 24));
             var width = x1 - x0;
+            var stride = _bitmapStride;
+            var pixels = _bitmapPixels;
             for (var y = y0; y < y1; y++)
             {
-                var row = MemoryMarshal.Cast<byte, uint>(_bitmap.GetRow(y));
-                row.Slice(x0, width).Fill(packed);
+                var row = MemoryMarshal.Cast<byte, uint>(pixels.AsSpan(y * stride, stride));
+                FillPackedBgra(row.Slice(x0, width), packed);
             }
             return;
         }
 
         for (int y = y0; y < y1; y++)
         {
-            var span = _bitmap.GetRow(y);
+            var span = _bitmapPixels.AsSpan(y * _bitmapStride, _bitmapStride);
             for (int x = x0; x < x1; x++)
             {
                 var idx = x * 4;
@@ -251,12 +284,22 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         }
     }
 
+    private static void FillPackedBgra(Span<uint> pixels, uint packed)
+    {
+        pixels.Fill(packed);
+    }
+
     private void BlendPixel(int x, int y, Color color)
     {
-        if (x < 0 || x >= _bitmap.Width || y < 0 || y >= _bitmap.Height) return;
-        if (_clipStack.Count > 0 && !_clipStack.Peek().Contains(x + 0.5f, y + 0.5f)) return;
-        var idx = y * _bitmap.Stride + x * 4;
-        var span = _bitmap.Pixels.AsSpan(idx, 4);
+        if ((uint)x >= (uint)_bitmapWidth || (uint)y >= (uint)_bitmapHeight) return;
+        if (_hasClip)
+        {
+            var px = x + 0.5f;
+            var py = y + 0.5f;
+            if (px < _clipLeft || px > _clipRight || py < _clipTop || py > _clipBottom) return;
+        }
+        var idx = y * _bitmapStride + x * 4;
+        var span = _bitmapPixels.AsSpan(idx, 4);
         var alpha = color.A;
         if (alpha == 0) return;
         var pr = (byte)(color.R * alpha / 255);
@@ -282,9 +325,8 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
 
     private Rect ClipRect(Rect rect)
     {
-        if (_clipStack.Count == 0) return rect;
-        var clip = _clipStack.Peek();
-        return Rect.Intersect(rect, clip);
+        if (!_hasClip) return rect;
+        return Rect.Intersect(rect, _clipStack.Peek());
     }
 
     private Point TransformPoint(Point point)
@@ -380,6 +422,22 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         var y0 = Math.Max(0, (int)MathF.Floor(cornerBounds.Y));
         var x1 = Math.Min(_bitmap.Width - 1, (int)MathF.Ceiling(cornerBounds.Right));
         var y1 = Math.Min(_bitmap.Height - 1, (int)MathF.Ceiling(cornerBounds.Bottom));
+        var outerCx = cornerBounds.X < rect.X + rx ? rect.X + rx : rect.Right - rx;
+        var outerCy = cornerBounds.Y < rect.Y + ry ? rect.Y + ry : rect.Bottom - ry;
+        var outerInvRx2 = 1f / (rx * rx);
+        var outerInvRy2 = 1f / (ry * ry);
+
+        var innerCx = 0f;
+        var innerCy = 0f;
+        var innerInvRx2 = 0f;
+        var innerInvRy2 = 0f;
+        if (hasInner && innerRx > 0 && innerRy > 0)
+        {
+            innerCx = cornerBounds.X < rect.X + rx ? inner.X + innerRx : inner.Right - innerRx;
+            innerCy = cornerBounds.Y < rect.Y + ry ? inner.Y + innerRy : inner.Bottom - innerRy;
+            innerInvRx2 = 1f / (innerRx * innerRx);
+            innerInvRy2 = 1f / (innerRy * innerRy);
+        }
 
         for (var y = y0; y <= y1; y++)
         {
@@ -392,8 +450,8 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                     {
                         var px = x + (sx + 0.5f) / CoverageSampleGrid;
                         var py = y + (sy + 0.5f) / CoverageSampleGrid;
-                        if (!IsInsideRoundedRect(px, py, rect, rx, ry)) continue;
-                        if (hasInner && IsInsideRoundedRect(px, py, inner, innerRx, innerRy)) continue;
+                        if (!IsInsideEllipse(px, py, outerCx, outerCy, outerInvRx2, outerInvRy2)) continue;
+                        if (hasInner && IsInsideInnerRoundedRectCorner(px, py, inner, innerRx, innerRy, innerCx, innerCy, innerInvRx2, innerInvRy2)) continue;
                         covered++;
                     }
                 }
@@ -402,15 +460,22 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         }
     }
 
-    private static bool IsInsideRoundedRect(float x, float y, Rect rect, float rx, float ry)
+    private static bool IsInsideEllipse(float x, float y, float cx, float cy, float invRx2, float invRy2)
     {
-        if (x < rect.X || x > rect.Right || y < rect.Y || y > rect.Bottom) return false;
-        if (rx <= 0 || ry <= 0) return true;
-        var cx = Math.Clamp(x, rect.X + rx, rect.Right - rx);
-        var cy = Math.Clamp(y, rect.Y + ry, rect.Bottom - ry);
         var dx = x - cx;
         var dy = y - cy;
-        return dx * dx / (rx * rx) + dy * dy / (ry * ry) <= 1f;
+        return dx * dx * invRx2 + dy * dy * invRy2 <= 1f;
+    }
+
+    private static bool IsInsideInnerRoundedRectCorner(
+        float x, float y, Rect inner, float innerRx, float innerRy,
+        float cornerCx, float cornerCy, float invRx2, float invRy2)
+    {
+        if (x < inner.X || x > inner.Right || y < inner.Y || y > inner.Bottom) return false;
+        var inHorizontalBody = x >= inner.X + innerRx && x <= inner.Right - innerRx;
+        var inVerticalBody = y >= inner.Y + innerRy && y <= inner.Bottom - innerRy;
+        if (inHorizontalBody || inVerticalBody) return true;
+        return IsInsideEllipse(x, y, cornerCx, cornerCy, invRx2, invRy2);
     }
 
     private void DrawRectPixels(Rect rect, float width, Color color)
@@ -510,74 +575,143 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
             return;
         }
 
-        // Stroke: 4x4 samples only on the ring bounding box.
         var halfStroke = strokeWidth / 2f;
         var outerRx = rx + halfStroke;
         var outerRy = ry + halfStroke;
         var innerRx = Math.Max(0, rx - halfStroke);
         var innerRy = Math.Max(0, ry - halfStroke);
-        var x0 = Math.Max(0, (int)Math.Floor(center.X - outerRx - 1));
-        var x1 = Math.Min(_bitmap.Width - 1, (int)Math.Ceiling(center.X + outerRx + 1));
         var y0 = Math.Max(0, (int)Math.Floor(center.Y - outerRy - 1));
         var y1 = Math.Min(_bitmap.Height - 1, (int)Math.Ceiling(center.Y + outerRy + 1));
-        var outerRx2 = outerRx * outerRx;
-        var outerRy2 = outerRy * outerRy;
-        var innerRx2 = innerRx * innerRx;
-        var innerRy2 = innerRy * innerRy;
-        var hasInner = strokeWidth > 0 && innerRx > 0 && innerRy > 0;
+        var invOuterRy2 = 1f / (outerRy * outerRy);
+        var invInnerRy2 = innerRy > 0 ? 1f / (innerRy * innerRy) : 0f;
+        var hasInner = innerRx > 0 && innerRy > 0;
 
         for (var y = y0; y <= y1; y++)
         {
-            for (var x = x0; x <= x1; x++)
+            var dy = y + 0.5f - center.Y;
+            var outerY = dy * dy * invOuterRy2;
+            if (outerY >= 1f)
             {
-                var covered = 0;
-                for (var sy = 0; sy < CoverageSampleGrid; sy++)
-                {
-                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
-                    {
-                        var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
-                        var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
-                        var insideOuter = px * px / outerRx2 + py * py / outerRy2 <= 1;
-                        var insideInner = hasInner && px * px / innerRx2 + py * py / innerRy2 < 1;
-                        if (insideOuter && !insideInner) covered++;
-                    }
-                }
-                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+                BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, (int)MathF.Floor(center.X), y);
+                continue;
+            }
+
+            var outerExtent = outerRx * MathF.Sqrt(1f - outerY);
+            var outerLeft = center.X - outerExtent;
+            var outerRight = center.X + outerExtent;
+
+            if (!hasInner || dy * dy * invInnerRy2 >= 1f)
+            {
+                FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, outerLeft, outerRight, y);
+                continue;
+            }
+
+            var innerExtent = innerRx * MathF.Sqrt(1f - dy * dy * invInnerRy2);
+            var innerLeft = center.X - innerExtent;
+            var innerRight = center.X + innerExtent;
+
+            FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, outerLeft, innerLeft, y);
+            FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, innerRight, outerRight, y);
+        }
+    }
+
+    private void FillEllipseSpanWithEdges(
+        Point center, float outerRx, float outerRy, float innerRx, float innerRy, bool hasInner,
+        Color color, float left, float right, int y)
+    {
+        var fillStart = Math.Max(0, (int)MathF.Ceiling(left));
+        var fillEnd = Math.Min(_bitmap.Width, (int)MathF.Floor(right));
+
+        if (fillStart < fillEnd)
+            BlendRect(new Rect(fillStart, y, fillEnd - fillStart, 1), color);
+
+        var edgeLeft = fillStart - 1;
+        var edgeRight = fillEnd;
+        BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, edgeLeft, y);
+        if (edgeRight != edgeLeft)
+            BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, edgeRight, y);
+    }
+
+    private void BlendEllipseStrokeEdgePixel(
+        Point center, float outerRx, float outerRy, float innerRx, float innerRy, bool hasInner,
+        Color color, int x, int y)
+    {
+        if (x < 0 || x >= _bitmap.Width || y < 0 || y >= _bitmap.Height) return;
+        var invOuterRx2 = 1f / (outerRx * outerRx);
+        var invOuterRy2 = 1f / (outerRy * outerRy);
+        var invInnerRx2 = hasInner ? 1f / (innerRx * innerRx) : 0f;
+        var invInnerRy2 = hasInner ? 1f / (innerRy * innerRy) : 0f;
+
+        var covered = 0;
+        for (var sy = 0; sy < CoverageSampleGrid; sy++)
+        {
+            var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
+            var outerY = py * py * invOuterRy2;
+            if (outerY > 1f) continue;
+            var innerY = hasInner ? py * py * invInnerRy2 : 0f;
+            for (var sx = 0; sx < CoverageSampleGrid; sx++)
+            {
+                var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
+                var insideOuter = px * px * invOuterRx2 + outerY <= 1f;
+                var insideInner = hasInner && px * px * invInnerRx2 + innerY < 1f;
+                if (insideOuter && !insideInner) covered++;
             }
         }
+        BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
     }
 
     private void FillEllipseScanline(Point center, float rx, float ry, Color color)
     {
-        // Fast scanline + 4x4 edge AA.
-        var halfStroke = 0f;
-        var outerRx = rx + halfStroke;
-        var outerRy = ry + halfStroke;
-        var x0 = Math.Max(0, (int)Math.Floor(center.X - outerRx - 1));
-        var x1 = Math.Min(_bitmap.Width - 1, (int)Math.Ceiling(center.X + outerRx + 1));
-        var y0 = Math.Max(0, (int)Math.Floor(center.Y - outerRy - 1));
-        var y1 = Math.Min(_bitmap.Height - 1, (int)Math.Ceiling(center.Y + outerRy + 1));
-        var outerRx2 = outerRx * outerRx;
-        var outerRy2 = outerRy * outerRy;
-        if (outerRx2 <= 0 || outerRy2 <= 0) return;
+        var y0 = Math.Max(0, (int)Math.Floor(center.Y - ry - 1));
+        var y1 = Math.Min(_bitmap.Height - 1, (int)Math.Ceiling(center.Y + ry + 1));
+        var invRy2 = 1f / (ry * ry);
+        if (float.IsInfinity(invRy2) || float.IsNaN(invRy2)) return;
 
         for (var y = y0; y <= y1; y++)
         {
-            for (var x = x0; x <= x1; x++)
+            var dy = y + 0.5f - center.Y;
+            var normalizedY = dy * dy * invRy2;
+            if (normalizedY >= 1f)
             {
-                var covered = 0;
-                for (var sy = 0; sy < CoverageSampleGrid; sy++)
-                {
-                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
-                    {
-                        var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
-                        var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
-                        if (px * px / outerRx2 + py * py / outerRy2 <= 1) covered++;
-                    }
-                }
-                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+                BlendEllipseEdgePixel(center, rx, ry, color, (int)MathF.Floor(center.X), y);
+                continue;
+            }
+
+            var extent = rx * MathF.Sqrt(1f - normalizedY);
+            var left = center.X - extent;
+            var right = center.X + extent;
+            var fillStart = Math.Max(0, (int)MathF.Ceiling(left));
+            var fillEnd = Math.Min(_bitmap.Width, (int)MathF.Floor(right));
+
+            if (fillStart < fillEnd)
+                BlendRect(new Rect(fillStart, y, fillEnd - fillStart, 1), color);
+
+            var edgeLeft = fillStart - 1;
+            var edgeRight = fillEnd;
+            BlendEllipseEdgePixel(center, rx, ry, color, edgeLeft, y);
+            if (edgeRight != edgeLeft)
+                BlendEllipseEdgePixel(center, rx, ry, color, edgeRight, y);
+        }
+    }
+
+    private void BlendEllipseEdgePixel(Point center, float rx, float ry, Color color, int x, int y)
+    {
+        if (x < 0 || x >= _bitmap.Width || y < 0 || y >= _bitmap.Height) return;
+        var invRx2 = 1f / (rx * rx);
+        var invRy2 = 1f / (ry * ry);
+        var covered = 0;
+        for (var sy = 0; sy < CoverageSampleGrid; sy++)
+        {
+            var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
+            var normalizedY = py * py * invRy2;
+            if (normalizedY > 1f) continue;
+            for (var sx = 0; sx < CoverageSampleGrid; sx++)
+            {
+                var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
+                if (px * px * invRx2 + normalizedY <= 1f) covered++;
             }
         }
+        BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
     }
 
     private void BlendPixelCoverage(int x, int y, Color color, int coveredSamples, int sampleCount)
@@ -695,6 +829,9 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         var sh = (int)Math.Round(srcRect.Height);
         if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
 
+        if (dw == sw && dh == sh && TryBlendBitmapUnscaled(src, sx0, sy0, sw, sh, dx0, dy0))
+            return;
+
         for (int dy = 0; dy < dh; dy++)
         {
             var sy = sy0 + dy * sh / dh;
@@ -733,6 +870,65 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                     dstSpan[di + 3] = outA;
                 }
             }
+        }
+    }
+
+    private bool TryBlendBitmapUnscaled(Bitmap src, int sx0, int sy0, int width, int height, int dx0, int dy0)
+    {
+        var copyX0 = Math.Max(0, Math.Max(-dx0, -sx0));
+        var copyY0 = Math.Max(0, Math.Max(-dy0, -sy0));
+        var copyX1 = Math.Min(width, Math.Min(_bitmap.Width - dx0, src.Width - sx0));
+        var copyY1 = Math.Min(height, Math.Min(_bitmap.Height - dy0, src.Height - sy0));
+        if (copyX0 >= copyX1 || copyY0 >= copyY1) return true;
+
+        var copyWidthBytes = (copyX1 - copyX0) * 4;
+        for (var y = copyY0; y < copyY1; y++)
+        {
+            var srcOffset = (sy0 + y) * src.Stride + (sx0 + copyX0) * 4;
+            var dstOffset = (dy0 + y) * _bitmap.Stride + (dx0 + copyX0) * 4;
+            var srcSpan = src.Pixels.AsSpan(srcOffset, copyWidthBytes);
+            var dstSpan = _bitmap.Pixels.AsSpan(dstOffset, copyWidthBytes);
+
+            if (IsOpaqueBgraRow(srcSpan))
+                srcSpan.CopyTo(dstSpan);
+            else
+                BlendBitmapRow(srcSpan, dstSpan);
+        }
+        return true;
+    }
+
+    private static bool IsOpaqueBgraRow(ReadOnlySpan<byte> row)
+    {
+        for (var i = 3; i < row.Length; i += 4)
+            if (row[i] != 255) return false;
+        return true;
+    }
+
+    private static void BlendBitmapRow(ReadOnlySpan<byte> srcSpan, Span<byte> dstSpan)
+    {
+        for (var i = 0; i < srcSpan.Length; i += 4)
+        {
+            var sa = srcSpan[i + 3];
+            if (sa == 0) continue;
+            var sb = srcSpan[i];
+            var sg = srcSpan[i + 1];
+            var sr = srcSpan[i + 2];
+            if (sa == 255)
+            {
+                dstSpan[i] = sb;
+                dstSpan[i + 1] = sg;
+                dstSpan[i + 2] = sr;
+                dstSpan[i + 3] = 255;
+                continue;
+            }
+
+            var da = dstSpan[i + 3];
+            var outA = (byte)(sa + da * (255 - sa) / 255);
+            if (outA == 0) continue;
+            dstSpan[i] = (byte)((sb * 255 + dstSpan[i] * da * (255 - sa) / 255) / outA);
+            dstSpan[i + 1] = (byte)((sg * 255 + dstSpan[i + 1] * da * (255 - sa) / 255) / outA);
+            dstSpan[i + 2] = (byte)((sr * 255 + dstSpan[i + 2] * da * (255 - sa) / 255) / outA);
+            dstSpan[i + 3] = outA;
         }
     }
 

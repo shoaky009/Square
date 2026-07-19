@@ -100,6 +100,9 @@ public abstract class UIElement : Element
     }
 
     /// <inheritdoc />
+    public override bool HasCustomMeasure => true;
+
+    /// <inheritdoc />
     public override Size Measure(Size availableSize)
     {
         var w = ConstrainWidth(availableSize.Width);

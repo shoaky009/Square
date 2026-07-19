@@ -29,7 +29,13 @@ public sealed class DisplayTree
 
     private static void BuildChildren(DisplayNode parent, Element element)
     {
-        foreach (var child in element.Children.OrderBy(child => child.ZIndex))
+        var children = element.Children;
+        if (children.Count == 0) return;
+        var ordered = new List<Element>(children.Count);
+        for (var i = 0; i < children.Count; i++)
+            ordered.Add(children[i]);
+        ordered.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
+        foreach (var child in ordered)
         {
             if (!child.IsVisible) continue;
             var node = new DisplayNode { Element = child, Bounds = child.Geometry, IsDirty = true };
@@ -136,7 +142,12 @@ public sealed class DisplayTree
     /// </summary>
     public static List<Rect> MergeDirtyRects(List<Rect> rects)
     {
-        var list = new List<Rect>(rects.Where(r => !r.IsEmpty));
+        var list = new List<Rect>(rects.Count);
+        for (var i = 0; i < rects.Count; i++)
+        {
+            if (!rects[i].IsEmpty)
+                list.Add(rects[i]);
+        }
         if (list.Count <= 1) return list;
         var changed = true;
         while (changed)

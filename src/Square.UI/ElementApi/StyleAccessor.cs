@@ -9,6 +9,9 @@ namespace Square.UI.ElementApi;
 /// </summary>
 public sealed class StyleAccessor
 {
+    private static readonly Dictionary<string, string> NormalizedPropertyCache = new(StringComparer.Ordinal);
+    private static readonly object NormalizeGate = new();
+
     private readonly Element _owner;
     private Dictionary<string, StyleEntry>? _styles;
 
@@ -169,11 +172,62 @@ public sealed class StyleAccessor
     /// </summary>
     public static string NormalizePropertyName(string property)
     {
-        if (string.IsNullOrWhiteSpace(property)) return property ?? "";
-        property = property.Trim();
+        if (string.IsNullOrEmpty(property)) return property ?? "";
+        property = TrimPropertyName(property);
+        if (property.Length == 0) return "";
         if (property.StartsWith("--", StringComparison.Ordinal))
             return property;
 
+        if (IsAlreadyNormalizedPropertyName(property))
+            return property;
+
+        lock (NormalizeGate)
+        {
+            if (NormalizedPropertyCache.TryGetValue(property, out var cached))
+                return cached;
+        }
+
+        var normalized = NormalizePropertyNameSlow(property);
+        lock (NormalizeGate)
+        {
+            if (NormalizedPropertyCache.Count < 512)
+                NormalizedPropertyCache[property] = normalized;
+        }
+        return normalized;
+    }
+
+    private static bool IsAlreadyNormalizedPropertyName(string property)
+    {
+        for (var i = 0; i < property.Length; i++)
+        {
+            var c = property[i];
+            if (c is >= 'A' and <= 'Z') return false;
+            if (c <= ' ' || c == '\u007f') return false;
+            if (c > '\u007f') return false;
+        }
+        return true;
+    }
+
+    private static string TrimPropertyName(string property)
+    {
+        var start = 0;
+        var end = property.Length - 1;
+
+        while (start <= end && IsPropertyNameTrimChar(property[start])) start++;
+        while (end >= start && IsPropertyNameTrimChar(property[end])) end--;
+
+        if (start == 0 && end == property.Length - 1) return property;
+        return start > end ? "" : property[start..(end + 1)];
+    }
+
+    private static bool IsPropertyNameTrimChar(char c)
+    {
+        if (c <= ' ' || c == '\u007f') return true;
+        return c > '\u007f' && char.IsWhiteSpace(c);
+    }
+
+    private static string NormalizePropertyNameSlow(string property)
+    {
         // 已含连字符：统一小写
         if (property.Contains('-', StringComparison.Ordinal))
             return property.ToLowerInvariant();

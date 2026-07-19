@@ -694,6 +694,28 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void FillRectOpaqueCoversSimdTailPixels()
+    {
+        var ctx = CreateContext(37, 3);
+        ctx.Clear(Color.Black);
+
+        ctx.FillRect(new Rect(1, 1, 35, 1), new SolidColorBrush(Color.Blue));
+
+        var bmp = ctx.GetBitmap();
+        for (var x = 1; x < 36; x++)
+        {
+            var idx = bmp.Stride + x * 4;
+            Assert.Equal(255, bmp.Pixels[idx]);
+            Assert.Equal(0, bmp.Pixels[idx + 1]);
+            Assert.Equal(0, bmp.Pixels[idx + 2]);
+            Assert.Equal(255, bmp.Pixels[idx + 3]);
+        }
+
+        Assert.Equal(0, bmp.Pixels[bmp.Stride]);
+        Assert.Equal(0, bmp.Pixels[bmp.Stride + 36 * 4]);
+    }
+
+    [Fact]
     public void FillRectSemiTransparent()
     {
         var ctx = CreateContext(10, 10);
@@ -778,6 +800,22 @@ public class SoftwareRendererTests
 
         Assert.Contains(AlphaValues(ellipseContext.GetBitmap()), alpha => alpha is > 0 and < 255);
         Assert.Contains(AlphaValues(lineContext.GetBitmap()), alpha => alpha is > 0 and < 255);
+    }
+
+    [Fact]
+    public void EllipseStrokeHasAntialiasedEdgesAndOpenCenter()
+    {
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+
+        context.DrawGeometry(
+            new EllipseGeometry(new Point(16, 16), 10, 8),
+            Pen.FromColor(Color.White, 2));
+
+        var bitmap = context.GetBitmap();
+        var center = 16 * bitmap.Stride + 16 * 4;
+        Assert.Equal(0, bitmap.Pixels[center + 3]);
+        Assert.Contains(AlphaValues(bitmap), alpha => alpha is > 0 and < 255);
     }
 
     [Fact]
@@ -911,5 +949,55 @@ public class SoftwareRendererTests
         var bmp = ctx.GetBitmap();
         Assert.Equal(255, bmp.Pixels[5 * bmp.Stride + 5 * 4]);     // B
         Assert.Equal(255, bmp.Pixels[5 * bmp.Stride + 5 * 4 + 3]); // A
+    }
+
+    [Fact]
+    public void DrawImageUnscaledOpaqueClipsAndCopiesRows()
+    {
+        var ctx = CreateContext(6, 4);
+        ctx.Clear(Color.Black);
+        var src = new Bitmap(4, 3);
+        for (var y = 0; y < src.Height; y++)
+        for (var x = 0; x < src.Width; x++)
+        {
+            var idx = y * src.Stride + x * 4;
+            src.Pixels[idx] = (byte)(10 + x);
+            src.Pixels[idx + 1] = (byte)(20 + y);
+            src.Pixels[idx + 2] = 30;
+            src.Pixels[idx + 3] = 255;
+        }
+
+        ctx.DrawImage(src, new Rect(4, 1, 4, 3));
+
+        var bmp = ctx.GetBitmap();
+        var copied = 2 * bmp.Stride + 5 * 4;
+        Assert.Equal(11, bmp.Pixels[copied]);
+        Assert.Equal(21, bmp.Pixels[copied + 1]);
+        Assert.Equal(30, bmp.Pixels[copied + 2]);
+        Assert.Equal(255, bmp.Pixels[copied + 3]);
+
+        Assert.Equal(0, bmp.Pixels[2 * bmp.Stride + 3 * 4]);
+    }
+
+    [Fact]
+    public void DrawImageUnscaledSemiTransparentBlendsRows()
+    {
+        var ctx = CreateContext(4, 4);
+        ctx.Clear(Color.Black);
+        var src = new Bitmap(2, 2);
+        for (var i = 0; i < src.Pixels.Length; i += 4)
+        {
+            src.Pixels[i] = 0;
+            src.Pixels[i + 1] = 0;
+            src.Pixels[i + 2] = 255;
+            src.Pixels[i + 3] = 128;
+        }
+
+        ctx.DrawImage(src, new Rect(1, 1, 2, 2));
+
+        var bmp = ctx.GetBitmap();
+        var idx = bmp.Stride + 4;
+        Assert.Equal(255, bmp.Pixels[idx + 3]);
+        Assert.Equal(255, bmp.Pixels[idx + 2]);
     }
 }

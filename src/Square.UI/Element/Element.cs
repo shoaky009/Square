@@ -529,6 +529,9 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>子节点移除时的内部通知。</summary>
     internal virtual void OnChildRemoved(Element child) { }
 
+    /// <summary>是否拥有自定义 Measure 实现（供布局引擎判断是否需要调用）。</summary>
+    public virtual bool HasCustomMeasure => false;
+
     /// <summary>测量期望尺寸（Square 布局协议）。</summary>
     public virtual Size Measure(Size availableSize) => Size.Zero;
 

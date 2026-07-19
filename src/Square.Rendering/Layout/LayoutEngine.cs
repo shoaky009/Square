@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Buffers;
 using Facebook.Yoga;
 using Square.Graphics;
 using Square.UI;
@@ -186,24 +187,32 @@ public sealed class LayoutEngine
         ApplyPosition(element, node, parentW, parentH, em, rem);
         ApplyOverflow(element, node);
 
-        var children = element.Children.Where(c => c.IsVisible).ToArray();
-        if (children.Length == 0)
+        var (visibleChildren, visibleCount) = RentVisibleChildren(element);
+        try
         {
-            YGNodeSetMeasureFunc(node, LeafMeasureCallback);
-            ApplyIntrinsicLeafMinSize(element, node);
-        }
-        else
-        {
-            var refW = ResolveRefSize(element.Style.Get("width"), parentW, parentH, em, rem, parentW);
-            var refH = ResolveRefSize(element.Style.Get("height"), parentW, parentH, em, rem, parentH);
-            uint i = 0;
-            foreach (var child in children)
+            if (visibleCount == 0)
             {
-                var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
-                if (element.IsScrollContainer() && child.Style.Get("flex-shrink") == null)
-                    YGNodeStyleSetFlexShrink(childNode, 0);
-                YGNodeInsertChild(node, childNode, i++);
+                YGNodeSetMeasureFunc(node, LeafMeasureCallback);
+                ApplyIntrinsicLeafMinSize(element, node);
             }
+            else
+            {
+                var refW = ResolveRefSize(element.Style.Get("width"), parentW, parentH, em, rem, parentW);
+                var refH = ResolveRefSize(element.Style.Get("height"), parentW, parentH, em, rem, parentH);
+                uint i = 0;
+                for (var j = 0; j < visibleCount; j++)
+                {
+                    var child = visibleChildren[j];
+                    var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
+                    if (element.IsScrollContainer() && child.Style.Get("flex-shrink") == null)
+                        YGNodeStyleSetFlexShrink(childNode, 0);
+                    YGNodeInsertChild(node, childNode, i++);
+                }
+            }
+        }
+        finally
+        {
+            ReturnVisibleChildren(visibleChildren);
         }
 
         return node;
@@ -211,21 +220,13 @@ public sealed class LayoutEngine
 
     private static void ApplyIntrinsicLeafMinSize(Element element, YogaNode node)
     {
-        if (!HasCustomMeasure(element)) return;
+        if (!element.HasCustomMeasure) return;
 
         var measured = element.Measure(new Size(float.MaxValue, float.MaxValue));
         if (element.Style.Get("min-width") == null && element.Style.Get("width") == null && IsFiniteLayoutSize(measured.Width))
             YGNodeStyleSetMinWidth(node, measured.Width);
         if (element.Style.Get("min-height") == null && element.Style.Get("height") == null && IsFiniteLayoutSize(measured.Height))
             YGNodeStyleSetMinHeight(node, measured.Height);
-    }
-
-    private static bool HasCustomMeasure(Element element)
-    {
-        var method = element.GetType().GetMethod(nameof(Element.Measure), [typeof(Size)]);
-        if (method == null) return false;
-        var declaringType = method.DeclaringType;
-        return declaringType != typeof(Element) && declaringType != typeof(UIElement);
     }
 
     private static bool IsFiniteLayoutSize(float value) =>
@@ -307,13 +308,20 @@ public sealed class LayoutEngine
 
         element.Arrange(rect);
 
-        var children = element.Children.Where(c => c.IsVisible).ToArray();
-        var count = (int)YGNodeGetChildCount(yoga);
-        for (var i = 0; i < children.Length && i < count; i++)
+        var (visibleChildren, visibleCount) = RentVisibleChildren(element);
+        try
         {
-            var childYoga = YGNodeGetChild(yoga, (nuint)i);
-            if (childYoga != null)
-                ApplyYogaLayout(children[i], childYoga, absX, absY);
+            var count = (int)YGNodeGetChildCount(yoga);
+            for (var i = 0; i < visibleCount && i < count; i++)
+            {
+                var childYoga = YGNodeGetChild(yoga, (nuint)i);
+                if (childYoga != null)
+                    ApplyYogaLayout(visibleChildren[i], childYoga, absX, absY);
+            }
+        }
+        finally
+        {
+            ReturnVisibleChildren(visibleChildren);
         }
         UpdateScrollContentSize(element, rect);
     }
@@ -328,8 +336,9 @@ public sealed class LayoutEngine
 
         var right = rect.Width;
         var bottom = rect.Height;
-        foreach (var child in element.Children.Where(child => child.IsVisible))
+        foreach (var child in element.Children)
         {
+            if (!child.IsVisible) continue;
             right = Math.Max(right, child.Geometry.Right - rect.X);
             bottom = Math.Max(bottom, child.Geometry.Bottom - rect.Y);
         }
@@ -599,9 +608,9 @@ public sealed class LayoutEngine
         for (int i = 0; i < rowCount; i++)
             effectiveRows[i] = rows.Length > i ? rows[i] : Math.Max(0, available.Height - gap * Math.Max(0, rowCount - 1)) / rowCount;
 
-        var visibleChildren = element.Children.Where(child => child.IsVisible).ToArray();
+        var visibleChildren = CollectVisibleChildrenList(element);
         var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
-        for (var childIndex = 0; childIndex < visibleChildren.Length; childIndex++)
+        for (var childIndex = 0; childIndex < visibleChildren.Count; childIndex++)
         {
             var child = visibleChildren[childIndex];
             var cs = GetComputedStyle(child, available.Width, available.Height);
@@ -639,9 +648,9 @@ public sealed class LayoutEngine
         for (int i = 0; i < rowCount; i++)
             rowY[i + 1] = rowY[i] + (rows.Length > i ? rows[i] : Math.Max(0, inner.Height - gap * Math.Max(0, rowCount - 1)) / rowCount) + gap;
 
-        var visibleChildren = element.Children.Where(child => child.IsVisible).ToArray();
+        var visibleChildren = CollectVisibleChildrenList(element);
         var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
-        for (var childIndex = 0; childIndex < visibleChildren.Length; childIndex++)
+        for (var childIndex = 0; childIndex < visibleChildren.Count; childIndex++)
         {
             var child = visibleChildren[childIndex];
             var cs = GetComputedStyle(child, inner.Width, inner.Height);
@@ -722,8 +731,9 @@ public sealed class LayoutEngine
             if (keyword is not ("min-content" or "max-content" or "fit-content")) continue;
             var trackIndex = i + 1;
             var size = 0f;
-            foreach (var child in element.Children.Where(child => child.IsVisible))
+            foreach (var child in element.Children)
             {
+                if (!child.IsVisible) continue;
                 var childStyle = GetComputedStyle(child, float.NaN, float.NaN);
                 var childTrack = isColumns ? childStyle.GridColumn : childStyle.GridRow;
                 if (childTrack != trackIndex && childTrack != 1) continue;
@@ -745,8 +755,9 @@ public sealed class LayoutEngine
             if (size <= 0)
             {
                 var idx = 0;
-                foreach (var child in element.Children.Where(c => c.IsVisible))
+                foreach (var child in element.Children)
                 {
+                    if (!child.IsVisible) continue;
                     var cs = GetComputedStyle(child, float.NaN, float.NaN);
                     var explicitTrack = isColumns
                         ? child.Style.Get("grid-column") != null || !string.IsNullOrEmpty(cs.GridArea)
@@ -1242,6 +1253,45 @@ public sealed class LayoutEngine
         element.ClearLayoutDirty();
         foreach (var child in element.Children)
             ClearDirtyRecursive(child);
+    }
+
+    private static int CollectVisibleChildren(Element element, Span<Element> destination)
+    {
+        var count = 0;
+        foreach (var child in element.Children)
+        {
+            if (child.IsVisible)
+                destination[count++] = child;
+        }
+        return count;
+    }
+
+    private static (Element[] Array, int Count) RentVisibleChildren(Element element)
+    {
+        var total = 0;
+        foreach (var _ in element.Children) total++;
+        var array = ArrayPool<Element>.Shared.Rent(Math.Max(1, total));
+        var count = 0;
+        foreach (var child in element.Children)
+        {
+            if (child.IsVisible)
+                array[count++] = child;
+        }
+        return (array, count);
+    }
+
+    private static void ReturnVisibleChildren(Element[] array) =>
+        ArrayPool<Element>.Shared.Return(array);
+
+    private static List<Element> CollectVisibleChildrenList(Element element)
+    {
+        var result = new List<Element>();
+        foreach (var child in element.Children)
+        {
+            if (child.IsVisible)
+                result.Add(child);
+        }
+        return result;
     }
 
     private sealed class YogaSession : IDisposable

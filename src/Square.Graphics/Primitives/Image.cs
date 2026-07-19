@@ -22,8 +22,8 @@ public abstract class Image : IDisposable
 
 public sealed class Bitmap : Image
 {
-    public byte[] Pixels { get; }
-    public int Stride { get; }
+    public readonly byte[] Pixels;
+    public readonly int Stride;
 
     public Bitmap(int width, int height)
     {
