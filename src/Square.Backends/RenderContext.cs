@@ -957,11 +957,18 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
 
         var x = (int)Math.Round(origin.X);
         var y = (int)Math.Round(origin.Y);
+        var maxWidth = textLayout.MaxSize.Width;
+        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
 
         for (int i = 0; i < text.Length; i++)
         {
             var c = text[i];
             if (c == '\n') { x = (int)Math.Round(origin.X); y += (int)Math.Round(lineHeight); continue; }
+            if (constrainWidth && x > origin.X && x - origin.X + charWidth > maxWidth)
+            {
+                x = (int)Math.Round(origin.X);
+                y += (int)Math.Round(lineHeight);
+            }
             if (c == ' ') { x += charWidth; continue; }
             DrawGlyph(c, x, y, pixelSize, color);
             x += charWidth;
@@ -974,6 +981,8 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         var y = (int)MathF.Round(origin.Y);
         var lineStart = x;
         var lineHeight = Math.Max(1, (int)MathF.Round(textLayout.Font.Size * textLayout.LineHeight));
+        var maxWidth = textLayout.MaxSize.Width;
+        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
 
         foreach (var character in textLayout.Text)
         {
@@ -985,9 +994,15 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
             }
 
             var glyph = _glyphRasterizer.Rasterize(textLayout.Font, character);
+            var advance = glyph?.AdvanceX ?? Math.Max(1, (int)MathF.Round(textLayout.Font.Size * 0.5f));
+            if (constrainWidth && x > lineStart && x - lineStart + advance > maxWidth)
+            {
+                x = lineStart;
+                y += lineHeight;
+            }
             if (glyph == null)
             {
-                x += Math.Max(1, (int)MathF.Round(textLayout.Font.Size * 0.5f));
+                x += advance;
                 continue;
             }
 
@@ -1008,7 +1023,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
                 }
             }
 
-            x += glyph.AdvanceX;
+            x += advance;
         }
     }
 

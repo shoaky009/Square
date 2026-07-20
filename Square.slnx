@@ -14,6 +14,11 @@
   <Project Path="src/Square.Tooling/Square.Tooling.csproj" />
   <Project Path="src/Square.Platform/Square.Platform.csproj" />
   <Project Path="src/Square.Backends/Square.Backends.csproj" />
+  <Folder Name="/Samples/">
+    <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />
+    <Project Path="samples/Square.Sample.Vue/Square.Sample.Vue.csproj" />
+    <Project Path="samples/Square.Sample/Square.Sample.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
     <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
@@ -24,7 +29,4 @@
     <Project Path="tests/Square.SourceGenerator.Tests/Square.SourceGenerator.Tests.csproj" />
     <Project Path="tests/Square.UI.Tests/Square.UI.Tests.csproj" />
   </Folder>
-  <Project Path="samples/Square.Sample/Square.Sample.csproj" />
-  <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />
-  <Project Path="samples/Square.Sample.Vue/Square.Sample.Vue.csproj" />
 </Solution>

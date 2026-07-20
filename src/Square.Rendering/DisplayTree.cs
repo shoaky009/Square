@@ -257,6 +257,8 @@ public sealed class DisplayTree
         var x = command.Origin.X;
         var y = command.Origin.Y;
         var maxRight = x;
+        var maxWidth = command.Text.MaxSize.Width;
+        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
         var characters = new List<TextCharacterFragment>();
 
         for (var offset = 0; offset < text.Length;)
@@ -275,7 +277,14 @@ public sealed class DisplayTree
             }
 
             var advance = MeasureRenderedAdvance(command.Text.Font, rune);
-            var bounds = new Rect(x, y, advance, lineHeight);
+            if (constrainWidth && x > command.Origin.X && x - command.Origin.X + advance > maxWidth)
+            {
+                maxRight = Math.Max(maxRight, x);
+                x = command.Origin.X;
+                y += lineHeight;
+            }
+            var glyphBottom = MeasureRenderedBottom(command.Text.Font, rune);
+            var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBottom));
             characters.Add(new TextCharacterFragment(startOffset, offset, bounds));
             x += advance;
             maxRight = Math.Max(maxRight, x);
@@ -296,6 +305,17 @@ public sealed class DisplayTree
         }
 
         return TextLayout.MeasureRuneAdvance(rune, font);
+    }
+
+    private static float MeasureRenderedBottom(Font font, Rune rune)
+    {
+        if (TextFragmentGlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
+        {
+            var glyph = TextFragmentGlyphRasterizer.Rasterize(font, (char)rune.Value);
+            if (glyph != null) return glyph.OffsetY + glyph.Height;
+        }
+
+        return font.Size * TextLayout.DefaultLineHeight;
     }
 
     private static bool IsDescendantOrSelf(Element element, Element root)

@@ -23,8 +23,17 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private Point _scrollOffset;
     private int _zIndex;
     private readonly List<IDisposable> _bindings = [];
+    private int _debugId;
 
     public static event Action<Element>? StyleInvalidated;
+
+    private static int NextDebugId;
+
+    public int DebugId => _debugId != 0 ? _debugId : _debugId = Interlocked.Increment(ref NextDebugId);
+
+    public ElementDebugInfo? DebugInfo { get; private set; }
+
+    public void SetDebugInfo(ElementDebugInfo? debugInfo) => DebugInfo = debugInfo;
 
     /// <summary>布局是否失效（Square 扩展；引擎在脏时重新 Measure/Arrange）。</summary>
     public bool IsLayoutDirty => _isLayoutDirty;

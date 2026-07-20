@@ -462,6 +462,7 @@ public sealed class LayoutEngine
             {
                 if (numericIndex == 0) YGNodeStyleSetFlexGrow(node, number);
                 else if (numericIndex == 1) YGNodeStyleSetFlexShrink(node, number);
+                else ApplyFlexBasis(part, node, parentW, parentH, em, rem);
                 numericIndex++;
                 continue;
             }
@@ -482,6 +483,11 @@ public sealed class LayoutEngine
         if (TryParsePercent(t, out var pct))
         {
             YGNodeStyleSetFlexBasisPercent(node, pct);
+            return;
+        }
+        if (string.Equals(t, "0", StringComparison.Ordinal))
+        {
+            YGNodeStyleSetFlexBasis(node, 0);
             return;
         }
         if (TryParsePoints(t, parentW, parentH, em, rem, out var pts))
@@ -1195,6 +1201,14 @@ public sealed class LayoutEngine
     {
         if (string.IsNullOrWhiteSpace(value)) return float.NaN;
         var text = value.Replace(" ", "", StringComparison.Ordinal).Trim();
+        if (text.EndsWith("vw", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(text[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var vw) &&
+            float.IsFinite(parentW))
+            return parentW * vw / 100f;
+        if (text.EndsWith("vh", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(text[..^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var vh) &&
+            float.IsFinite(parentH))
+            return parentH * vh / 100f;
         if (text.EndsWith("rem", StringComparison.OrdinalIgnoreCase) &&
             float.TryParse(text[..^3], NumberStyles.Float, CultureInfo.InvariantCulture, out var remV))
             return remV * rem;

@@ -31,13 +31,13 @@ public class Text : UIElement, ITextSelectable
     public override Size Measure(Size availableSize)
     {
         if (string.IsNullOrEmpty(TextContent)) return Size.Zero;
-        return ControlDrawing.MeasureText(this, TextContent, FontSize);
+        return ControlDrawing.MeasureText(this, TextContent, FontSize, availableSize);
     }
 
     public override void Paint(IRenderContext ctx)
     {
         if (string.IsNullOrEmpty(TextContent)) return;
-        ControlDrawing.DrawText(ctx, this, TextContent, Geometry.Position, Color, FontSize);
+        ControlDrawing.DrawText(ctx, this, TextContent, Geometry.Position, Color, FontSize, maxSize: Geometry.Size);
     }
 
     protected override void OnPropertyChanged(string name)
@@ -543,10 +543,13 @@ internal static class ControlDrawing
             defaultSize);
     }
 
-    internal static Size MeasureText(Element element, string text, float defaultSize)
+    internal static Size MeasureText(Element element, string text, float defaultSize, Size? maxSize = null)
     {
         var font = ResolveFont(element, defaultSize);
-        return new TextLayout(text, font).Measure();
+        return new TextLayout(text, font)
+        {
+            MaxSize = maxSize ?? new Size(float.MaxValue, float.MaxValue)
+        }.Measure();
     }
 
     internal static Rect GetTextBounds(Element element, string text, float defaultSize, Point origin)
@@ -578,12 +581,15 @@ internal static class ControlDrawing
 
     internal static void DrawText(
         IRenderContext context, Element element, string text, Point position, Color defaultColor, float defaultSize,
-        float? lineHeight = null, bool useStyledColor = true)
+        float? lineHeight = null, bool useStyledColor = true, Size? maxSize = null)
     {
         if (string.IsNullOrEmpty(text)) return;
         var font = ResolveFont(element, defaultSize);
         var color = useStyledColor ? GetStyledColor(element, "color", defaultColor) : defaultColor;
-        var layout = new TextLayout(text, font);
+        var layout = new TextLayout(text, font)
+        {
+            MaxSize = maxSize ?? new Size(float.MaxValue, float.MaxValue)
+        };
         if (lineHeight.HasValue && font.Size > 0) layout.LineHeight = lineHeight.Value / font.Size;
         context.DrawText(layout, position, new SolidColorBrush(color));
     }

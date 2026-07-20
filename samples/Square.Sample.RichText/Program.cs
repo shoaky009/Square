@@ -30,7 +30,7 @@ public static class Program
 
         using var tooling = ToolingServer.Start(app, new ToolingOptions
         {
-            Port = 5128,
+            Port = 0,
             AccessToken = "square-richtext-demo",
             AllowInputInjection = true
         });

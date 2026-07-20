@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Square.Backends;
 using Square.Controls.Controls;
+using Square.Extensions.RichText;
 using Square.Graphics;
 using Square.Rendering;
 using Square.Text.Glyph;
@@ -70,7 +71,7 @@ public class SoftwareRendererTests
         var text = new Square.Controls.Controls.Text("AB")
         {
             FontSize = 20,
-            Geometry = new Rect(10, 5, 20, 24)
+            Geometry = new Rect(10, 5, 40, 24)
         };
         root.Children.Add(text);
         var tree = new DisplayTree();
@@ -111,6 +112,29 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void DisplayTreeTextFragmentsMatchWrappedRendering()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 80, 80) };
+        var text = new Square.Controls.Controls.Text("AAAA")
+        {
+            FontSize = 20,
+            Geometry = new Rect(2, 2, 22, 60)
+        };
+        root.Children.Add(text);
+        var tree = new DisplayTree();
+
+        tree.BuildFrom(root);
+
+        var fragment = Assert.Single(tree.CollectTextFragments(root));
+        var wrappedCharacter = fragment.Characters[2];
+        Assert.True(wrappedCharacter.Bounds.Y > fragment.Characters[0].Bounds.Y);
+        Assert.Equal(2, fragment.HitTestOffset(new Point(
+            wrappedCharacter.Bounds.X + wrappedCharacter.Bounds.Width / 4f,
+            wrappedCharacter.Bounds.Y + wrappedCharacter.Bounds.Height / 2f)));
+        Assert.True(fragment.Bounds.Width <= text.Geometry.Width);
+    }
+
+    [Fact]
     public void DrawTextUsesReadableSeparatedGlyphs()
     {
         var context = CreateContext(180, 40);
@@ -126,6 +150,36 @@ public class SoftwareRendererTests
                 darkPixels++;
 
         Assert.True(darkPixels > 80);
+    }
+
+    [Fact]
+    public void DrawTextWrapsWhenMaxWidthIsFinite()
+    {
+        var context = CreateContext(80, 80);
+        context.Clear(Color.White);
+        context.DrawText(
+            new TextLayout("AAAA", new Font("Segoe UI", 20))
+            {
+                MaxSize = new Size(22, 80)
+            },
+            new Point(2, 2), new SolidColorBrush(Color.Black));
+
+        var bitmap = context.GetBitmap();
+        var secondLineHasInk = false;
+        for (var y = 25; y < bitmap.Height && !secondLineHasInk; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var offset = (y * bitmap.Width + x) * 4;
+                if (bitmap.Pixels[offset] >= 240 && bitmap.Pixels[offset + 1] >= 240 && bitmap.Pixels[offset + 2] >= 240)
+                    continue;
+
+                secondLineHasInk = true;
+                break;
+            }
+        }
+
+        Assert.True(secondLineHasInk);
     }
 
     [Fact]
@@ -412,6 +466,109 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void InputSelectionForegroundDoesNotBlendWithTextColor()
+    {
+        var colored = new Input { Value = "Select", Geometry = new Rect(4, 4, 220, 36) };
+        colored.Style.Set("color", "#b42318");
+        colored.Focus();
+        colored.SelectAll();
+        var plain = new Input { Value = "Select", Geometry = new Rect(4, 4, 220, 36) };
+        plain.Focus();
+        plain.SelectAll();
+
+        var coloredContext = CreateContext(240, 50);
+        coloredContext.Clear(Color.White);
+        var coloredTree = new DisplayTree();
+        coloredTree.BuildFrom(colored);
+        coloredTree.Render(coloredContext);
+
+        var plainContext = CreateContext(240, 50);
+        plainContext.Clear(Color.White);
+        var plainTree = new DisplayTree();
+        plainTree.BuildFrom(plain);
+        plainTree.Render(plainContext);
+
+        AssertBitmapEqual(plainContext.GetBitmap(), coloredContext.GetBitmap());
+    }
+
+    [Fact]
+    public void TextSelectionBoundsCoverGlyphDescenders()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 50) };
+        var text = new Square.Controls.Controls.Text("pg")
+        {
+            FontSize = 20,
+            Geometry = new Rect(4, 4, 80, 30)
+        };
+        root.Children.Add(text);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        var fragment = Assert.Single(tree.CollectTextFragments(root));
+        var rasterizer = new SystemGlyphRasterizer();
+        var font = new Font("Segoe UI", 20);
+        var p = rasterizer.Rasterize(font, 'p');
+        var g = rasterizer.Rasterize(font, 'g');
+        var expectedBottom = Math.Max(p?.OffsetY + p?.Height ?? 0, g?.OffsetY + g?.Height ?? 0);
+
+        Assert.All(fragment.Characters, character =>
+            Assert.True(character.Bounds.Height >= expectedBottom));
+    }
+
+    [Fact]
+    public void RichTextSelectionUsesCssBackgroundAndForeground()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("Select"))
+        {
+            Geometry = new Rect(4, 4, 220, 50)
+        };
+        editor.Style.Set("selection-background-color", "#123456");
+        editor.Style.Set("selection-color", "#fedcba");
+        editor.SelectAll();
+        var context = CreateContext(240, 60);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(editor);
+
+        tree.Render(context);
+
+        Assert.True(ContainsBgra(context.GetBitmap(), 0x56, 0x34, 0x12, 0xff));
+        Assert.True(ContainsNearBgr(context.GetBitmap(), 0xba, 0xdc, 0xfe));
+    }
+
+    [Fact]
+    public void RichTextSelectionForegroundDoesNotBlendWithRunColor()
+    {
+        var colored = new RichTextEditor(new RichTextDocument([
+            RichTextBlock.Paragraph(new RichTextRun("Select", new RichTextMarks(Foreground: "#b42318")))
+        ]))
+        {
+            Geometry = new Rect(4, 4, 220, 50)
+        };
+        colored.SelectAll();
+
+        var plain = new RichTextEditor(RichTextDocument.FromPlainText("Select"))
+        {
+            Geometry = new Rect(4, 4, 220, 50)
+        };
+        plain.SelectAll();
+
+        var coloredContext = CreateContext(240, 60);
+        coloredContext.Clear(Color.White);
+        var coloredTree = new DisplayTree();
+        coloredTree.BuildFrom(colored);
+        coloredTree.Render(coloredContext);
+
+        var plainContext = CreateContext(240, 60);
+        plainContext.Clear(Color.White);
+        var plainTree = new DisplayTree();
+        plainTree.BuildFrom(plain);
+        plainTree.Render(plainContext);
+
+        AssertBitmapEqual(plainContext.GetBitmap(), coloredContext.GetBitmap());
+    }
+
+    [Fact]
     public void CompactLineHeightSelectionCoversNaturalFontHeight()
     {
         var input = new Input { Value = "Compact", Geometry = new Rect(4, 4, 220, 30) };
@@ -655,6 +812,19 @@ public class SoftwareRendererTests
         {
             if (bitmap.Pixels[i] == blue && bitmap.Pixels[i + 1] == green &&
                 bitmap.Pixels[i + 2] == red && bitmap.Pixels[i + 3] == alpha)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsNearBgr(Bitmap bitmap, byte blue, byte green, byte red, int tolerance = 24)
+    {
+        for (var i = 0; i < bitmap.Pixels.Length; i += 4)
+        {
+            if (Math.Abs(bitmap.Pixels[i] - blue) <= tolerance &&
+                Math.Abs(bitmap.Pixels[i + 1] - green) <= tolerance &&
+                Math.Abs(bitmap.Pixels[i + 2] - red) <= tolerance)
                 return true;
         }
 

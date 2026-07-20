@@ -655,6 +655,28 @@ Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dyna
 
 `DesktopApplication` 在 `RunCore()` 内自动调用 `BackendRegistration.RegisterDefaults()` 和 `PlatformRegistration.RegisterDefaults()`，根据编译常量注册对应实现。
 
+### 15.4 启用 Tooling
+
+需要截图、输入自动化或运行时 Inspector 时，引用 `Square.Tooling`，并在 `app.Run()` 前启动服务：
+
+```csharp
+using Square.Tooling;
+
+using var tooling = ToolingServer.Start(app, new ToolingOptions
+{
+  Port = 0
+});
+
+Console.WriteLine($"Tooling: {tooling.BaseAddress}/api/v1");
+Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
+
+app.Run();
+```
+
+`Port = 0` 是推荐默认值，由操作系统为每个进程分配独立端口。多个应用或测试实例可以同时运行。连接方必须使用 `tooling.BaseAddress`，不能假设固定端口。
+
+固定端口只用于外部系统要求稳定地址的场景；端口被占用时启动会失败，不会自动递增到其他端口。完整规则、认证和 HTTP API 见 [`Tooling.md`](Tooling.md)。
+
 ---
 
 ## 16. 下一步

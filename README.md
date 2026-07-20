@@ -279,9 +279,11 @@ RichText 示例包含格式工具栏、颜色、清除格式、撤销/重做、�
 RichText 示例会同时启动 Tooling 服务：
 
 ```text
-http://127.0.0.1:5128/api/v1
+http://127.0.0.1:<自动分配端口>/api/v1
 X-Square-Tooling-Token: square-richtext-demo
 ```
+
+实际地址会在启动时输出。多个程序并行运行时，各实例由操作系统分配独立端口；调用方应读取 `ToolingServer.BaseAddress`，不要假设固定端口。
 
 常用接口：
 

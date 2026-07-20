@@ -1,6 +1,6 @@
 # Tooling
 
-> Version: 0.3  
+> Version: 0.4  
 > 配套：`Getting-Started.md`、`API-Reference.md`、`Rendering.md`
 
 `Square.Tooling` 提供一个只监听 `127.0.0.1` 的 HTTP 调试服务，用于在运行中的 Square 桌面应用上做截图采集和输入自动化。它面向本地开发、示例演示、端到端测试和外部调试工具，不参与应用的正常 UI 渲染管线。
@@ -25,7 +25,7 @@ var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 
 using var tooling = ToolingServer.Start(app, new ToolingOptions
 {
-    Port = 5128,
+    Port = 0,
     AccessToken = "dev-token",
     AllowInputInjection = true
 });
@@ -40,9 +40,12 @@ app.Run();
 
 | 属性 | 默认值 | 说明 |
 |---|---:|---|
-| `Port` | `5128` | 本地 HTTP 端口，范围为 `1..65535` |
+| `Port` | `0` | `0` 表示由操作系统自动分配空闲端口；`1..65535` 表示严格绑定指定端口 |
 | `AccessToken` | `null` | 访问令牌；为空时自动生成 24 字节随机 token 的十六进制字符串 |
 | `AllowInputInjection` | `true` | 是否允许 `/input/*` 输入注入接口；关闭后输入接口返回 `403` |
+| `AllowInspector` | `true` | 是否允许 `/inspect/*` 运行时检查接口；关闭后返回 `403` |
+| `IncludeSourcePaths` | `true` | Inspector 响应是否包含模板源码路径 |
+| `IncludeTextContent` | `true` | Inspector 响应是否包含元素文本内容 |
 
 RichText 示例已经集成 Tooling：
 
@@ -50,12 +53,72 @@ RichText 示例已经集成 Tooling：
 dotnet run --project samples/Square.Sample.RichText/Square.Sample.RichText.csproj
 ```
 
-启动后控制台会输出 base address 和 token header。示例固定使用：
+启动后控制台会输出实际 base address 和 token header，例如：
 
 ```text
-http://127.0.0.1:5128
+http://127.0.0.1:54321
 X-Square-Tooling-Token: square-richtext-demo
 ```
+
+### 端口分配规则
+
+1. 库和示例默认使用 `Port = 0`，由操作系统原子分配空闲端口，允许多个 Square 程序并行启动。
+2. 自动端口模式下，调用方必须读取 `ToolingServer.Port` 或 `ToolingServer.BaseAddress`，不得假设端口为 `5128`。
+3. 只有需要固定外部配置时才使用 `1..65535`。指定端口被占用时启动失败，不自动换到其他端口，避免客户端连接到错误实例。
+4. 每个进程默认生成独立随机 token。固定 token 仅用于受控的本地示例或测试。
+5. 服务始终只监听 `127.0.0.1`，禁止通过自动端口规则扩大监听范围。
+
+### 自动端口模式
+
+自动端口是常规开发、并行测试和多实例运行的默认选择：
+
+```csharp
+using var tooling = ToolingServer.Start(app);
+
+Console.WriteLine($"Tooling endpoint: {tooling.BaseAddress}/api/v1");
+Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
+```
+
+`ToolingServer.Start` 返回前，Kestrel 已完成监听。此时：
+
+- `tooling.Port` 是实际绑定端口，不会是 `0`。
+- `tooling.BaseAddress` 是当前实例的实际根地址。
+- 操作系统负责原子选择端口，不需要先探测再绑定，因此不存在“检查为空闲后被其他进程抢占”的竞态窗口。
+
+### 固定端口模式
+
+只有外部工具无法接收动态地址，或防火墙/容器映射要求固定端口时才使用固定端口：
+
+```csharp
+using var tooling = ToolingServer.Start(app, new ToolingOptions
+{
+    Port = 5128
+});
+```
+
+固定端口被占用时，`Start` 会抛出启动异常。调用方不应捕获异常后自动递增端口，否则外部客户端可能继续访问旧端口并连接到错误实例。
+
+### 多实例发现
+
+Square 不提供全局注册表或固定发现端口。应用负责把实例元数据传给需要连接的工具，推荐优先级如下：
+
+1. 父进程直接读取 `ToolingServer.BaseAddress` 和 `AccessToken`。
+2. 应用将地址和 token 输出到结构化日志、测试结果或进程间通信通道。
+3. 本地手工调试时输出到控制台。
+4. 不推荐通过扫描全部监听端口发现实例。
+
+一个实例至少应暴露以下连接信息：
+
+```json
+{
+  "processId": 12345,
+  "baseAddress": "http://127.0.0.1:54321",
+  "tokenHeader": "X-Square-Tooling-Token",
+  "accessToken": "<token>"
+}
+```
+
+不要把 token 写入公共日志、版本库或遥测系统。上面的结构仅表示本地受控进程间传递格式。
 
 ---
 
@@ -85,14 +148,17 @@ X-Square-Tooling-Token: <access-token>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/health` | 返回服务状态、进程 ID 和输入注入开关 |
+| `GET` | `/health` | 返回服务状态、进程 ID、实际端口、BaseAddress 和输入注入开关 |
 | `GET` | `/screenshot` | 返回当前 renderer bitmap 的 PNG |
 | `POST` | `/input/pointer` | 注入鼠标移动/按下/抬起 |
 | `POST` | `/input/key` | 注入键盘按下/抬起 |
 | `POST` | `/input/text` | 注入文本输入 |
 | `POST` | `/input/wheel` | 注入滚轮 |
+| `GET` | `/inspect/tree` | 返回当前元素树快照 |
+| `GET` | `/inspect/hit-test?x=&y=` | 返回指定坐标命中的元素 |
+| `GET` | `/inspect/elements/{id}` | 返回指定运行时元素详情 |
 
-计划中的 Inspector / Debug endpoint 见 [7. 元素调试与 Inspector 计划](#7-元素调试与-inspector-计划)。
+Inspector endpoint 见 [7. 元素调试与 Inspector](#7-元素调试与-inspector)。
 
 ### GET /api/v1/health
 
@@ -102,6 +168,8 @@ X-Square-Tooling-Token: <access-token>
 {
   "status": "ok",
   "processId": 12345,
+  "port": 54321,
+  "baseAddress": "http://127.0.0.1:54321",
   "inputInjection": true
 }
 ```
@@ -110,7 +178,7 @@ X-Square-Tooling-Token: <access-token>
 
 ```bash
 curl -H "X-Square-Tooling-Token: square-richtext-demo" \
-  http://127.0.0.1:5128/api/v1/health
+  http://127.0.0.1:<port>/api/v1/health
 ```
 
 ### GET /api/v1/screenshot
@@ -120,7 +188,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 ```bash
 curl -H "X-Square-Tooling-Token: square-richtext-demo" \
   -o screenshot.png \
-  http://127.0.0.1:5128/api/v1/screenshot
+  http://127.0.0.1:<port>/api/v1/screenshot
 ```
 
 截图来自 renderer bitmap，而不是平台窗口截图；它适合做 UI 回归、调试脏区渲染或采集控件状态。
@@ -153,7 +221,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 curl -X POST -H "X-Square-Tooling-Token: square-richtext-demo" \
   -H "Content-Type: application/json" \
   -d "{\"x\":40,\"y\":32,\"action\":\"Down\"}" \
-  http://127.0.0.1:5128/api/v1/input/pointer
+  http://127.0.0.1:<port>/api/v1/input/pointer
 ```
 
 ### POST /api/v1/input/key
@@ -229,7 +297,10 @@ curl -X POST -H "X-Square-Tooling-Token: square-richtext-demo" \
 | `400` | JSON 无效、字段缺失、字段类型错误或枚举值不支持 |
 | `401` | 缺少或错误 `X-Square-Tooling-Token` |
 | `403` | `AllowInputInjection=false` 时调用 `/input/*` |
+| `403` | `AllowInspector=false` 时调用 `/inspect/*` |
 | `500` | 截图或输入注入期间出现未处理异常 |
+
+Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时服务尚未启动；`ToolingServer.Start` 会直接抛出异常。
 
 输入 JSON 使用 camelCase 字段名。枚举值解析不区分大小写。
 
@@ -251,7 +322,7 @@ Tooling HTTP 请求运行在 ASP.NET Core 轻量 WebApplication 中。输入注�
 
 ```bash
 TOKEN=square-richtext-demo
-BASE=http://127.0.0.1:5128/api/v1
+BASE=http://127.0.0.1:<port>/api/v1
 
 curl -X POST -H "X-Square-Tooling-Token: $TOKEN" \
   -H "Content-Type: application/json" \
@@ -277,7 +348,7 @@ curl -H "X-Square-Tooling-Token: $TOKEN" \
 
 ```powershell
 $token = "square-richtext-demo"
-$base = "http://127.0.0.1:5128/api/v1"
+$base = "http://127.0.0.1:<port>/api/v1"
 $headers = @{ "X-Square-Tooling-Token" = $token }
 
 Invoke-RestMethod -Method Post -Headers $headers -ContentType "application/json" `
@@ -291,9 +362,9 @@ Invoke-WebRequest -Headers $headers -OutFile "after-input.png" "$base/screenshot
 
 ---
 
-## 7. 元素调试与 Inspector 计划
+## 7. 元素调试与 Inspector
 
-Tooling 后续应承担运行时 Inspector 能力：通过坐标、元素 ID 或树查询定位 Square 元素，并返回模板源码位置、布局盒、样式、状态和绘制信息。该能力用于 IDE 跳转、可视化检查、端到端测试失败诊断和外部调试工具。
+Tooling 提供运行时 Inspector：通过坐标、元素 ID 或树查询定位 Square 元素，并返回模板源码位置、布局盒、样式、状态和绘制信息。该能力用于 IDE 跳转、可视化检查、端到端测试失败诊断和外部调试工具。
 
 ### 7.1 总体目标
 

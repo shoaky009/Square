@@ -22,6 +22,7 @@ public interface ITextEditor
     void HandlePointerDown(Point point, bool extendSelection = false);
     void HandlePointerMove(Point point);
     void HandlePointerUp(Point point);
+    void SelectWordAt(Point point);
     void SelectAll();
     bool DeleteSelection();
     bool ToggleCaretBlink();
@@ -103,7 +104,10 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
         var textColor = ControlDrawing.GetStyledColor(this, "color", Color.Black);
-        var selectionBackground = ControlDrawing.GetStyledColor(this, "selection-background", SelectionBackground);
+        var selectionBackground = ControlDrawing.GetStyledColor(
+            this,
+            Style.Get("selection-background-color") != null ? "selection-background-color" : "selection-background",
+            SelectionBackground);
         var selectionForeground = ControlDrawing.GetStyledColor(this, "selection-color", SelectionForeground);
 
         if (string.IsNullOrEmpty(Value))
@@ -117,9 +121,9 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         {
             var displayValue = DisplayValue;
             var selectionRects = GetSelectionRects(displayValue);
+            ControlDrawing.DrawText(context, this, displayValue, GetTextOrigin(fontSize, lineHeight), textColor, fontSize, lineHeight);
             foreach (var rect in selectionRects)
                 context.FillRect(rect, new SolidColorBrush(selectionBackground));
-            ControlDrawing.DrawText(context, this, displayValue, GetTextOrigin(fontSize, lineHeight), textColor, fontSize, lineHeight);
             foreach (var rect in selectionRects)
             {
                 context.PushClip(rect);
@@ -227,6 +231,18 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     {
         if (!_isDragging) return;
         _caretIndex = HitTestIndex(point);
+        _isDragging = false;
+        _preferredX = null;
+        ResetCaretBlink();
+        InvalidatePaint();
+    }
+
+    public void SelectWordAt(Point point)
+    {
+        var index = HitTestIndex(point);
+        var (start, end) = FindWordAt(Value, index);
+        _selectionAnchor = start;
+        _caretIndex = end;
         _isDragging = false;
         _preferredX = null;
         ResetCaretBlink();
@@ -390,6 +406,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
         var origin = GetTextOrigin(fontSize, lineHeight);
+        var inkBottom = GetTextInkBottom(displayValue, fontSize);
         var lines = GetLines(displayValue);
         var selectionEnd = SelectionStart + SelectionLength;
         for (var i = 0; i < lines.Count; i++)
@@ -403,13 +420,27 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             var width = MeasureRange(displayValue, start, end - start);
             if (includesNewline) width += 6;
             var visualLineBox = GetVisualLineBox(fontSize, lineHeight, i);
+            var selectionBottom = Math.Max(visualLineBox.Top + visualLineBox.Height, origin.Y + i * lineHeight + inkBottom);
             result.Add(new Rect(
                 origin.X + x,
                 visualLineBox.Top,
                 Math.Max(2, width),
-                visualLineBox.Height));
+                selectionBottom - visualLineBox.Top));
         }
         return result;
+    }
+
+    private float GetTextInkBottom(string text, float fontSize)
+    {
+        var font = ControlDrawing.ResolveFont(this, fontSize);
+        var bottom = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
+        foreach (var character in text)
+        {
+            if (character == '\n') continue;
+            var glyph = GlyphRasterizer.Rasterize(font, character);
+            if (glyph != null) bottom = Math.Max(bottom, glyph.OffsetY + glyph.Height);
+        }
+        return bottom;
     }
 
     private Rect GetCaretRect()
@@ -572,6 +603,18 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         while (index < text.Length && !char.IsWhiteSpace(text[index])) index++;
         while (index < text.Length && char.IsWhiteSpace(text[index])) index++;
         return index;
+    }
+
+    private static (int Start, int End) FindWordAt(string text, int index)
+    {
+        if (text.Length == 0) return (0, 0);
+        index = Math.Clamp(index, 0, text.Length - 1);
+        if (!char.IsLetterOrDigit(text[index]) && text[index] != '_') return (index, index + 1);
+        var start = index;
+        var end = index + 1;
+        while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_')) start--;
+        while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_')) end++;
+        return (start, end);
     }
 
     private static string NormalizeNewlines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');

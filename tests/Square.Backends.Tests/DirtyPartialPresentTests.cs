@@ -179,7 +179,7 @@ public class DirtyPartialPresentTests
         tree.UpdateDirty();
         var dirty = tree.CollectDirtyRects();
 
-        Assert.Contains(dirty, r => r.Right > text.Geometry.Right + 40);
+        Assert.Contains(dirty, r => r.Bottom > text.Geometry.Bottom + 40);
     }
 
     [Fact]

@@ -31,6 +31,9 @@ public sealed class DesktopApplication : Application
     private TextSelectionState? _textSelection;
     private bool _isSelectingText;
     private Element? _pointerDownTarget;
+    private Element? _lastClickTarget;
+    private Point _lastClickPoint;
+    private double _lastClickSeconds = double.NegativeInfinity;
     private readonly List<UIElement> _hoverPath = [];
     private readonly List<UIElement> _activePath = [];
     private bool _renderRequested;
@@ -166,6 +169,19 @@ public sealed class DesktopApplication : Application
         return completion.Task;
     }
 
+    public Task<ElementInspectionSnapshot> CaptureInspectionSnapshotAsync(bool includeSourcePaths = true, bool includeTextContent = true) =>
+        InvokeOnDispatcherAsync(() => new ElementInspectionSnapshot(CreateInspectionNode(_root, includeSourcePaths, includeTextContent, includeChildren: true)));
+
+    public Task<ElementInspectionNode?> InspectElementAsync(int debugId, bool includeSourcePaths = true, bool includeTextContent = true) =>
+        InvokeOnDispatcherAsync(() => FindElementByDebugId(_root, debugId) is { } element
+            ? CreateInspectionNode(element, includeSourcePaths, includeTextContent, includeChildren: true)
+            : null);
+
+    public Task<ElementInspectionNode?> HitTestInspectionAsync(Point point, bool includeSourcePaths = true, bool includeTextContent = true) =>
+        InvokeOnDispatcherAsync(() => HitTest(point) is { } element
+            ? CreateInspectionNode(element, includeSourcePaths, includeTextContent, includeChildren: false)
+            : null);
+
     private void RenderFrame()
     {
         _renderRequested = false;
@@ -251,6 +267,75 @@ public sealed class DesktopApplication : Application
         }
 
         if (_focusedEditor != null) _host.SetTextInputRect(_focusedEditor.CaretRect);
+    }
+
+    private static ElementInspectionNode CreateInspectionNode(Element element, bool includeSourcePaths, bool includeTextContent, bool includeChildren)
+    {
+        var children = includeChildren
+            ? element.Children.Select(child => CreateInspectionNode(child, includeSourcePaths, includeTextContent, includeChildren: true)).ToArray()
+            : [];
+        return new ElementInspectionNode(
+            element.DebugId,
+            element.DebugInfo?.TagName ?? element.TagName,
+            element.Id,
+            element.DebugInfo?.ComponentName,
+            element.Geometry,
+            new ElementInspectionState(
+                element.HasState(ElementState.Hover),
+                element.HasState(ElementState.Focus),
+                element.HasState(ElementState.Active),
+                element.HasState(ElementState.Disabled)),
+            CreateInspectionSource(element.DebugInfo, includeSourcePaths),
+            includeTextContent ? ReadElementText(element) : null,
+            element.Children.Count,
+            children);
+    }
+
+    private Task<T> InvokeOnDispatcherAsync<T>(Func<T> action)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                completion.SetResult(action());
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+        return completion.Task;
+    }
+
+    private static string? ReadElementText(Element element)
+    {
+        var textContent = element.GetProperty<string>("TextContent");
+        return string.IsNullOrEmpty(textContent) ? null : textContent;
+    }
+
+    private static ElementInspectionSource? CreateInspectionSource(ElementDebugInfo? debugInfo, bool includeSourcePaths)
+    {
+        if (debugInfo == null) return null;
+        return new ElementInspectionSource(
+            debugInfo.SourceId,
+            includeSourcePaths ? debugInfo.SourcePath : null,
+            debugInfo.StartLine,
+            debugInfo.StartColumn,
+            debugInfo.EndLine,
+            debugInfo.EndColumn,
+            debugInfo.Kind.ToString());
+    }
+
+    private static Element? FindElementByDebugId(Element element, int debugId)
+    {
+        if (element.DebugId == debugId) return element;
+        foreach (var child in element.Children)
+        {
+            var found = FindElementByDebugId(child, debugId);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private bool RunUpdatePass()
@@ -368,11 +453,19 @@ public sealed class DesktopApplication : Application
 
         if (action != MouseAction.Down) return;
 
+        var elapsed = _clock.Elapsed.TotalSeconds - _lastClickSeconds;
+        var deltaX = point.X - _lastClickPoint.X;
+        var deltaY = point.Y - _lastClickPoint.Y;
+        var isDoubleClick = ReferenceEquals(hit, _lastClickTarget) && elapsed <= 0.5 &&
+            deltaX * deltaX + deltaY * deltaY <= 25;
+        _lastClickTarget = isDoubleClick ? null : hit;
+        _lastClickPoint = point;
+        _lastClickSeconds = _clock.Elapsed.TotalSeconds;
         _pointerDownTarget = hit;
         UpdateHoverPath(hit);
         UpdateActivePath(hit);
         hit?.DispatchTrusted(StandardEvents.CreatePointerDown());
-        UpdateFocus(hit, point);
+        UpdateFocus(hit, point, isDoubleClick);
 
         foreach (var select in _root.QueryAll<Select>())
             if (hit != select) select.CloseDropDown();
@@ -381,7 +474,7 @@ public sealed class DesktopApplication : Application
         RenderFrame();
     }
 
-    private void UpdateFocus(Element? hit, Point point)
+    private void UpdateFocus(Element? hit, Point point, bool selectWord)
     {
         if (_host == null) return;
 
@@ -399,11 +492,12 @@ public sealed class DesktopApplication : Application
         {
             ClearDocumentSelection();
             editor.HandlePointerDown(point, CurrentModifiers.HasFlag(KeyModifiers.Shift));
+            if (selectWord) editor.SelectWordAt(point);
             _isSelectingText = true;
             return;
         }
 
-        if (TryStartTextSelection(hit, point))
+        if (TryStartTextSelection(hit, point, selectWord))
         {
             _focusedInput?.Unfocus();
             _focusedInput = null;
@@ -554,7 +648,7 @@ public sealed class DesktopApplication : Application
         }
     }
 
-    private bool TryStartTextSelection(Element? hit, Point point)
+    private bool TryStartTextSelection(Element? hit, Point point, bool selectWord = false)
     {
         var root = FindUserSelectRoot(hit);
         if (root == null) return false;
@@ -565,11 +659,30 @@ public sealed class DesktopApplication : Application
 
         selection.Anchor = selectionPoint;
         selection.Focus = selectionPoint;
+        if (selectWord)
+        {
+            var item = selection.Items[selectionPoint.Index];
+            var (start, end) = FindDocumentWordAt(item.Text, selectionPoint.Offset);
+            selection.Anchor = new TextSelectionPoint(selectionPoint.Index, start);
+            selection.Focus = new TextSelectionPoint(selectionPoint.Index, end);
+        }
         selection.IsSelecting = true;
         _textSelection = selection;
         SyncDocumentSelection(selection);
         RequestRender();
         return true;
+    }
+
+    private static (int Start, int End) FindDocumentWordAt(string text, int offset)
+    {
+        if (text.Length == 0) return (0, 0);
+        var index = Math.Clamp(offset, 0, text.Length - 1);
+        if (!char.IsLetterOrDigit(text[index]) && text[index] != '_') return (index, index + 1);
+        var start = index;
+        var end = index + 1;
+        while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_')) start--;
+        while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_')) end++;
+        return (start, end);
     }
 
     private bool UpdateTextSelection(TextSelectionState selection, Point point)

@@ -47,6 +47,25 @@ public static class RichTextBoundaries
         return index < boundaries.Count ? boundaries[index].Start : text.Length;
     }
 
+    public static (int Start, int End) WordAt(string text, int offset)
+    {
+        ValidateOffset(text, offset);
+        var boundaries = GetElements(text);
+        if (boundaries.Count == 0) return (0, 0);
+        var index = FindElementAtOrAfter(boundaries, offset);
+        if (index >= boundaries.Count || boundaries[index].Start > offset)
+            index = Math.Max(0, index - 1);
+
+        var isWord = IsWord(boundaries[index].Value);
+        if (!isWord)
+            return (boundaries[index].Start, index + 1 < boundaries.Count ? boundaries[index + 1].Start : text.Length);
+        var start = index;
+        var end = index + 1;
+        while (start > 0 && IsWord(boundaries[start - 1].Value) == isWord) start--;
+        while (end < boundaries.Count && IsWord(boundaries[end].Value) == isWord) end++;
+        return (boundaries[start].Start, end < boundaries.Count ? boundaries[end].Start : text.Length);
+    }
+
     private static List<TextElement> GetElements(string text)
     {
         var starts = StringInfo.ParseCombiningCharacters(text);

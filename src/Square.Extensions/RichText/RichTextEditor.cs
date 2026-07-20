@@ -48,6 +48,20 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     public bool CanUndo => _state.CanUndo;
     public bool CanRedo => _state.CanRedo;
     public Rect CaretRect => GetCaretRect();
+    public Color SelectionBackground
+    {
+        get => Properties.HasValue(nameof(SelectionBackground))
+            ? GetProperty<Color>(nameof(SelectionBackground))
+            : Color.FromRgb(51, 144, 255);
+        set => SetProperty(nameof(SelectionBackground), value);
+    }
+    public Color SelectionForeground
+    {
+        get => Properties.HasValue(nameof(SelectionForeground))
+            ? GetProperty<Color>(nameof(SelectionForeground))
+            : Color.White;
+        set => SetProperty(nameof(SelectionForeground), value);
+    }
 
     public override Size Measure(Size availableSize)
     {
@@ -60,7 +74,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         var width = layouts.Count == 0 ? 0 : layouts.Max(layout => layout.Bounds.Width);
         var height = layouts.Count == 0 ? lineHeight : layouts.Sum(layout => layout.Bounds.Height);
         return new Size(
-            ConstrainWidth(Math.Max(width + Padding * 2, MinWidth)),
+            ConstrainWidth(float.IsFinite(availableSize.Width) ? availableSize.Width : Math.Max(width + Padding * 2, MinWidth)),
             ConstrainHeight(Math.Max(height + Padding * 2, MinHeight)));
     }
 
@@ -74,6 +88,8 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
         var color = IsEnabled ? Color.Black : Color.FromRgb(125, 130, 136);
+        var selectionBackground = GetSelectionColor("selection-background-color", "selection-background", SelectionBackground);
+        var selectionForeground = GetSelectionColor("selection-color", null, SelectionForeground);
         var layouts = BuildLayouts(
             font,
             lineHeight,
@@ -81,8 +97,9 @@ public sealed class RichTextEditor : UIElement, ITextEditor
             Math.Max(1, Geometry.Width - Padding * 2));
         for (var i = 0; i < layouts.Count; i++)
         {
-            PaintSelectionForBlock(context, i, layouts[i]);
             PaintBlock(context, layouts[i], color);
+            PaintSelectionForBlock(context, i, layouts[i], selectionBackground);
+            PaintSelectionForegroundForBlock(context, i, layouts[i], selectionForeground);
         }
 
         if (IsFocused && _state.Selection.IsCollapsed)
@@ -231,6 +248,18 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    public void SelectWordAt(Point point)
+    {
+        var position = HitTestPosition(point);
+        var text = Document.Blocks[position.BlockIndex].PlainText;
+        var (start, end) = RichTextBoundaries.WordAt(text, position.Offset);
+        _state.SetSelection(new RichTextSelection(
+            new RichTextPosition(position.BlockIndex, start),
+            new RichTextPosition(position.BlockIndex, end)));
+        _isDragging = false;
+        InvalidatePaint();
+    }
+
     public void SelectAll()
     {
         var lastBlockIndex = Document.Blocks.Count - 1;
@@ -256,7 +285,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         if (_state.Selection.IsCollapsed) return;
         _state.ToggleMarks(marks);
-        InvalidateLayout();
+        DispatchInputChanged();
     }
 
     private void DispatchInputChanged()
@@ -360,7 +389,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         return layouts[position.BlockIndex].GetCaretRect(position.Offset);
     }
 
-    private void PaintSelectionForBlock(IRenderContext context, int blockIndex, RichTextBlockLayout layout)
+    private void PaintSelectionForBlock(IRenderContext context, int blockIndex, RichTextBlockLayout layout, Color selectionBackground)
     {
         if (_state.Selection.IsCollapsed) return;
         var start = _state.Selection.Start;
@@ -371,16 +400,34 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         var startOffset = blockIndex == start.BlockIndex ? start.Offset : 0;
         var endOffset = blockIndex == end.BlockIndex ? end.Offset : text.Length;
         foreach (var rect in layout.GetSelectionRects(startOffset, endOffset))
-            context.FillRect(rect, new SolidColorBrush(Color.FromRgb(51, 144, 255)));
+            context.FillRect(rect, new SolidColorBrush(selectionBackground));
     }
 
-    private static void PaintBlock(IRenderContext context, RichTextBlockLayout layout, Color defaultColor)
+    private void PaintSelectionForegroundForBlock(IRenderContext context, int blockIndex, RichTextBlockLayout layout, Color selectionForeground)
+    {
+        if (_state.Selection.IsCollapsed) return;
+        var start = _state.Selection.Start;
+        var end = _state.Selection.End;
+        if (blockIndex < start.BlockIndex || blockIndex > end.BlockIndex) return;
+
+        var text = Document.Blocks[blockIndex].PlainText;
+        var startOffset = blockIndex == start.BlockIndex ? start.Offset : 0;
+        var endOffset = blockIndex == end.BlockIndex ? end.Offset : text.Length;
+        foreach (var rect in layout.GetSelectionRects(startOffset, endOffset))
+        {
+            context.PushClip(rect);
+            PaintBlock(context, layout, selectionForeground, useRunForeground: false);
+            context.PopClip();
+        }
+    }
+
+    private static void PaintBlock(IRenderContext context, RichTextBlockLayout layout, Color defaultColor, bool useRunForeground = true)
     {
         foreach (var line in layout.Lines)
         {
             foreach (var fragment in line.Fragments)
             {
-                var color = ParseColor(fragment.Run.Marks.Foreground) ?? defaultColor;
+                var color = useRunForeground ? ParseColor(fragment.Run.Marks.Foreground) ?? defaultColor : defaultColor;
                 context.DrawText(
                     new TextLayout(fragment.Run.Text, fragment.Font),
                     fragment.Bounds.Position,
@@ -391,6 +438,16 @@ public sealed class RichTextEditor : UIElement, ITextEditor
                         new SolidColorBrush(color));
             }
         }
+    }
+
+    private Color GetSelectionColor(string primaryProperty, string? fallbackProperty, Color defaultColor)
+    {
+        var value = Style.Get(primaryProperty);
+        if (string.IsNullOrWhiteSpace(value) && fallbackProperty != null)
+            value = Style.Get(fallbackProperty);
+        if (string.IsNullOrWhiteSpace(value)) return defaultColor;
+        try { return Color.Parse(value.Replace(" ", "")); }
+        catch (FormatException) { return defaultColor; }
     }
 
     private RichTextPosition HitTestPosition(Point point)

@@ -99,6 +99,23 @@ public class GridLayoutTests
     }
 
     [Fact]
+    public void ViewportUnitsResolveAgainstAvailableSize()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        var child = new View();
+        child.Style.Set("width", "50vw");
+        child.Style.Set("height", "60vh");
+        root.Children.Add(child);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(800, 500));
+        layout.Arrange(root, new Rect(0, 0, 800, 500));
+
+        Assert.Equal(new Rect(0, 0, 400, 300), child.Geometry);
+    }
+
+    [Fact]
     public void FlexLayoutAppliesCssPaddingShorthandEdges()
     {
         var root = new View();
@@ -193,6 +210,30 @@ public class GridLayoutTests
         Assert.True(third.Geometry.Height >= 36);
         Assert.True(second.Geometry.Top >= first.Geometry.Bottom + 10);
         Assert.True(third.Geometry.Top >= second.Geometry.Bottom + 10);
+    }
+
+    [Fact]
+    public void FlexShorthandAcceptsUnitlessZeroBasis()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "row");
+
+        var first = new MeasuredBox(100, 20);
+        first.Style.Set("flex", "2 1 0");
+        first.Style.Set("min-width", "0");
+        var second = new MeasuredBox(700, 20);
+        second.Style.Set("flex", "1 1 0");
+        second.Style.Set("min-width", "0");
+        root.Children.Add(first);
+        root.Children.Add(second);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(900, 60));
+        layout.Arrange(root, new Rect(0, 0, 900, 60));
+
+        Assert.Equal(600, first.Geometry.Width);
+        Assert.Equal(300, second.Geometry.Width);
     }
 
     [Fact]

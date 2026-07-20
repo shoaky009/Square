@@ -88,8 +88,9 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 
 | 成员 | 说明 |
 |---|---|
-| `Start(application, options)` | 在 `127.0.0.1:{Port}` 启动 HTTP 服务；所有 endpoint 要求 `TokenHeader` |
+| `Start(application, options)` | 在 `127.0.0.1:{Port}` 启动 HTTP 服务；`Port = 0` 时由操作系统分配；所有 endpoint 要求 `TokenHeader` |
 | `AccessToken` | 实际使用的 token；未配置时为自动生成值 |
+| `Port` | 实际绑定端口；自动端口模式下以此值为准 |
 | `BaseAddress` | 本地服务根地址 |
 | `Dispose()` / `DisposeAsync()` | 停止并释放 ASP.NET Core `WebApplication` |
 
@@ -102,9 +103,30 @@ namespace Square.Tooling;
 
 public sealed class ToolingOptions
 {
-    public int Port { get; set; } = 5128;
+    public int Port { get; set; } = 0;
     public string? AccessToken { get; set; }
     public bool AllowInputInjection { get; set; } = true;
+    public bool AllowInspector { get; set; } = true;
+    public bool IncludeSourcePaths { get; set; } = true;
+    public bool IncludeTextContent { get; set; } = true;
+}
+```
+
+`Port` 语义：
+
+- `0`：由操作系统自动分配空闲端口，是默认和多实例推荐模式。
+- `1..65535`：严格绑定指定端口；端口冲突时 `Start` 抛出异常。
+- 启动后通过 `ToolingServer.Port` 和 `ToolingServer.BaseAddress` 获取实际地址。
+
+`GET /api/v1/health` 返回：
+
+```json
+{
+    "status": "ok",
+    "processId": 12345,
+    "port": 54321,
+    "baseAddress": "http://127.0.0.1:54321",
+    "inputInjection": true
 }
 ```
 

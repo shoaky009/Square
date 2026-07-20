@@ -18,6 +18,18 @@ namespace Square.UI.Tests;
 public class M1IntegrationTests
 {
     [Fact]
+    public void TextMeasuresWithinAvailableWidthAndWrapsHeight()
+    {
+        var text = new Square.Controls.Controls.Text("abcdefgh") { FontSize = 20 };
+
+        var unconstrained = text.Measure(new Size(float.MaxValue, float.MaxValue));
+        var constrained = text.Measure(new Size(20, 200));
+
+        Assert.Equal(20, constrained.Width);
+        Assert.True(constrained.Height > unconstrained.Height);
+    }
+
+    [Fact]
     public void GeneratedComponentBuildsNestedTreeAndAppliesStyles()
     {
         var component = new Main();

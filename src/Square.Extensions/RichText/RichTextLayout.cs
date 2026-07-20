@@ -1,5 +1,6 @@
 using System.Text;
 using Square.Graphics;
+using Square.Text.Glyph;
 
 namespace Square.Extensions.RichText;
 
@@ -18,6 +19,8 @@ public sealed record RichTextLayoutLine(
 
 public sealed class RichTextBlockLayout
 {
+    private static readonly SystemGlyphRasterizer GlyphRasterizer = new();
+
     public RichTextBlockLayout(RichTextBlock block, Rect bounds, IReadOnlyList<RichTextLayoutLine> lines)
     {
         Block = block;
@@ -37,7 +40,7 @@ public sealed class RichTextBlockLayout
         {
             if (point.X > fragment.Bounds.Right) continue;
             var localX = Math.Max(0, point.X - fragment.Bounds.X);
-            var localOffset = new TextLayout(fragment.Run.Text, fragment.Font).HitTestOffset(localX);
+            var localOffset = HitTestOffset(fragment.Run.Text, fragment.Font, localX);
             return Math.Clamp(fragment.StartOffset + localOffset, fragment.StartOffset, fragment.EndOffset);
         }
         return line.EndOffset;
@@ -53,7 +56,7 @@ public sealed class RichTextBlockLayout
         {
             if (offset > fragment.EndOffset) continue;
             var localOffset = Math.Clamp(offset - fragment.StartOffset, 0, fragment.Run.Text.Length);
-            var x = fragment.Bounds.X + new TextLayout(fragment.Run.Text, fragment.Font).MeasureOffset(localOffset);
+            var x = fragment.Bounds.X + MeasureOffset(fragment.Run.Text, fragment.Font, localOffset);
             return new Rect(x, line.Bounds.Y, 1, line.Bounds.Height);
         }
         return new Rect(line.Bounds.Right, line.Bounds.Y, 1, line.Bounds.Height);
@@ -96,9 +99,53 @@ public sealed class RichTextBlockLayout
         {
             if (offset > fragment.EndOffset) continue;
             var localOffset = Math.Clamp(offset - fragment.StartOffset, 0, fragment.Run.Text.Length);
-            return fragment.Bounds.X + new TextLayout(fragment.Run.Text, fragment.Font).MeasureOffset(localOffset);
+            return fragment.Bounds.X + MeasureOffset(fragment.Run.Text, fragment.Font, localOffset);
         }
         return line.Bounds.Right;
+    }
+
+    internal static float MeasureAdvance(Font font, Rune rune)
+    {
+        if (GlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
+        {
+            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
+            if (glyph != null) return glyph.AdvanceX;
+        }
+        return TextLayout.MeasureRuneAdvance(rune, font);
+    }
+
+    internal static float MeasureText(string text, Font font)
+    {
+        var width = 0f;
+        foreach (var rune in text.EnumerateRunes()) width += MeasureAdvance(font, rune);
+        return width;
+    }
+
+    private static float MeasureOffset(string text, Font font, int offset)
+    {
+        var width = 0f;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (rune.Utf16SequenceLength > offset) break;
+            width += MeasureAdvance(font, rune);
+            offset -= rune.Utf16SequenceLength;
+        }
+        return width;
+    }
+
+    private static int HitTestOffset(string text, Font font, float x)
+    {
+        if (string.IsNullOrEmpty(text) || x <= 0) return 0;
+        var offset = 0;
+        var width = 0f;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var advance = MeasureAdvance(font, rune);
+            if (x < width + advance / 2f) break;
+            width += advance;
+            offset += rune.Utf16SequenceLength;
+        }
+        return Math.Clamp(offset, 0, text.Length);
     }
 
     private RichTextLayoutLine FindNearestLine(float y)
@@ -139,7 +186,7 @@ public static class RichTextLayoutEngine
         {
             if (activeRun == null || activeFont == null || activeText.Length == 0) return;
             var text = activeText.ToString();
-            var width = new TextLayout(text, activeFont).Measure().Width;
+            var width = RichTextBlockLayout.MeasureText(text, activeFont);
             fragments.Add(new RichTextLayoutFragment(
                 new RichTextRun(text, activeRun.Marks),
                 fragmentStart,
@@ -172,7 +219,7 @@ public static class RichTextLayoutEngine
             var font = ApplyMarks(baseFont, run.Marks);
             foreach (var rune in run.Text.EnumerateRunes())
             {
-                var advance = TextLayout.MeasureRuneAdvance(rune, font);
+                var advance = RichTextBlockLayout.MeasureAdvance(font, rune);
                 if (lineX > origin.X && lineX - origin.X + advance > maxWidth)
                     FlushLine();
 

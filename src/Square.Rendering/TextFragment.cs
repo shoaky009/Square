@@ -8,8 +8,6 @@ public sealed record TextFragment(Element Element, string Text, Font Font, Rect 
     public int HitTestOffset(Point point)
     {
         if (Characters.Count == 0) return 0;
-        if (Bounds.Contains(point))
-            return new TextLayout(Text, Font).HitTestOffset(point.X - Bounds.X);
 
         for (var i = 0; i < Characters.Count; i++)
         {

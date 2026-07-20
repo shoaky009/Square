@@ -35,7 +35,9 @@
       </View>
       <View class="preview-pane">
         <Text class="pane-label" text="Plain text output" />
-        <Text ref={PreviewText} class="preview-text" text="" />
+        <View class="preview-scroll">
+          <Text ref={PreviewText} class="preview-text" text="" />
+        </View>
         <Text ref={SelectionText} class="selection-text" text="Selection: none" />
       </View>
     </View>
@@ -171,29 +173,31 @@
   }
 </script>
 <style>
-  .app-shell { display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #eef1f4; }
+  .app-shell { display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #eef1f4; overflow: hidden; }
   .title-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
   .title-copy { display: flex; flex-direction: column; gap: 2px; }
   .app-title { color: #15181c; font-size: 24px; font-weight: 700; }
   .app-subtitle { color: #667085; font-size: 13px; }
   .status { color: #344054; font-size: 13px; background: #ffffff; padding: 6px 10px; border: 1px solid #d0d5dd; }
-  .toolbar { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px; background: #ffffff; border: 1px solid #d0d5dd; }
-  .toolbar Button { height: 34px; background: #ffffff; color: #344054; border: 1px solid #d0d5dd; }
+  .toolbar { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px; background: #ffffff; border: 1px solid #d0d5dd; overflow-x: auto; overflow-y: hidden; }
+  .toolbar Button { height: 34px; flex-shrink: 0; background: #ffffff; color: #344054; border: 1px solid #d0d5dd; }
   .toolbar Button:hover { background: #f2f4f7; }
   .tool-button { min-width: 42px; }
   .strong { font-weight: 700; }
   .italic { font-style: italic; }
   .underline { color: #101828; }
-  .divider { width: 1px; height: 26px; background: #d0d5dd; margin-left: 4px; margin-right: 4px; }
+  .divider { width: 1px; height: 26px; flex-shrink: 0; background: #d0d5dd; margin-left: 4px; margin-right: 4px; }
   .color-blue { background: #175cd3; color: #ffffff; border: 1px solid #175cd3; }
   .color-red { background: #b42318; color: #ffffff; border: 1px solid #b42318; }
   .color-green { background: #067647; color: #ffffff; border: 1px solid #067647; }
   .danger { color: #b42318; }
-  .workspace { display: flex; flex-direction: row; gap: 12px; flex-grow: 1; align-items: stretch; }
-  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex: 2 1 0; min-width: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
-  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-width: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .workspace { display: flex; flex-direction: row; gap: 12px; height: 100vh; min-height: 0; flex-grow: 1; align-items: stretch; }
+  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex: 2 1 0; min-width: 0; min-height: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; overflow: hidden; }
+  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-width: 0; min-height: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; overflow: hidden; }
   .pane-label { color: #475467; font-size: 12px; font-weight: 700; }
-  .rich-editor { width: 100%; min-height: 560px; flex-grow: 1; flex-shrink: 1; font-size: 16px; color: #101828; background: #ffffff; }
-  .preview-text { color: #344054; font-size: 14px; line-height: 22px; user-select: text; }
-  .selection-text { color: #667085; font-size: 12px; background: #f2f4f7; padding: 8px; }
+  .rich-editor { min-height: 180px; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-size: 16px; color: #101828; background: #ffffff; }
+  .rich-editor::selection { background: #3390ff; color: #ffffff; }
+  .preview-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; align-self: stretch; overflow-y: auto; overflow-x: hidden; }
+  .preview-text { min-width: 0; align-self: stretch; color: #344054; font-size: 14px; line-height: 22px; user-select: text; }
+  .selection-text { height: 52px; min-width: 0; flex-shrink: 0; align-self: stretch; color: #667085; font-size: 12px; background: #f2f4f7; padding: 8px; overflow: hidden; }
 </style>

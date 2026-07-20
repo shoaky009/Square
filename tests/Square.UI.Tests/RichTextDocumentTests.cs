@@ -1,6 +1,8 @@
 using System;
 using Square.Extensions.RichText;
 using Square.Extensions.Registration;
+using Square.Controls.Controls;
+using Square.Rendering;
 using Square.UI;
 using Xunit;
 
@@ -167,6 +169,37 @@ public class RichTextDocumentTests
     }
 
     [Fact]
+    public void RichTextEditorMeasuresToFiniteAvailableWidth()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("short"));
+
+        var size = editor.Measure(new Square.Graphics.Size(480, 600));
+
+        Assert.Equal(480, size.Width);
+    }
+
+    [Fact]
+    public void RichTextEditorStretchesInColumnFlexPane()
+    {
+        var pane = new View();
+        pane.Style.Set("display", "flex");
+        pane.Style.Set("flex-direction", "column");
+        pane.Style.Set("padding", "12px");
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("short"));
+        editor.Style.Set("width", "100%");
+        editor.Style.Set("min-height", "120px");
+        editor.Style.Set("flex-grow", "1");
+        editor.Style.Set("flex-shrink", "1");
+        pane.Children.Add(editor);
+
+        var layout = new LayoutEngine();
+        layout.Measure(pane, new Square.Graphics.Size(680, 220));
+        layout.Arrange(pane, new Square.Graphics.Rect(0, 0, 680, 220));
+
+        Assert.Equal(656, editor.Geometry.Width);
+    }
+
+    [Fact]
     public void RichTextEditorRegistersAsExtensionElement()
     {
         ExtensionRegistration.RegisterDefaults();
@@ -249,7 +282,7 @@ public class RichTextDocumentTests
         Assert.Equal(3, layout.Lines[0].Fragments[1].EndOffset);
         Assert.Equal(3, layout.Lines[0].Fragments[2].StartOffset);
         Assert.Equal(5, layout.Lines[0].Fragments[2].EndOffset);
-        Assert.Equal(51.6f, layout.GetCaretRect(3).X, 1);
+        Assert.Equal(layout.Lines[0].Fragments[1].Bounds.Right, layout.GetCaretRect(3).X);
     }
 
     [Fact]
@@ -292,7 +325,30 @@ public class RichTextDocumentTests
         var boldWidth = layout.GetSelectionRects(0, 2).Single().Width;
         var normalWidth = layout.GetSelectionRects(2, 4).Single().Width;
 
+        Assert.Equal(layout.Lines[0].Fragments[0].Bounds.Width, boldWidth);
+        Assert.Equal(layout.Lines[0].Fragments[0].Bounds.Right, layout.GetCaretRect(2).X);
         Assert.True(boldWidth > normalWidth);
+    }
+
+    [Fact]
+    public void RichTextWordBoundarySelectsWordWithoutPunctuation()
+    {
+        Assert.Equal((0, 10), RichTextBoundaries.WordAt("formatting, text", 4));
+        Assert.Equal((10, 11), RichTextBoundaries.WordAt("formatting, text", 10));
+        Assert.Equal((12, 16), RichTextBoundaries.WordAt("formatting, text", 14));
+    }
+
+    [Fact]
+    public void RichTextEditorSelectWordAtSelectsClickedWord()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("bold plain"))
+        {
+            Geometry = new Square.Graphics.Rect(0, 0, 240, 80)
+        };
+
+        editor.SelectWordAt(new Square.Graphics.Point(20, 10));
+
+        Assert.Equal("bold", editor.SelectedText);
     }
 
     [Fact]
@@ -338,6 +394,21 @@ public class RichTextDocumentTests
         Assert.True(Assert.IsType<RichTextRun>(Assert.Single(editor.Document.Blocks[0].Inlines)).Marks.Bold);
         Assert.True(editor.Redo());
         Assert.True(Assert.IsType<RichTextRun>(Assert.Single(editor.Document.Blocks[0].Inlines)).Marks.IsEmpty);
+    }
+
+    [Fact]
+    public void RichTextEditorFormattingCommandsDispatchInput()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("hello"));
+        var inputEvents = 0;
+        editor.AddEventListener("input", _ => inputEvents++);
+        editor.SelectAll();
+
+        editor.ToggleBold();
+        editor.ToggleItalic();
+        editor.ToggleUnderline();
+
+        Assert.Equal(3, inputEvents);
     }
 
     [Fact]
