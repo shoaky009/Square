@@ -6,6 +6,7 @@ namespace Square.Graphics;
 public sealed class TextLayout
 {
     public const float DefaultLineHeight = 1.2f;
+    private static Func<Rune, Font, float?>? _advanceProvider;
 
     public string Text { get; set; } = "";
     public Font Font { get; set; } = new();
@@ -15,6 +16,9 @@ public sealed class TextLayout
 
     public TextLayout() { }
     public TextLayout(string text, Font font) { Text = text; Font = font; }
+
+    public static void RegisterAdvanceProvider(Func<Rune, Font, float?> provider)
+        => _advanceProvider = provider ?? throw new ArgumentNullException(nameof(provider));
 
     public Size Measure() => MeasureCore();
 
@@ -61,6 +65,7 @@ public sealed class TextLayout
         var widestLine = 0f;
         var lineCount = 1;
         var currentWidth = 0f;
+        var wrapped = false;
 
         foreach (var rune in Text.EnumerateRunes())
         {
@@ -78,12 +83,13 @@ public sealed class TextLayout
                 widestLine = Math.Max(widestLine, currentWidth);
                 currentWidth = 0;
                 lineCount++;
+                wrapped = true;
             }
             currentWidth += advance;
         }
 
         widestLine = Math.Max(widestLine, currentWidth);
-        return new Size(constrainWidth ? Math.Min(maxWidth, widestLine) : widestLine, lineCount * lineHeight);
+        return new Size(constrainWidth ? wrapped ? maxWidth : Math.Min(maxWidth, widestLine) : widestLine, lineCount * lineHeight);
     }
 
     public static float MeasureRuneAdvance(Rune rune, float fontSize)
@@ -97,6 +103,11 @@ public sealed class TextLayout
 
     public static float MeasureRuneAdvance(Rune rune, Font font)
     {
+        var category = Rune.GetUnicodeCategory(rune);
+        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
+            return 0;
+        var measured = _advanceProvider?.Invoke(rune, font);
+        if (measured is >= 0 and float value && float.IsFinite(value)) return value;
         var advance = MeasureRuneAdvance(rune, font.Size);
         return font.Weight >= FontWeight.Bold ? advance * 1.08f : advance;
     }

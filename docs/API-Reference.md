@@ -140,7 +140,7 @@ public sealed record ToolingKeyInput(int KeyCode, KeyAction Action, KeyModifiers
 public sealed record ToolingWheelInput(Point Position, int Delta, KeyModifiers Modifiers = KeyModifiers.None);
 ```
 
-`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。
+`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。`CaptureRendererBitmapAsync()` 在 UI 线程将当前 DisplayTree 重放到离屏 Software bitmap，不依赖活动后端提供 GPU readback，也不捕获平台窗口边框。
 
 ---
 
@@ -1373,6 +1373,8 @@ public static class PlatformScreenshot
 | `TryCaptureByProcessId(pid, out bitmap)` | 尝试捕获，返回是否成功 |
 
 实现按构建层裁剪：`PLATFORM_WIN32` 走 `Win32WindowScreenshot`，`PLATFORM_X11` 走 `X11WindowScreenshot`。配合 `BitmapPngEncoder` 可将截图保存为 PNG。
+
+`PlatformScreenshot` 用于捕获真实平台窗口，与 `DesktopApplication.CaptureRendererBitmapAsync()` 的进程内 renderer 截图区分。自动化和 Tooling 默认使用后者，以避免 PID 查找、遮挡、窗口边框和桌面合成器差异。
 
 ---
 

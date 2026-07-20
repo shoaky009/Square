@@ -1,3 +1,5 @@
+using Square.Backends.Impeller;
+using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
 using Square.UI;
@@ -16,18 +18,49 @@ public static class Program
         };
         document.Body.Children.Add(new Main());
 
+        var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
+        var library = GetOption(args, "--impeller-library") ?? Environment.GetEnvironmentVariable("SQUARE_IMPELLER_LIBRARY");
+        if (string.Equals(backend, "Impeller", StringComparison.OrdinalIgnoreCase))
+            ImpellerRegistration.Register(library);
+
         var app = new DesktopApplication(document, new PlatformHostCreateInfo
         {
             Title = document.Title,
             Width = 900,
-            Height = 980
+            Height = 980,
+            RenderBackend = backend
         });
         ConfigureRendering(app, args);
         ConfigureDebugOverlayToggle(app, document);
         SampleSignals.Initialize(app.Dispatcher);
+        var screenshot = GetOption(args, "--screenshot");
+        if (!string.IsNullOrWhiteSpace(screenshot)) ScheduleScreenshot(app, screenshot);
         app.Run();
 
         System.Console.WriteLine("Window closed. Demo complete.");
+    }
+
+    private static void ScheduleScreenshot(DesktopApplication app, string path)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1800);
+            try
+            {
+                using var bitmap = await app.CaptureRendererBitmapAsync();
+                BitmapPngEncoder.Save(bitmap, path);
+                System.Console.WriteLine($"Screenshot saved to {path}");
+            }
+            catch (Exception exception)
+            {
+                System.Console.Error.WriteLine($"Screenshot failed: {exception}");
+                Environment.ExitCode = 1;
+            }
+            finally
+            {
+                app.Close();
+            }
+        });
     }
 
     private static void ConfigureRendering(DesktopApplication app, string[] args)

@@ -1,0 +1,8 @@
+<Project>
+
+  <ItemGroup>
+    <ProjectReference Update="@(ProjectReference)"
+                      AdditionalProperties="SquareTargetPlatform=$(SquareTargetPlatform)" />
+  </ItemGroup>
+
+</Project>

@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Square.Graphics;
 
 namespace Square.Text.Glyph;
@@ -232,4 +234,33 @@ public sealed partial class SystemGlyphRasterizer
         }
     }
 #endif
+}
+
+internal static class SystemTextMeasurementRegistration
+{
+    private static readonly SystemGlyphRasterizer Rasterizer = new();
+    private static readonly object Sync = new();
+
+#pragma warning disable CA2255 // Square.Text installs the optional font metrics provider for Square.Graphics.
+    [ModuleInitializer]
+    internal static void Register()
+        => TextLayout.RegisterAdvanceProvider(MeasureAdvance);
+#pragma warning restore CA2255
+
+    private static float? MeasureAdvance(Rune rune, Font font)
+    {
+        if (!rune.IsBmp || !Rasterizer.IsAvailable) return null;
+        var family = font.Family.ToLowerInvariant() switch
+        {
+            "sans-serif" or "system-ui" or "ui-sans-serif" => OperatingSystem.IsWindows() ? "Segoe UI" : "DejaVu Sans",
+            "serif" or "ui-serif" => OperatingSystem.IsWindows() ? "Times New Roman" : "DejaVu Serif",
+            "monospace" or "ui-monospace" => OperatingSystem.IsWindows() ? "Consolas" : "DejaVu Sans Mono",
+            _ => font.Family
+        };
+        var effectiveFont = family == font.Family
+            ? font
+            : new Font(family, font.Size, font.Weight, font.Style);
+        lock (Sync)
+            return Rasterizer.Rasterize(effectiveFont, (char)rune.Value)?.AdvanceX;
+    }
 }

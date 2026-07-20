@@ -8,6 +8,7 @@ internal sealed unsafe class X11Host : IPlatformHost
     private string _title;
     private readonly int _width;
     private readonly int _height;
+    private readonly string _renderBackend;
     private readonly IntPtr _display;
     private readonly int _screen;
     private readonly IntPtr _root;
@@ -44,6 +45,7 @@ internal sealed unsafe class X11Host : IPlatformHost
     private IntPtr _xim;
     private IntPtr _xic;
     private Rect _textInputRect;
+    private bool _disposed;
 
     private static X11Api.XErrorHandler? _errorHandler;
 
@@ -64,6 +66,7 @@ internal sealed unsafe class X11Host : IPlatformHost
         _title = info.Title;
         _width = info.Width;
         _height = info.Height;
+        _renderBackend = info.RenderBackend;
         _display = X11Api.OpenDisplay(null);
         if (_display == IntPtr.Zero)
             throw new InvalidOperationException("Cannot open X display. Is DISPLAY set?");
@@ -115,6 +118,7 @@ internal sealed unsafe class X11Host : IPlatformHost
             throw new InvalidOperationException("XCreateWindow failed");
 
         X11Api.StoreName(_display, _window, _title);
+        SetProcessIdProperty();
 
         _wmDeleteWindow = X11Api.InternAtom(_display, "WM_DELETE_WINDOW", false);
         _wmProtocols = X11Api.InternAtom(_display, "WM_PROTOCOLS", false);
@@ -166,6 +170,14 @@ internal sealed unsafe class X11Host : IPlatformHost
             "clientWindow", _window,
             "focusWindow", _window,
             IntPtr.Zero);
+    }
+
+    private void SetProcessIdProperty()
+    {
+        var property = X11Api.InternAtom(_display, "_NET_WM_PID", false);
+        var cardinal = X11Api.InternAtom(_display, "CARDINAL", false);
+        var pid = BitConverter.GetBytes(Environment.ProcessId);
+        X11Api.ChangeProperty(_display, _window, property, cardinal, 32, X11Api.PropModeReplace, pid, 1);
     }
 
     public Size ClientSize => _clientSize;
@@ -221,12 +233,13 @@ internal sealed unsafe class X11Host : IPlatformHost
     public IRenderContext CreateRenderContext()
     {
         if (_renderContext != null) return _renderContext;
-        var factory = RenderBackendRegistry.Default;
+        var factory = RenderBackendRegistry.Get(_renderBackend);
         _renderContext = factory.CreateContext(new RenderContextCreateInfo
         {
             CanvasSize = _clientSize,
             DpiScale = _dpiScale,
-            PresentFrame = PresentFrame
+            PresentFrame = PresentFrame,
+            NativeTarget = new X11VulkanRenderTarget(_display, _window, _screen)
         });
         EnsureImageBuffer();
         return _renderContext;
@@ -717,6 +730,8 @@ internal sealed unsafe class X11Host : IPlatformHost
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         DestroyXImage();
         if (_xic != IntPtr.Zero)
         {

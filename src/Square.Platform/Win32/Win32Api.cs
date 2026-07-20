@@ -55,6 +55,9 @@ internal static partial class Win32Api
     [LibraryImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")]
     public static partial bool SetProcessDpiAwarenessContext(IntPtr value);
 
+    [LibraryImport("user32.dll", EntryPoint = "GetDpiForWindow")]
+    public static partial uint GetDpiForWindow(IntPtr hWnd);
+
     [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr CreateWindowEx(
         int dwExStyle, string lpClassName, string lpWindowName,

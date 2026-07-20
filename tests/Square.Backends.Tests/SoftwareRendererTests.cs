@@ -65,6 +65,52 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void DpiScaleKeepsLogicalCanvasAndRasterizesToPhysicalPixels()
+    {
+        var bitmap = new Bitmap(20, 10);
+        var context = new RenderContext(bitmap, new Size(10, 5), 2f);
+
+        context.Clear(Color.Transparent);
+        context.FillRect(new Rect(1, 1, 2, 2), new SolidColorBrush(Color.Red));
+
+        Assert.Equal(new Size(10, 5), context.CanvasSize);
+        Assert.Equal(2f, context.DpiScale);
+        Assert.Equal(0, bitmap.Pixels[(1 * bitmap.Width + 1) * 4 + 3]);
+        Assert.Equal(255, bitmap.Pixels[(2 * bitmap.Width + 2) * 4 + 3]);
+        Assert.Equal(255, bitmap.Pixels[(5 * bitmap.Width + 5) * 4 + 3]);
+        Assert.Equal(0, bitmap.Pixels[(6 * bitmap.Width + 6) * 4 + 3]);
+    }
+
+    [Fact]
+    public void DpiResizeUpdatesScaleAndPhysicalFrameBuffer()
+    {
+        var context = new RenderContext(new Bitmap(10, 10), new Size(10, 10), 1f);
+
+        context.Resize(new Size(12, 8), 1.5f);
+
+        Assert.Equal(new Size(12, 8), context.CanvasSize);
+        Assert.Equal(1.5f, context.DpiScale);
+        Assert.Equal(18, context.GetBitmap().Width);
+        Assert.Equal(12, context.GetBitmap().Height);
+    }
+
+    [Fact]
+    public void DpiScaleConvertsLogicalDirtyRectsToPhysicalPixels()
+    {
+        IReadOnlyList<Rect>? presentedDirtyRects = null;
+        var context = new RenderContext(
+            new Bitmap(20, 20),
+            new Size(10, 10),
+            2f,
+            (_, dirtyRects) => presentedDirtyRects = dirtyRects);
+
+        context.Present([new Rect(1.25f, 2.25f, 3.5f, 4.5f)]);
+
+        var dirtyRect = Assert.Single(presentedDirtyRects!);
+        Assert.Equal(new Rect(2, 4, 8, 10), dirtyRect);
+    }
+
+    [Fact]
     public void DisplayTreeCollectTextFragmentsUsesDrawTextCommands()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 40) };
@@ -207,6 +253,21 @@ public class SoftwareRendererTests
         Assert.Contains(digit.Coverage, value => value > 0);
         Assert.False(upper.Coverage.SequenceEqual(lower.Coverage));
         Assert.False(lower.Coverage.SequenceEqual(digit.Coverage));
+    }
+
+    [Fact]
+    public void TextLayoutUsesTheSameAdvancesAsSystemTextRendering()
+    {
+        var rasterizer = new SystemGlyphRasterizer();
+        if (!rasterizer.IsAvailable) return;
+        var font = new Font("Segoe UI", 20);
+        const string text = "Wide 10";
+        var expected = text.Sum(character => rasterizer.Rasterize(font, character)?.AdvanceX ?? 0);
+        var layout = new TextLayout(text, font);
+
+        Assert.Equal(expected, layout.Measure().Width);
+        Assert.Equal(expected, layout.MeasureOffset(text.Length));
+        Assert.Equal(text.Length, layout.HitTestOffset(expected));
     }
 
     [Fact]
@@ -409,6 +470,57 @@ public class SoftwareRendererTests
         Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4]);
         Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4 + 1]);
         Assert.Equal(255, bitmap.Pixels[5 * bitmap.Stride + 15 * 4 + 2]);
+    }
+
+    [Fact]
+    public void LinearAndRadialGradientsVaryAcrossTheirGeometry()
+    {
+        var context = CreateContext(40, 20);
+        context.FillRect(
+            new Rect(0, 0, 20, 20),
+            new LinearGradientBrush(
+                Point.Zero, new Point(20, 0),
+                new GradientStop(0, Color.Red),
+                new GradientStop(1, Color.Blue)));
+        context.FillGeometry(
+            new EllipseGeometry(new Point(30, 10), 10, 10),
+            new RadialGradientBrush(
+                new Point(30, 10), 10,
+                new GradientStop(0, Color.White),
+                new GradientStop(1, Color.Black)));
+
+        var bitmap = context.GetBitmap();
+        Assert.True(bitmap.GetPixel(2, 10)[2] > bitmap.GetPixel(17, 10)[2]);
+        Assert.True(bitmap.GetPixel(17, 10)[0] > bitmap.GetPixel(2, 10)[0]);
+        Assert.True(bitmap.GetPixel(30, 10)[2] > bitmap.GetPixel(38, 10)[2]);
+    }
+
+    [Fact]
+    public void GeometryClipsRejectPixelsInsideOnlyTheirBounds()
+    {
+        var context = CreateContext(60, 20);
+        context.Clear(Color.Black);
+        context.PushClip(new RoundedRectGeometry(new Rect(0, 0, 20, 20), 8, 8));
+        context.FillRect(new Rect(0, 0, 20, 20), new SolidColorBrush(Color.Red));
+        context.PopClip();
+        context.PushClip(new EllipseGeometry(new Point(30, 10), 10, 10));
+        context.FillRect(new Rect(20, 0, 20, 20), new SolidColorBrush(Color.Green));
+        context.PopClip();
+        context.PushClip(PathGeometry.Create()
+            .MoveTo(new Point(40, 20))
+            .LineTo(new Point(50, 0))
+            .LineTo(new Point(60, 20))
+            .Close());
+        context.FillRect(new Rect(40, 0, 20, 20), new SolidColorBrush(Color.Blue));
+        context.PopClip();
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, bitmap.GetPixel(0, 0)[2]);
+        Assert.Equal(255, bitmap.GetPixel(10, 10)[2]);
+        Assert.Equal(0, bitmap.GetPixel(20, 0)[1]);
+        Assert.Equal(255, bitmap.GetPixel(30, 10)[1]);
+        Assert.Equal(0, bitmap.GetPixel(40, 0)[0]);
+        Assert.Equal(255, bitmap.GetPixel(50, 10)[0]);
     }
 
     [Fact]

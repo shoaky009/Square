@@ -4,7 +4,7 @@ namespace Square.Graphics;
 
 /// <summary>
 /// Present 回调：<paramref name="dirtyRects"/> 为 null 时表示整窗；
-/// 非 null 时仅上传列表中的矩形（逻辑像素，与 Bitmap 同坐标系）。
+/// 非 null 时仅上传列表中的矩形（物理像素，与 Bitmap 同坐标系）。
 /// </summary>
 public delegate void PresentFrameHandler(Bitmap bitmap, IReadOnlyList<Rect>? dirtyRects);
 
@@ -14,6 +14,7 @@ public sealed class RenderContextCreateInfo
     public float DpiScale { get; set; } = 1f;
     public bool VSync { get; set; } = true;
     public PresentFrameHandler? PresentFrame { get; set; }
+    public INativeRenderTarget? NativeTarget { get; set; }
 }
 
 public interface IRenderContext : IDisposable
@@ -60,6 +61,12 @@ public interface IRenderContext : IDisposable
 public interface IResizableRenderContext
 {
     void Resize(Size canvasSize);
+}
+
+public interface IDpiResizableRenderContext : IResizableRenderContext
+{
+    /// <summary>更新逻辑画布尺寸和物理像素缩放。</summary>
+    void Resize(Size canvasSize, float dpiScale);
 }
 
 public interface IRenderBitmapSource

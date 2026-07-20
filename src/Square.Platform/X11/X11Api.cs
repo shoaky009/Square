@@ -146,6 +146,8 @@ internal static partial class X11Api
     public const int XLookupBoth = 4;
 
     public const int ZPixmap = 2;
+    public const int PropModeReplace = 0;
+    public const uint AllPlanes = uint.MaxValue;
     public const int BitmapPad = 32;
     public const int LSBFirst = 0;
     public const int MSBFirst = 1;
@@ -452,6 +454,14 @@ internal static partial class X11Api
     public static partial bool GetGeometry(IntPtr display, IntPtr drawable,
         out IntPtr root, out int x, out int y, out uint width, out uint height,
         out uint borderWidth, out uint depth);
+
+    [LibraryImport("libX11.so.6", EntryPoint = "XGetImage")]
+    public static partial IntPtr GetImage(
+        IntPtr display, IntPtr drawable, int x, int y, uint width, uint height,
+        uint planeMask, int format);
+
+    [LibraryImport("libX11.so.6", EntryPoint = "XGetPixel")]
+    public static partial nuint GetPixel(IntPtr image, int x, int y);
 
     [LibraryImport("libX11.so.6", EntryPoint = "XResizeWindow")]
     public static partial int ResizeWindow(IntPtr display, IntPtr window, uint width, uint height);

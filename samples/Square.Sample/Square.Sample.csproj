@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
+    <ProjectReference Include="..\..\src\Square.Backends.Impeller\Square.Backends.Impeller.csproj" />
     <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>

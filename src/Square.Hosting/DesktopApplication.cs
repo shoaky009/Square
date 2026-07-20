@@ -104,6 +104,10 @@ public sealed class DesktopApplication : Application
         {
             if (_root.IsLoaded) lifecycle.OnUnloaded();
             lifecycle.OnDetached();
+            _renderContext?.Dispose();
+            _renderContext = null;
+            _host?.Dispose();
+            _host = null;
         }
     }
 
@@ -133,6 +137,13 @@ public sealed class DesktopApplication : Application
 
     public void RequestRender() => _renderRequested = true;
 
+    public void Close()
+    {
+        if (_host == null) return;
+        if (Dispatcher.CheckAccess()) _host.Close();
+        else Dispatcher.Invoke(() => _host?.Close());
+    }
+
     public Task InjectPointerAsync(ToolingPointerInput input) => Dispatcher.InvokeAsync(() =>
     {
         WithToolingModifiers(input.Modifiers, () => HandleMouse(input.Position, input.Action));
@@ -157,9 +168,19 @@ public sealed class DesktopApplication : Application
         {
             try
             {
-                if (_renderContext is not IRenderBitmapSource bitmapSource)
-                    throw new InvalidOperationException("The active render context does not support bitmap capture.");
-                completion.SetResult(bitmapSource.CaptureBitmap());
+                if (_host == null || _renderContext == null)
+                    throw new InvalidOperationException("The application must be running before renderer capture is available.");
+                using var captureContext = new RenderBackendFactory().CreateContext(new RenderContextCreateInfo
+                {
+                    CanvasSize = _host.ClientSize,
+                    DpiScale = _host.DpiScale
+                });
+                captureContext.Clear(Background);
+                _displayTree.Render(captureContext);
+                RenderTextSelection(captureContext);
+                RenderDiagnosticsOverlay(captureContext);
+                captureContext.Flush();
+                completion.SetResult(((IRenderBitmapSource)captureContext).CaptureBitmap());
             }
             catch (Exception exception)
             {
@@ -256,9 +277,9 @@ public sealed class DesktopApplication : Application
                     _renderContext.Clear(Background, LastRenderDiagnostics.DirtyUnion);
                     _renderContext.PushClip(LastRenderDiagnostics.DirtyUnion);
                     _displayTree.Render(_renderContext, LastRenderDiagnostics.DirtyUnion);
-                    RenderTextSelection();
+                    RenderTextSelection(_renderContext);
                     _renderContext.PopClip();
-                    RenderDiagnosticsOverlay();
+                    RenderDiagnosticsOverlay(_renderContext);
                     _renderContext.Flush();
                     // Present：优先局部；若平台忽略则仍应更新窗口。同时提交 union 保证至少一块区域。
                     _renderContext.Present(ShowRenderDiagnosticsOverlay ? null : dirty);
@@ -362,33 +383,33 @@ public sealed class DesktopApplication : Application
         if (_renderContext == null) return;
         _renderContext.Clear(Background);
         _displayTree.Render(_renderContext);
-        RenderTextSelection();
-        RenderDiagnosticsOverlay();
+        RenderTextSelection(_renderContext);
+        RenderDiagnosticsOverlay(_renderContext);
         _renderContext.Flush();
         _renderContext.Present(null);
     }
 
-    private void RenderDiagnosticsOverlay()
+    private void RenderDiagnosticsOverlay(IRenderContext context)
     {
-        if (!ShowRenderDiagnosticsOverlay || _renderContext == null) return;
+        if (!ShowRenderDiagnosticsOverlay) return;
 
         var diagnostics = LastRenderDiagnostics;
         var panel = new Rect(8, 8, 300, 86);
-        _renderContext.FillRect(panel, new SolidColorBrush(Color.FromRgba(20, 24, 28, 220)));
-        _renderContext.DrawRect(panel, Pen.FromColor(Color.FromRgb(80, 180, 255)));
+        context.FillRect(panel, new SolidColorBrush(Color.FromRgba(20, 24, 28, 220)));
+        context.DrawRect(panel, Pen.FromColor(Color.FromRgb(80, 180, 255)));
 
-        DrawOverlayText($"mode: {diagnostics.Mode} / {(diagnostics.UsedFullFrame ? "full" : "dirty")}", 16, 16);
-        DrawOverlayText($"reason: {diagnostics.Reason}", 16, 34);
-        DrawOverlayText($"dirty: {diagnostics.DirtyRectCount}, area: {diagnostics.DirtyAreaRatio:P1}", 16, 52);
-        DrawOverlayText($"union: {FormatRect(diagnostics.DirtyUnion)}", 16, 70);
+        DrawOverlayText(context, $"mode: {diagnostics.Mode} / {(diagnostics.UsedFullFrame ? "full" : "dirty")}", 16, 16);
+        DrawOverlayText(context, $"reason: {diagnostics.Reason}", 16, 34);
+        DrawOverlayText(context, $"dirty: {diagnostics.DirtyRectCount}, area: {diagnostics.DirtyAreaRatio:P1}", 16, 52);
+        DrawOverlayText(context, $"union: {FormatRect(diagnostics.DirtyUnion)}", 16, 70);
 
         if (ShowDirtyUnionOverlay && !diagnostics.DirtyUnion.IsEmpty)
-            _renderContext.DrawRect(diagnostics.DirtyUnion, Pen.FromColor(Color.FromRgba(255, 64, 64, 220), 2));
+            context.DrawRect(diagnostics.DirtyUnion, Pen.FromColor(Color.FromRgba(255, 64, 64, 220), 2));
     }
 
-    private void DrawOverlayText(string text, float x, float y)
+    private static void DrawOverlayText(IRenderContext context, string text, float x, float y)
     {
-        _renderContext!.DrawText(
+        context.DrawText(
             new TextLayout(text, new Font("Segoe UI", 12)),
             new Point(x, y),
             new SolidColorBrush(Color.White));
@@ -848,9 +869,9 @@ public sealed class DesktopApplication : Application
         return true;
     }
 
-    private void RenderTextSelection()
+    private void RenderTextSelection(IRenderContext context)
     {
-        if (_renderContext == null || _textSelection == null || _textSelection.Items.Count == 0) return;
+        if (_textSelection == null || _textSelection.Items.Count == 0) return;
         var (startPoint, endPoint) = GetOrderedSelectionPoints(_textSelection);
         if (startPoint.Index < 0 || endPoint.Index < 0) return;
         for (var i = startPoint.Index; i <= endPoint.Index; i++)
@@ -865,16 +886,16 @@ public sealed class DesktopApplication : Application
             var foregroundBrush = new SolidColorBrush(foreground);
             if (item.Fragment == null)
             {
-                _renderContext.FillRect(item.Bounds, backgroundBrush);
+                context.FillRect(item.Bounds, backgroundBrush);
                 continue;
             }
 
             foreach (var character in item.Fragment.Characters)
             {
                 if (character.EndOffset <= startOffset || character.StartOffset >= endOffset) continue;
-                _renderContext.FillRect(character.Bounds, backgroundBrush);
+                context.FillRect(character.Bounds, backgroundBrush);
                 var selectedText = item.Text[character.StartOffset..character.EndOffset];
-                _renderContext.DrawText(
+                context.DrawText(
                     new TextLayout(selectedText, item.Fragment.Font),
                     character.Bounds.Position,
                     foregroundBrush);

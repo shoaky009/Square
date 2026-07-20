@@ -31,6 +31,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - CSS 选择器、级联、变量、伪类、属性选择器及基础样式
 - Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
+- Flutter Impeller GPU Renderer：Windows / Linux(X11) Vulkan，支持形状、Path、Bitmap、Typography、渐变、透明层和 Geometry clip
 - Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板
 - X11 窗口宿主（Linux）、键盘、鼠标、滚轮、剪贴板（CLIPBOARD + PRIMARY）和 Software Renderer 上屏
 - DOM 风格事件系统：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent` + 捕获/冒泡
@@ -48,6 +49,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `Square.Extensions` 扩展模块：`MarkdownViewer` 控件（基于 Markdig，将 Markdown 渲染为 Square 元素树）
 - `Square.Extensions.RichText`：富文本文档模型、跨 run 布局、软换行、selection/caret/hit test、格式命令与 `RichTextEditor` 控件
 - `Square.Tooling`：localhost HTTP 调试服务，支持 renderer PNG 截图和鼠标、键盘、文本、滚轮模拟输入
+- 进程内 renderer 截图：`DesktopApplication.CaptureRendererBitmapAsync()` 将保留的 DisplayTree 离屏重放为 Bitmap，不依赖 PID、窗口枚举或桌面合成器
 - PNG 编码（`BitmapPngEncoder`）与 BMP 解码（`BmpPngConverter`），纯 C# 无外部依赖
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
@@ -197,7 +199,8 @@ Square.SourceGenerator ──► C# Component
 | `Square.Rendering` | Box / Flex / Grid 布局、Display Tree 和 DrawCommand |
 | `Square.Text` | 字形、测量和文本布局 |
 | `Square.Platform` | 平台宿主与输入采集 |
-| `Square.Backends` | Software Renderer 及后续图形后端 |
+| `Square.Backends` | Software Renderer |
+| `Square.Backends.Impeller` | Flutter Impeller Standalone SDK Vulkan GPU 后端 |
 | `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
 | `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`、`RichTextEditor` 等，按需引用 |
 | `Square.Tooling` | 本地 HTTP 调试与自动化：截图、输入模拟，按需引用 |
@@ -261,6 +264,24 @@ dotnet build Square.slnx
 ```bash
 dotnet run --project samples/Square.Sample/Square.Sample.csproj
 ```
+
+使用 Impeller 运行常规示例：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- \
+  --backend Impeller \
+  --impeller-library /path/to/impeller.dll-or-libimpeller.so
+```
+
+Impeller 专用冒烟示例：
+
+```bash
+dotnet run --project samples/Square.Sample.Impeller/Square.Sample.Impeller.csproj -- \
+  --library /path/to/impeller.dll-or-libimpeller.so \
+  --screenshot artifacts/impeller-smoke.png
+```
+
+`--screenshot` 使用进程内 DisplayTree 离屏重放，不按 PID 捕获平台窗口。它输出客户区内容，适合自动化和 UI 回归。当前 Impeller Standalone C API 不提供 surface readback，因此该截图不是 GPU framebuffer readback；GPU 与 Software 的文字抗锯齿和 shaping 可能存在像素差异。
 
 运行 Vue 模板语法示例（`.sqv`）：
 
@@ -336,6 +357,7 @@ Linux x64 发布命令：
 dotnet publish samples/Square.Sample/Square.Sample.csproj \
   -c Release \
   -r linux-x64 \
+  -p:SquareTargetPlatform=X11 \
   --self-contained true
 ```
 
@@ -347,10 +369,10 @@ samples/Square.Sample/bin/Release/net10.0/linux-x64/publish/
 
 ### 平台裁剪
 
-Square 通过构建层 `DefineConstants`（`PLATFORM_WIN32` / `PLATFORM_X11`）和按 OS / RuntimeIdentifier 条件包含源文件来裁剪平台代码：
+Square 通过 `SquareTargetPlatform=Win32|X11`、构建层 `DefineConstants`（`PLATFORM_WIN32` / `PLATFORM_X11`）和条件包含源文件来裁剪平台代码。该属性会传播到项目引用，避免在 Windows 上交叉发布 Linux 时误编译 Win32 类库：
 
 - 在 Windows 上构建 → 编译 `Square.Platform/Win32/`，注册 Win32 宿主
-- 在 Linux 上构建（或 `-r linux-x64` 交叉编译）→ 编译 `Square.Platform/X11/`，注册 X11 宿主
+- 在 Linux 上构建，或使用 `-r linux-x64 -p:SquareTargetPlatform=X11` 交叉编译 → 编译 `Square.Platform/X11/`，注册 X11 宿主
 
 无需运行时平台判断；未包含的平台代码不会被 trim 误删。
 

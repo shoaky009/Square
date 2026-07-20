@@ -1,7 +1,7 @@
 using Square.Graphics;
 namespace Square.Platform;
 
-public interface IPlatformHost
+public interface IPlatformHost : IDisposable
 {
     Size ClientSize { get; }
     float DpiScale { get; }
@@ -43,4 +43,5 @@ public sealed class PlatformHostCreateInfo
     public required string Title { get; set; }
     public int Width { get; set; } = 800;
     public int Height { get; set; } = 600;
+    public string RenderBackend { get; set; } = "Software";
 }

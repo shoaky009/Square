@@ -523,7 +523,6 @@ internal sealed class DomTextContent
 
 internal static class ControlDrawing
 {
-    private static readonly Square.Text.Glyph.SystemGlyphRasterizer GlyphRasterizer = new();
     /// <summary>从元素 CSS 字体相关属性解析 <see cref="Font"/>（font-family/size/weight/style）。</summary>
     internal static Font ResolveFont(Element element, float defaultSize)
     {
@@ -564,17 +563,15 @@ internal static class ControlDrawing
         if (string.IsNullOrEmpty(text)) return 0;
         var lineWidth = 0f;
         var maxWidth = 0f;
-        foreach (var character in text)
+        foreach (var rune in text.EnumerateRunes())
         {
-            if (character == '\n')
+            if (rune.Value == '\n')
             {
                 maxWidth = Math.Max(maxWidth, lineWidth);
                 lineWidth = 0;
                 continue;
             }
-
-            var glyph = GlyphRasterizer.Rasterize(font, character);
-            lineWidth += glyph?.AdvanceX ?? Math.Max(1f, MathF.Round(font.Size * 0.5f));
+            lineWidth += TextLayout.MeasureRuneAdvance(rune, font);
         }
         return Math.Max(maxWidth, lineWidth);
     }

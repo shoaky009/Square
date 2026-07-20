@@ -563,18 +563,9 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     private float MeasureCharacterAdvance(ReadOnlySpan<char> character)
     {
-        var fontSize = GetFontSize();
-        var editorFont = ControlDrawing.ResolveFont(this, fontSize);
-        if (character.Length == 1)
-        {
-            var glyph = GlyphRasterizer.Rasterize(editorFont, character[0]);
-            if (glyph != null) return glyph.AdvanceX;
-            if (char.IsSurrogate(character[0])) return fontSize * 0.5f;
-            return TextLayout.MeasureRuneAdvance(new Rune(character[0]), fontSize);
-        }
-
+        var editorFont = ControlDrawing.ResolveFont(this, GetFontSize());
         Rune.DecodeFromUtf16(character, out var rune, out _);
-        return TextLayout.MeasureRuneAdvance(rune, fontSize);
+        return TextLayout.MeasureRuneAdvance(rune, editorFont);
     }
 
     private static int PreviousCodePointIndex(string text, int index)

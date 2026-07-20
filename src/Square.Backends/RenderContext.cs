@@ -5,7 +5,7 @@ using Square.Text.Glyph;
 
 namespace Square.Backends;
 
-internal sealed class RenderContext : IRenderContext, IResizableRenderContext, IRenderBitmapSource
+internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext, IRenderBitmapSource
 {
     private const int CoverageSampleGrid = 4;
     private const int CoverageSampleCount = CoverageSampleGrid * CoverageSampleGrid;
@@ -17,24 +17,36 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     private int _bitmapStride;
     private bool _hasClip;
     private float _clipLeft, _clipTop, _clipRight, _clipBottom;
-    private readonly float _dpiScale;
+    private Size _canvasSize;
+    private float _dpiScale;
     private readonly PresentFrameHandler? _presentFrame;
-    private readonly Stack<Rect> _clipStack = new();
+    private readonly Stack<ClipRegion> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
-    private Matrix3x2 _currentTransform = Matrix3x2.Identity;
+    private Matrix3x2 _currentTransform;
     private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
-    public Size CanvasSize => new(_bitmapWidth, _bitmapHeight);
+    public Size CanvasSize => _canvasSize;
     public float DpiScale => _dpiScale;
 
     internal RenderContext(Bitmap bitmap, float dpiScale, PresentFrameHandler? presentFrame = null)
+        : this(
+            bitmap,
+            new Size(bitmap.Width / NormalizeDpiScale(dpiScale), bitmap.Height / NormalizeDpiScale(dpiScale)),
+            dpiScale,
+            presentFrame)
+    {
+    }
+
+    internal RenderContext(Bitmap bitmap, Size canvasSize, float dpiScale, PresentFrameHandler? presentFrame = null)
     {
         _bitmap = bitmap;
         _bitmapWidth = bitmap.Width;
         _bitmapHeight = bitmap.Height;
         _bitmapPixels = bitmap.Pixels;
         _bitmapStride = bitmap.Stride;
-        _dpiScale = dpiScale;
+        _canvasSize = canvasSize;
+        _dpiScale = NormalizeDpiScale(dpiScale);
+        _currentTransform = CreateDpiTransform(_dpiScale);
         _presentFrame = presentFrame;
     }
 
@@ -54,19 +66,47 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
 
     public void PopTransform()
     {
-        _currentTransform = _transformStack.Count > 0 ? _transformStack.Pop() : Matrix3x2.Identity;
+        _currentTransform = _transformStack.Count > 0 ? _transformStack.Pop() : CreateDpiTransform(_dpiScale);
     }
 
     public void PushClip(Rect rect)
     {
-        rect = TransformRect(rect);
-        if (_clipStack.Count > 0)
-            rect = Rect.Intersect(_clipStack.Peek(), rect);
-        _clipStack.Push(rect);
+        var bounds = TransformRect(rect);
+        PushClipRegion(bounds, (x, y) => bounds.Contains(new Point(x, y)), isRect: true);
         UpdateClipCache();
     }
 
-    public void PushClip(Geometry geometry) => PushClip(geometry is RectGeometry rg ? rg.Rect : Rect.Empty);
+    public void PushClip(Geometry geometry)
+    {
+        if (geometry is RectGeometry rect) { PushClip(rect.Rect); return; }
+        if (!Matrix3x2.Invert(_currentTransform, out var inverse)) { PushClip(Rect.Empty); return; }
+        Rect bounds;
+        Func<float, float, bool> contains;
+        switch (geometry)
+        {
+            case RoundedRectGeometry rounded:
+                bounds = TransformRect(rounded.Rect);
+                contains = (x, y) => ContainsRoundedRect(TransformPoint(inverse, x, y), rounded.Rect, rounded.RadiusX, rounded.RadiusY);
+                break;
+            case EllipseGeometry ellipse:
+                bounds = TransformRect(new Rect(
+                    ellipse.Center.X - ellipse.RadiusX, ellipse.Center.Y - ellipse.RadiusY,
+                    ellipse.RadiusX * 2, ellipse.RadiusY * 2));
+                contains = (x, y) => ContainsEllipse(TransformPoint(inverse, x, y), ellipse.Center, ellipse.RadiusX, ellipse.RadiusY);
+                break;
+            case PathGeometry path:
+                var points = FlattenPath(path, Matrix3x2.Identity)
+                    .Select(point => new Point((float)point.x, (float)point.y))
+                    .ToArray();
+                bounds = GetBounds(points, _currentTransform);
+                contains = (x, y) => ContainsPolygon(points, TransformPoint(inverse, x, y));
+                break;
+            default:
+                throw new NotSupportedException($"Software rendering does not support geometry clip type '{geometry.GetType().Name}'.");
+        }
+        PushClipRegion(bounds, contains, isRect: false);
+        UpdateClipCache();
+    }
     public void PopClip() { if (_clipStack.Count > 0) _clipStack.Pop(); UpdateClipCache(); }
 
     private void UpdateClipCache()
@@ -74,7 +114,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         if (_clipStack.Count > 0)
         {
             _hasClip = true;
-            var clip = _clipStack.Peek();
+            var clip = _clipStack.Peek().Bounds;
             _clipLeft = clip.X;
             _clipTop = clip.Y;
             _clipRight = clip.Right;
@@ -96,25 +136,26 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
 
     public void Clear(Color color, Rect rect)
     {
-        var clipped = ClipRect(rect);
+        var clipped = ClipRect(TransformRect(rect));
         if (clipped.IsEmpty) return;
         BlendRect(clipped, color);
     }
 
     public void FillRect(Rect rect, Brush brush)
     {
-        if (brush is not SolidColorBrush sc) return;
+        var inverse = Matrix3x2.Invert(_currentTransform, out var value) ? value : Matrix3x2.Identity;
         rect = TransformRect(rect);
         var clipped = ClipRect(rect);
         if (clipped.IsEmpty) return;
-        BlendRect(clipped, sc.Color);
+        if (brush is SolidColorBrush solid) BlendRect(clipped, solid.Color);
+        else BlendBrush(clipped, brush, inverse);
     }
 
     public void DrawRect(Rect rect, Pen pen)
     {
         if (pen.Width <= 0) return;
         rect = TransformRect(rect);
-        var w = (int)Math.Ceiling(pen.Width);
+        var w = (int)Math.Ceiling(pen.Width * _dpiScale);
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
 
         BlendRect(new Rect(rect.X, rect.Y, rect.Width, w), color);
@@ -125,17 +166,36 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
 
     public void FillGeometry(Geometry geometry, Brush brush)
     {
-        if (brush is not SolidColorBrush sc) return;
+        if (brush is not SolidColorBrush sc)
+        {
+            var inverse = Matrix3x2.Invert(_currentTransform, out var value) ? value : Matrix3x2.Identity;
+            switch (geometry)
+            {
+                case RectGeometry rect: FillRect(rect.Rect, brush); break;
+                case RoundedRectGeometry rounded:
+                    FillBrushShape(
+                        TransformRect(rounded.Rect), brush, inverse,
+                        point => ContainsRoundedRect(point, rounded.Rect, rounded.RadiusX, rounded.RadiusY));
+                    break;
+                case EllipseGeometry ellipse:
+                    FillBrushShape(
+                        TransformRect(new Rect(ellipse.Center.X - ellipse.RadiusX, ellipse.Center.Y - ellipse.RadiusY, ellipse.RadiusX * 2, ellipse.RadiusY * 2)),
+                        brush, inverse,
+                        point => ContainsEllipse(point, ellipse.Center, ellipse.RadiusX, ellipse.RadiusY));
+                    break;
+            }
+            return;
+        }
         switch (geometry)
         {
             case RectGeometry rg:
                 FillRect(rg.Rect, brush);
                 break;
             case RoundedRectGeometry rrg:
-                FillRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX, rrg.RadiusY, sc.Color);
+                FillRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, sc.Color);
                 break;
             case EllipseGeometry eg:
-                FillEllipse(TransformPoint(eg.Center), eg.RadiusX, eg.RadiusY, sc.Color);
+                FillEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, sc.Color);
                 break;
         }
     }
@@ -148,10 +208,10 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
                 DrawRect(rg.Rect, pen);
                 break;
             case RoundedRectGeometry rrg:
-                DrawRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX, rrg.RadiusY, pen);
+                DrawRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, pen);
                 break;
             case EllipseGeometry eg:
-                DrawEllipse(TransformPoint(eg.Center), eg.RadiusX, eg.RadiusY, pen);
+                DrawEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, pen);
                 break;
         }
     }
@@ -169,14 +229,14 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
         var points = FlattenPath(path, _currentTransform);
         if (points.Count < 2) return;
-        DrawPolyline(points, pen.Width, color);
+        DrawPolyline(points, pen.Width * _dpiScale, color);
     }
 
     public void DrawText(TextLayout text, Point origin, Brush brush)
     {
         if (brush is not SolidColorBrush sc) return;
         if (string.IsNullOrEmpty(text.Text)) return;
-        RenderText(text, TransformPoint(origin), sc.Color);
+        RenderText(ScaleTextLayout(text), TransformPoint(origin), sc.Color);
     }
 
     public void DrawImage(Image image, Rect dest, Rect? source = null)
@@ -198,7 +258,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         if (_presentFrame == null) return;
         // 空列表 = 无区域需要上传
         if (dirtyRects is { Count: 0 }) return;
-        _presentFrame(_bitmap, dirtyRects);
+        _presentFrame(_bitmap, ScaleDirtyRects(dirtyRects));
     }
 
     private static uint PackBgra(Color color)
@@ -210,9 +270,20 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     }
 
     public void Resize(Size canvasSize)
+        => Resize(canvasSize, _dpiScale);
+
+    public void Resize(Size canvasSize, float dpiScale)
     {
-        var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * _dpiScale));
-        var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * _dpiScale));
+        dpiScale = NormalizeDpiScale(dpiScale);
+        var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * dpiScale));
+        var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * dpiScale));
+
+        _canvasSize = canvasSize;
+        _dpiScale = dpiScale;
+        _transformStack.Clear();
+        _clipStack.Clear();
+        UpdateClipCache();
+        _currentTransform = CreateDpiTransform(dpiScale);
         if (_bitmapWidth == width && _bitmapHeight == height) return;
 
         var previous = _bitmap;
@@ -222,6 +293,39 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         _bitmapPixels = _bitmap.Pixels;
         _bitmapStride = _bitmap.Stride;
         previous.Dispose();
+    }
+
+    private static float NormalizeDpiScale(float dpiScale)
+        => float.IsFinite(dpiScale) && dpiScale > 0 ? dpiScale : 1f;
+
+    private static Matrix3x2 CreateDpiTransform(float dpiScale)
+        => Matrix3x2.CreateScale(dpiScale);
+
+    private TextLayout ScaleTextLayout(TextLayout text)
+    {
+        if (_dpiScale == 1f) return text;
+        return new TextLayout(text.Text, text.Font.WithSize(text.Font.Size * _dpiScale))
+        {
+            MaxSize = new Size(text.MaxSize.Width * _dpiScale, text.MaxSize.Height * _dpiScale),
+            Alignment = text.Alignment,
+            LineHeight = text.LineHeight
+        };
+    }
+
+    private IReadOnlyList<Rect>? ScaleDirtyRects(IReadOnlyList<Rect>? dirtyRects)
+    {
+        if (dirtyRects == null || _dpiScale == 1f) return dirtyRects;
+        var scaled = new Rect[dirtyRects.Count];
+        for (var i = 0; i < dirtyRects.Count; i++)
+        {
+            var rect = dirtyRects[i];
+            scaled[i] = new Rect(
+                MathF.Floor(rect.X * _dpiScale),
+                MathF.Floor(rect.Y * _dpiScale),
+                MathF.Ceiling(rect.Right * _dpiScale) - MathF.Floor(rect.X * _dpiScale),
+                MathF.Ceiling(rect.Bottom * _dpiScale) - MathF.Floor(rect.Y * _dpiScale));
+        }
+        return scaled;
     }
 
     public void Dispose() => _bitmap.Dispose();
@@ -259,7 +363,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
         }
         if (x0 >= x1 || y0 >= y1) return;
 
-        if (alpha == 255)
+        if (alpha == 255 && (_clipStack.Count == 0 || _clipStack.Peek().IsRect))
         {
             // Opaque solid fill via uint row writes
             var packed = (uint)(pb | (pg << 8) | (pr << 16) | (255 << 24));
@@ -279,6 +383,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
             var span = _bitmapPixels.AsSpan(y * _bitmapStride, _bitmapStride);
             for (int x = x0; x < x1; x++)
             {
+                if (!IsPointVisible(x + 0.5f, y + 0.5f)) continue;
                 var idx = x * 4;
                 var dstA = span[idx + 3];
                 var outA = (byte)(alpha + (dstA * (255 - alpha) / 255));
@@ -299,12 +404,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     private void BlendPixel(int x, int y, Color color)
     {
         if ((uint)x >= (uint)_bitmapWidth || (uint)y >= (uint)_bitmapHeight) return;
-        if (_hasClip)
-        {
-            var px = x + 0.5f;
-            var py = y + 0.5f;
-            if (px < _clipLeft || px > _clipRight || py < _clipTop || py > _clipBottom) return;
-        }
+        if (!IsPointVisible(x + 0.5f, y + 0.5f)) return;
         var idx = y * _bitmapStride + x * 4;
         var span = _bitmapPixels.AsSpan(idx, 4);
         var alpha = color.A;
@@ -333,8 +433,172 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     private Rect ClipRect(Rect rect)
     {
         if (!_hasClip) return rect;
-        return Rect.Intersect(rect, _clipStack.Peek());
+        return Rect.Intersect(rect, _clipStack.Peek().Bounds);
     }
+
+    private void PushClipRegion(Rect bounds, Func<float, float, bool> contains, bool isRect)
+    {
+        if (_clipStack.Count > 0)
+        {
+            var parent = _clipStack.Peek();
+            bounds = Rect.Intersect(parent.Bounds, bounds);
+            var childContains = contains;
+            contains = (x, y) => parent.Contains(x, y) && childContains(x, y);
+            isRect &= parent.IsRect;
+        }
+        _clipStack.Push(new ClipRegion(bounds, contains, isRect));
+    }
+
+    private bool IsPointVisible(float x, float y)
+        => !_hasClip || _clipStack.Peek().Contains(x, y);
+
+    private void BlendBrush(Rect bounds, Brush brush, Matrix3x2 inverse)
+        => FillBrushShape(bounds, brush, inverse, static _ => true);
+
+    private void FillBrushShape(Rect bounds, Brush brush, Matrix3x2 inverse, Func<Point, bool> contains)
+    {
+        var clipped = ClipRect(bounds);
+        var x0 = Math.Max(0, (int)MathF.Floor(clipped.Left));
+        var y0 = Math.Max(0, (int)MathF.Floor(clipped.Top));
+        var x1 = Math.Min(_bitmapWidth, (int)MathF.Ceiling(clipped.Right));
+        var y1 = Math.Min(_bitmapHeight, (int)MathF.Ceiling(clipped.Bottom));
+        for (var y = y0; y < y1; y++)
+        {
+            for (var x = x0; x < x1; x++)
+            {
+                var logical = TransformPoint(inverse, x + 0.5f, y + 0.5f);
+                if (!contains(logical)) continue;
+                BlendPixel(x, y, SampleBrush(brush, logical));
+            }
+        }
+    }
+
+    private static Color SampleBrush(Brush brush, Point point)
+    {
+        GradientStop[] stops;
+        float offset;
+        GradientSpreadMethod spread;
+        switch (brush)
+        {
+            case LinearGradientBrush linear:
+                var dx = linear.End.X - linear.Start.X;
+                var dy = linear.End.Y - linear.Start.Y;
+                var lengthSquared = dx * dx + dy * dy;
+                offset = lengthSquared <= float.Epsilon
+                    ? 0
+                    : ((point.X - linear.Start.X) * dx + (point.Y - linear.Start.Y) * dy) / lengthSquared;
+                stops = linear.Stops;
+                spread = linear.SpreadMethod;
+                break;
+            case RadialGradientBrush radial:
+                offset = radial.Radius <= 0
+                    ? 0
+                    : MathF.Sqrt(MathF.Pow(point.X - radial.Center.X, 2) + MathF.Pow(point.Y - radial.Center.Y, 2)) / radial.Radius;
+                stops = radial.Stops;
+                spread = radial.SpreadMethod;
+                break;
+            case SolidColorBrush solid:
+                return solid.Color;
+            default:
+                return Color.Transparent;
+        }
+        if (stops.Length == 0) return Color.Transparent;
+        offset = ApplySpread(offset, spread);
+        var ordered = stops.OrderBy(stop => stop.Offset).ToArray();
+        if (offset <= ordered[0].Offset) return ordered[0].Color;
+        if (offset >= ordered[^1].Offset) return ordered[^1].Color;
+        for (var i = 1; i < ordered.Length; i++)
+        {
+            if (offset > ordered[i].Offset) continue;
+            var previous = ordered[i - 1];
+            var range = ordered[i].Offset - previous.Offset;
+            var amount = range <= float.Epsilon ? 0 : (offset - previous.Offset) / range;
+            return Lerp(previous.Color, ordered[i].Color, amount);
+        }
+        return ordered[^1].Color;
+    }
+
+    private static float ApplySpread(float offset, GradientSpreadMethod spread)
+    {
+        if (spread == GradientSpreadMethod.Repeat) return offset - MathF.Floor(offset);
+        if (spread == GradientSpreadMethod.Reflect)
+        {
+            offset -= MathF.Floor(offset / 2f) * 2f;
+            return offset <= 1f ? offset : 2f - offset;
+        }
+        return Math.Clamp(offset, 0, 1);
+    }
+
+    private static Color Lerp(Color start, Color end, float amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return new Color(
+            (byte)MathF.Round(start.R + (end.R - start.R) * amount),
+            (byte)MathF.Round(start.G + (end.G - start.G) * amount),
+            (byte)MathF.Round(start.B + (end.B - start.B) * amount),
+            (byte)MathF.Round(start.A + (end.A - start.A) * amount));
+    }
+
+    private static bool ContainsRoundedRect(Point point, Rect rect, float radiusX, float radiusY)
+    {
+        if (!rect.Contains(point)) return false;
+        radiusX = Math.Clamp(radiusX, 0, rect.Width / 2f);
+        radiusY = Math.Clamp(radiusY, 0, rect.Height / 2f);
+        if (radiusX <= 0 || radiusY <= 0) return true;
+        var nearestX = Math.Clamp(point.X, rect.Left + radiusX, rect.Right - radiusX);
+        var nearestY = Math.Clamp(point.Y, rect.Top + radiusY, rect.Bottom - radiusY);
+        var dx = (point.X - nearestX) / radiusX;
+        var dy = (point.Y - nearestY) / radiusY;
+        return dx * dx + dy * dy <= 1;
+    }
+
+    private static bool ContainsEllipse(Point point, Point center, float radiusX, float radiusY)
+    {
+        if (radiusX <= 0 || radiusY <= 0) return false;
+        var dx = (point.X - center.X) / radiusX;
+        var dy = (point.Y - center.Y) / radiusY;
+        return dx * dx + dy * dy <= 1;
+    }
+
+    private static bool ContainsPolygon(IReadOnlyList<Point> points, Point point)
+    {
+        var inside = false;
+        for (int i = 0, j = points.Count - 1; i < points.Count; j = i++)
+        {
+            var a = points[i];
+            var b = points[j];
+            if ((a.Y > point.Y) == (b.Y > point.Y)) continue;
+            if (point.X < (b.X - a.X) * (point.Y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
+        }
+        return inside;
+    }
+
+    private static Rect GetBounds(IReadOnlyList<Point> points, Matrix3x2 transform)
+    {
+        if (points.Count == 0) return Rect.Empty;
+        var first = Vector2.Transform(new Vector2(points[0].X, points[0].Y), transform);
+        var left = first.X;
+        var top = first.Y;
+        var right = first.X;
+        var bottom = first.Y;
+        for (var i = 1; i < points.Count; i++)
+        {
+            var point = Vector2.Transform(new Vector2(points[i].X, points[i].Y), transform);
+            left = Math.Min(left, point.X);
+            top = Math.Min(top, point.Y);
+            right = Math.Max(right, point.X);
+            bottom = Math.Max(bottom, point.Y);
+        }
+        return new Rect(left, top, right - left, bottom - top);
+    }
+
+    private static Point TransformPoint(Matrix3x2 matrix, float x, float y)
+    {
+        var transformed = Vector2.Transform(new Vector2(x, y), matrix);
+        return new Point(transformed.X, transformed.Y);
+    }
+
+    private sealed record ClipRegion(Rect Bounds, Func<float, float, bool> Contains, bool IsRect);
 
     private Point TransformPoint(Point point)
     {
@@ -369,7 +633,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
         if (pen.Width <= 0) return;
-        RasterizeRoundedRect(rect, rx, ry, pen.Width, color);
+        RasterizeRoundedRect(rect, rx, ry, pen.Width * _dpiScale, color);
     }
 
     private void RasterizeRoundedRect(Rect rect, float rx, float ry, float strokeWidth, Color color)
@@ -506,7 +770,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext, I
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
         if (rx <= 0 || ry <= 0 || pen.Width <= 0) return;
-        RasterizeEllipse(center, rx, ry, pen.Width, color);
+        RasterizeEllipse(center, rx, ry, pen.Width * _dpiScale, color);
     }
 
     // ── 线段 ──

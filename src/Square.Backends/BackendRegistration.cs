@@ -8,6 +8,7 @@ public static class BackendRegistration
     {
 #if BACKEND_SOFTWARE
         RenderBackendRegistry.Register(new RenderBackendFactory());
+        RenderBackendRegistry.SetDefault("Software");
 #endif
     }
 }

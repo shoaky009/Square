@@ -11,6 +11,7 @@
     <Product>Square Framework</Product>
     <Copyright>Copyright © Square</Copyright>
     <Version>0.1.0</Version>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -20,10 +21,12 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <IsWindowsBuild Condition="'$(OS)' == 'Windows_NT'">true</IsWindowsBuild>
-    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux'))">false</IsWindowsBuild>
-    <IsWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">false</IsWindowsBuild>
-    <IsWindowsBuild Condition="'$(IsWindowsBuild)' == ''">false</IsWindowsBuild>
+    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux'))">X11</SquareTargetPlatform>
+    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">X11</SquareTargetPlatform>
+    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(OS)' == 'Windows_NT'">Win32</SquareTargetPlatform>
+    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == ''">X11</SquareTargetPlatform>
+    <IsWindowsBuild Condition="'$(SquareTargetPlatform)' == 'Win32'">true</IsWindowsBuild>
+    <IsWindowsBuild Condition="'$(SquareTargetPlatform)' != 'Win32'">false</IsWindowsBuild>
 
     <DefineConstants Condition="'$(IsWindowsBuild)' == 'true'">$(DefineConstants);PLATFORM_WIN32;BACKEND_SOFTWARE</DefineConstants>
     <DefineConstants Condition="'$(IsWindowsBuild)' != 'true'">$(DefineConstants);PLATFORM_X11;BACKEND_SOFTWARE</DefineConstants>

@@ -183,7 +183,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 
 ### GET /api/v1/screenshot
 
-从当前 render context 捕获位图并返回 PNG，文件名为 `square-screenshot.png`。
+将当前保留的 DisplayTree 在进程内离屏重放为位图并返回 PNG，文件名为 `square-screenshot.png`。
 
 ```bash
 curl -H "X-Square-Tooling-Token: square-richtext-demo" \
@@ -191,7 +191,9 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
   http://127.0.0.1:<port>/api/v1/screenshot
 ```
 
-截图来自 renderer bitmap，而不是平台窗口截图；它适合做 UI 回归、调试脏区渲染或采集控件状态。
+截图不是平台窗口截图：它不按 PID 枚举窗口、不依赖桌面合成器，也不包含标题栏或窗口边框。该路径适合 UI 回归、自动化和采集控件状态。
+
+离屏截图使用 Software RenderContext 重放与活动后端相同的 DisplayTree 命令。它支持当前 Software/Impeller 共享的形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip，但不是 Impeller GPU framebuffer readback；不同文字栅格器的抗锯齿和 shaping 仍可能产生像素差异。
 
 ### POST /api/v1/input/pointer
 
@@ -310,7 +312,7 @@ Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时
 
 Tooling HTTP 请求运行在 ASP.NET Core 轻量 WebApplication 中。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
 
-截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程读取当前 renderer bitmap。当前实现要求活动 render context 支持 `IRenderBitmapSource`；默认 Software Renderer 支持该能力。
+截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程创建离屏 Software RenderContext，并重放当前 DisplayTree、文本选择和诊断覆盖层。活动后端不需要实现 `IRenderBitmapSource`，因此 Software 与 Impeller 都能使用同一截图 API。
 
 输入注入后的行为与平台输入路径一致：鼠标命中测试、焦点、文本编辑器、键盘快捷键、滚轮路由和必要的重绘都会由 `DesktopApplication` 统一处理。
 
