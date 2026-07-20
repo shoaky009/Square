@@ -27,7 +27,7 @@ public sealed class TextLayout
         {
             if (rune.Value == '\n') break;
             if (rune.Utf16SequenceLength > offset) break;
-            width += MeasureRuneAdvance(rune, Font.Size);
+            width += MeasureRuneAdvance(rune, Font);
             offset -= rune.Utf16SequenceLength;
         }
         return width;
@@ -42,7 +42,7 @@ public sealed class TextLayout
         foreach (var rune in Text.EnumerateRunes())
         {
             if (rune.Value == '\n') break;
-            var advance = MeasureRuneAdvance(rune, Font.Size);
+            var advance = MeasureRuneAdvance(rune, Font);
             if (x < width + advance / 2f) break;
             width += advance;
             offset += rune.Utf16SequenceLength;
@@ -72,7 +72,7 @@ public sealed class TextLayout
                 continue;
             }
 
-            var advance = MeasureRuneAdvance(rune, Font.Size);
+            var advance = MeasureRuneAdvance(rune, Font);
             if (constrainWidth && currentWidth > 0 && currentWidth + advance > maxWidth)
             {
                 widestLine = Math.Max(widestLine, currentWidth);
@@ -93,6 +93,12 @@ public sealed class TextLayout
             return 0;
 
         return IsFullWidth(rune.Value) ? fontSize : fontSize * 0.5f;
+    }
+
+    public static float MeasureRuneAdvance(Rune rune, Font font)
+    {
+        var advance = MeasureRuneAdvance(rune, font.Size);
+        return font.Weight >= FontWeight.Bold ? advance * 1.08f : advance;
     }
 
     private static bool IsFullWidth(int value)

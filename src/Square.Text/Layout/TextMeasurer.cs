@@ -21,7 +21,7 @@ public sealed class TextMeasurer
         var index = 0;
         foreach (var rune in text.EnumerateRunes())
         {
-            var advance = TextLayout.MeasureRuneAdvance(rune, font.Size);
+            var advance = TextLayout.MeasureRuneAdvance(rune, font);
             if (x < width + advance / 2f) return index;
             width += advance;
             index += rune.Utf16SequenceLength;
@@ -38,7 +38,7 @@ public sealed class TextMeasurer
         foreach (var rune in text.EnumerateRunes())
         {
             if (consumed >= index) break;
-            width += TextLayout.MeasureRuneAdvance(rune, font.Size);
+            width += TextLayout.MeasureRuneAdvance(rune, font);
             consumed += rune.Utf16SequenceLength;
         }
         return new Point(width, 0);

@@ -1,7 +1,7 @@
 # 开发路线
 
 > Version: 0.3  
-> 配套：`Architecture.md`、`plan.md`、`rebuild-plan.md`
+> 配套：`Architecture.md`、`Rendering-Targets.md`、`plan.md`、`rebuild-plan.md`
 
 ---
 
@@ -18,6 +18,7 @@
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI | ⏳ 计划 |
 | **M7 文本与 Canvas 完整** | BiDi、Font Fallback、Caret/Selection/HitTest 完整、标准 RichTextBox/WYSIWYG 富文本模型与渲染、Canvas `CanvasRenderingContext2D` 兼容层→DrawCommand | 复杂文本/富文本编辑与 Canvas 绘图可运行 | ⏳ 计划 |
 | **M8 工具链** | 完整 Source Generator 诊断、IDE 智能提示/补全、编译期检查 | IDE 内 `.sqx` 报错可定位、可补全 | ⏳ 计划 |
+| **M9 多目标输出** | WinUI 宿主、SVG 导出、Native UI adapter、Godot 嵌入等多目标路线 | Software、Native UI、Export、Embedded Host 四类目标边界清晰，至少两个目标形成闭环 | ⏳ 计划 |
 
 ---
 
@@ -98,6 +99,7 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 - **DOM `Range` 与 `TextFragment`**：`Square.UI.Range` 提供最小 DOM Range 文本选择模型（`SetStart` / `SetEnd` / `SelectNodeContents` / `Collapse` / 边界点比较）；`Square.Rendering.TextFragment` 提供字符级命中测试（`HitTestOffset`），为富文本编辑与选择奠定基础。
 - **Software Renderer 性能优化**：`RenderContext` 缓存位图像素指针与尺寸、裁剪区域缓存（避免栈查找）、批量 BGRA 填充；`LayoutEngine` 与 `StyleAccessor` 同步优化。
 - **`DesktopApplication.RenderingMode`**：新增 `RenderMode` 枚举（`FullFrame` / `Auto` / `DirtyRegion`），控制每帧重绘策略，可通过 `--render-mode` 参数或 `SQUARE_RENDER_MODE` 环境变量配置。
+- **多目标渲染与宿主路线**：将后续 WinUI XAML、HTML DOM、Android UI、SVG、PDF、Godot 等目标拆分为 `Platform Host`、`Drawing Backend`、`Native UI Adapter`、`Exporter` 四类能力。完整计划见 `docs/Rendering-Targets.md`。
 
 ---
 
@@ -120,6 +122,7 @@ M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文�
 
 - M3 扩展控件（List/Tree/Menu/Dialog/ScrollViewer/Popup/Swiper）
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
+- M9 多目标输出：WinUI host + Software bitmap、SVG exporter、NativeUiNode 原型、Godot 嵌入宿主（见 `docs/Rendering-Targets.md`）
 - M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作（基于已落地的 `Range` 与 `TextFragment`）
 - `.sqv` 前端继续推进：独立 Template IR、`v-model`、slots 与 scoped props、动态参数等（见 `docs/vue-plan.md` 里程碑 D–G）
 - 继续扩展 CSS Grid / Animation 到更完整规范

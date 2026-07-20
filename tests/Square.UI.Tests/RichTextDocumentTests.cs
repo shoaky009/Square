@@ -249,7 +249,7 @@ public class RichTextDocumentTests
         Assert.Equal(3, layout.Lines[0].Fragments[1].EndOffset);
         Assert.Equal(3, layout.Lines[0].Fragments[2].StartOffset);
         Assert.Equal(5, layout.Lines[0].Fragments[2].EndOffset);
-        Assert.Equal(50, layout.GetCaretRect(3).X);
+        Assert.Equal(51.6f, layout.GetCaretRect(3).X, 1);
     }
 
     [Fact]
@@ -274,6 +274,25 @@ public class RichTextDocumentTests
         Assert.Equal(20, selectionRects[1].Width);
         Assert.Equal(1, layout.HitTestOffset(new Square.Graphics.Point(12, 5)));
         Assert.Equal(4, layout.HitTestOffset(new Square.Graphics.Point(12, 29)));
+    }
+
+    [Fact]
+    public void RichTextLayoutSelectionRectsUseBoldAdvance()
+    {
+        var block = RichTextBlock.Paragraph(
+            new RichTextRun("aa", new RichTextMarks(Bold: true)),
+            new RichTextRun("aa"));
+        var layout = RichTextLayoutEngine.LayoutBlock(
+            block,
+            new Square.Graphics.Font("sans-serif", 20),
+            new Square.Graphics.Point(0, 0),
+            200,
+            24);
+
+        var boldWidth = layout.GetSelectionRects(0, 2).Single().Width;
+        var normalWidth = layout.GetSelectionRects(2, 4).Single().Width;
+
+        Assert.True(boldWidth > normalWidth);
     }
 
     [Fact]

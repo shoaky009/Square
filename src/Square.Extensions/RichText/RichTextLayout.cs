@@ -172,7 +172,7 @@ public static class RichTextLayoutEngine
             var font = ApplyMarks(baseFont, run.Marks);
             foreach (var rune in run.Text.EnumerateRunes())
             {
-                var advance = TextLayout.MeasureRuneAdvance(rune, font.Size);
+                var advance = TextLayout.MeasureRuneAdvance(rune, font);
                 if (lineX > origin.X && lineX - origin.X + advance > maxWidth)
                     FlushLine();
 

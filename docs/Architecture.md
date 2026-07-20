@@ -1,7 +1,7 @@
 # Square Framework 总体架构
 
 > Version: 0.3  
-> 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
+> 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`Rendering-Targets.md`（多目标渲染与宿主路线）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
 
 ---
 

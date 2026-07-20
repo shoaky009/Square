@@ -295,7 +295,7 @@ public sealed class DisplayTree
             if (glyph != null) return glyph.AdvanceX;
         }
 
-        return TextLayout.MeasureRuneAdvance(rune, font.Size);
+        return TextLayout.MeasureRuneAdvance(rune, font);
     }
 
     private static bool IsDescendantOrSelf(Element element, Element root)

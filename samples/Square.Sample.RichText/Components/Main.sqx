@@ -189,11 +189,11 @@
   .color-red { background: #b42318; color: #ffffff; border: 1px solid #b42318; }
   .color-green { background: #067647; color: #ffffff; border: 1px solid #067647; }
   .danger { color: #b42318; }
-  .workspace { display: flex; flex-direction: row; gap: 12px; flex-grow: 1; }
-  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex-grow: 2; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
-  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex-grow: 1; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .workspace { display: flex; flex-direction: row; gap: 12px; flex-grow: 1; align-items: stretch; }
+  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex: 2 1 0; min-width: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-width: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
   .pane-label { color: #475467; font-size: 12px; font-weight: 700; }
-  .rich-editor { min-height: 560px; font-size: 16px; color: #101828; background: #ffffff; }
+  .rich-editor { width: 100%; min-height: 560px; flex-grow: 1; flex-shrink: 1; font-size: 16px; color: #101828; background: #ffffff; }
   .preview-text { color: #344054; font-size: 14px; line-height: 22px; user-select: text; }
   .selection-text { color: #667085; font-size: 12px; background: #f2f4f7; padding: 8px; }
 </style>

@@ -1,7 +1,7 @@
 # API 参考
 
 > Version: 0.3  
-> 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`
+> 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`、`Tooling.md`、`Rendering-Targets.md`
 
 本文按模块列出 Square 框架的公共 API。所有类型签名基于源码，以 `命名空间.类型名` 组织。
 
@@ -62,6 +62,63 @@ public enum RenderMode
 | `DirtyRegion` | 仅重绘 `NeedsPaint` 标记的脏区域 |
 
 `Sample.Vue` 等示例通过 `--render-mode=DirtyRegion` 或 `SQUARE_RENDER_MODE=DirtyRegion` 切换。
+
+---
+
+## 1.1. Square.Tooling — 本地调试与自动化服务
+
+### ToolingServer
+
+```csharp
+namespace Square.Tooling;
+
+public sealed class ToolingServer : IAsyncDisposable, IDisposable
+{
+    public const string TokenHeader = "X-Square-Tooling-Token";
+
+    public string AccessToken { get; }
+    public int Port { get; }
+    public string BaseAddress { get; } // http://127.0.0.1:{Port}
+
+    public static ToolingServer Start(DesktopApplication application, ToolingOptions? options = null);
+    public void Dispose();
+    public ValueTask DisposeAsync();
+}
+```
+
+| 成员 | 说明 |
+|---|---|
+| `Start(application, options)` | 在 `127.0.0.1:{Port}` 启动 HTTP 服务；所有 endpoint 要求 `TokenHeader` |
+| `AccessToken` | 实际使用的 token；未配置时为自动生成值 |
+| `BaseAddress` | 本地服务根地址 |
+| `Dispose()` / `DisposeAsync()` | 停止并释放 ASP.NET Core `WebApplication` |
+
+Endpoint 以 `/api/v1` 为前缀，提供 `/health`、`/screenshot`、`/input/pointer`、`/input/key`、`/input/text` 和 `/input/wheel`。请求/响应格式见 [`Tooling.md`](Tooling.md)。
+
+### ToolingOptions
+
+```csharp
+namespace Square.Tooling;
+
+public sealed class ToolingOptions
+{
+    public int Port { get; set; } = 5128;
+    public string? AccessToken { get; set; }
+    public bool AllowInputInjection { get; set; } = true;
+}
+```
+
+### Tooling input records
+
+```csharp
+namespace Square.Hosting;
+
+public sealed record ToolingPointerInput(Point Position, MouseAction Action, KeyModifiers Modifiers = KeyModifiers.None);
+public sealed record ToolingKeyInput(int KeyCode, KeyAction Action, KeyModifiers Modifiers = KeyModifiers.None);
+public sealed record ToolingWheelInput(Point Position, int Delta, KeyModifiers Modifiers = KeyModifiers.None);
+```
+
+`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。
 
 ---
 

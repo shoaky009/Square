@@ -54,6 +54,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）
 
 完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
+多目标渲染、原生 UI 输出、SVG 导出和 Godot 嵌入路线见 [`docs/Rendering-Targets.md`](docs/Rendering-Targets.md)。
 
 ## SQX 示例
 
@@ -218,7 +219,7 @@ dotnet --version
 
 ## 快速开始
 
-完整的入门指南见 [`docs/Getting-Started.md`](docs/Getting-Started.md)。API 参考见 [`docs/API-Reference.md`](docs/API-Reference.md)。
+完整的入门指南见 [`docs/Getting-Started.md`](docs/Getting-Started.md)。API 参考见 [`docs/API-Reference.md`](docs/API-Reference.md)。Tooling 调试服务见 [`docs/Tooling.md`](docs/Tooling.md)。
 
 ### 创建第一个 Square 应用
 
@@ -293,6 +294,8 @@ POST /input/text
 POST /input/wheel
 ```
 
+完整接口、认证和自动化示例见 [`docs/Tooling.md`](docs/Tooling.md)。
+
 ## 测试
 
 运行全部测试：
@@ -359,8 +362,10 @@ Square 通过构建层 `DefineConstants`（`PLATFORM_WIN32` / `PLATFORM_X11`）�
 - [CSS 规范](docs/CSS-Spec.md)
 - [布局](docs/Layout.md)
 - [渲染](docs/Rendering.md)
+- [多目标渲染与宿主路线](docs/Rendering-Targets.md)
 - [图形](docs/Graphics.md)
 - [文本](docs/Text.md)
+- [Tooling 调试服务](docs/Tooling.md)
 - [组件组合与信号](docs/Composition-and-Signals.md)
 - [Source Generator](docs/Generator.md)
 - [编码规范](docs/CodingStyle.md)
