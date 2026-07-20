@@ -5,7 +5,7 @@ using Square.Text.Glyph;
 
 namespace Square.Backends;
 
-internal sealed class RenderContext : IRenderContext, IResizableRenderContext
+internal sealed class RenderContext : IRenderContext, IResizableRenderContext, IRenderBitmapSource
 {
     private const int CoverageSampleGrid = 4;
     private const int CoverageSampleCount = CoverageSampleGrid * CoverageSampleGrid;
@@ -227,6 +227,13 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
     public void Dispose() => _bitmap.Dispose();
 
     internal Bitmap GetBitmap() => _bitmap;
+
+    public Bitmap CaptureBitmap()
+    {
+        var copy = new Bitmap(_bitmap.Width, _bitmap.Height);
+        _bitmap.Pixels.CopyTo(copy.Pixels, 0);
+        return copy;
+    }
 
     // ── 核心：像素混合 ──
 
@@ -1016,7 +1023,7 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
         {
             for (int col = 0; col < 5; col++)
             {
-                if ((pattern[row] >> (4 - col) & 1) != 0)
+                if (IsFallbackGlyphPixelSet(pattern, row, col))
                 {
                     for (int py = 0; py < pixelSize; py++)
                         for (int px = 0; px < pixelSize; px++)
@@ -1024,6 +1031,15 @@ internal sealed class RenderContext : IRenderContext, IResizableRenderContext
                 }
             }
         }
+    }
+
+    internal static bool IsFallbackGlyphPixelSet(char character, int row, int column) =>
+        IsFallbackGlyphPixelSet(GetGlyphPattern(character), row, column);
+
+    private static bool IsFallbackGlyphPixelSet(byte[] pattern, int row, int column)
+    {
+        if ((uint)row >= pattern.Length || column is < 0 or >= 5) return false;
+        return (pattern[row] >> column & 1) != 0;
     }
 
     // 5x7 点阵字形表（ASCII 常用字符）

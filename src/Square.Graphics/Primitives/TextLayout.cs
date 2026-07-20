@@ -18,6 +18,38 @@ public sealed class TextLayout
 
     public Size Measure() => MeasureCore();
 
+    public float MeasureOffset(int offset)
+    {
+        if (offset < 0 || offset > Text.Length) throw new ArgumentOutOfRangeException(nameof(offset));
+
+        var width = 0f;
+        foreach (var rune in Text.EnumerateRunes())
+        {
+            if (rune.Value == '\n') break;
+            if (rune.Utf16SequenceLength > offset) break;
+            width += MeasureRuneAdvance(rune, Font.Size);
+            offset -= rune.Utf16SequenceLength;
+        }
+        return width;
+    }
+
+    public int HitTestOffset(float x)
+    {
+        if (string.IsNullOrEmpty(Text) || x <= 0) return 0;
+
+        var offset = 0;
+        var width = 0f;
+        foreach (var rune in Text.EnumerateRunes())
+        {
+            if (rune.Value == '\n') break;
+            var advance = MeasureRuneAdvance(rune, Font.Size);
+            if (x < width + advance / 2f) break;
+            width += advance;
+            offset += rune.Utf16SequenceLength;
+        }
+        return Math.Clamp(offset, 0, Text.Length);
+    }
+
     private Size MeasureCore()
     {
         if (string.IsNullOrEmpty(Text))

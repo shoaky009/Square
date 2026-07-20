@@ -46,6 +46,8 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `Reconciler` 批量脏标记与更新调度
 - `.sqv` Vue 模板语法前端：`{{ }}` 插值、`:prop` / `v-bind`、`@event` / `v-on`、`v-if` / `v-else-if` / `v-else`、`v-for`、`:key`、`ref` 及事件修饰符（`.stop` / `.prevent`）
 - `Square.Extensions` 扩展模块：`MarkdownViewer` 控件（基于 Markdig，将 Markdown 渲染为 Square 元素树）
+- `Square.Extensions.RichText`：富文本文档模型、跨 run 布局、软换行、selection/caret/hit test、格式命令与 `RichTextEditor` 控件
+- `Square.Tooling`：localhost HTTP 调试服务，支持 renderer PNG 截图和鼠标、键盘、文本、滚轮模拟输入
 - PNG 编码（`BitmapPngEncoder`）与 BMP 解码（`BmpPngConverter`），纯 C# 无外部依赖
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
@@ -196,7 +198,8 @@ Square.SourceGenerator ──► C# Component
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer 及后续图形后端 |
 | `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
-| `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`（Markdig）等，按需引用 |
+| `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`、`RichTextEditor` 等，按需引用 |
+| `Square.Tooling` | 本地 HTTP 调试与自动化：截图、输入模拟，按需引用 |
 
 更详细的模块关系见 [`docs/Architecture.md`](docs/Architecture.md)。
 
@@ -262,6 +265,32 @@ dotnet run --project samples/Square.Sample/Square.Sample.csproj
 
 ```bash
 dotnet run --project samples/Square.Sample.Vue/Square.Sample.Vue.csproj
+```
+
+运行 RichText 编辑器示例：
+
+```bash
+dotnet run --project samples/Square.Sample.RichText/Square.Sample.RichText.csproj
+```
+
+RichText 示例包含格式工具栏、颜色、清除格式、撤销/重做、全选、软换行、鼠标选择、键盘导航和纯文本预览。
+
+RichText 示例会同时启动 Tooling 服务：
+
+```text
+http://127.0.0.1:5128/api/v1
+X-Square-Tooling-Token: square-richtext-demo
+```
+
+常用接口：
+
+```text
+GET  /health
+GET  /screenshot
+POST /input/pointer
+POST /input/key
+POST /input/text
+POST /input/wheel
 ```
 
 ## 测试

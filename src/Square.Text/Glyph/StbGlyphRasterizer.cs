@@ -130,8 +130,20 @@ internal sealed class FontEntry
         if (_info != null) return _info;
         var data = EnsureData();
         if (data == null) return null;
-        _info = StbTrueType.CreateFont(data, _offset);
+        var offset = _offset;
+        if (offset == 0)
+        {
+            var firstFaceOffset = GetFirstFaceOffset(data);
+            if (firstFaceOffset >= 0) offset = firstFaceOffset;
+        }
+        _info = StbTrueType.CreateFont(data, offset);
         return _info;
+    }
+
+    private static unsafe int GetFirstFaceOffset(byte[] data)
+    {
+        fixed (byte* pointer = data)
+            return StbTrueType.stbtt_GetFontOffsetForIndex(pointer, 0);
     }
 
     private byte[]? EnsureData()
@@ -278,8 +290,12 @@ internal sealed class FontCollection
             IEnumerable<string> files;
             try
             {
-                // 只扫根目录一层，避免递归 CJK 等大字体包目录
-                files = Directory.EnumerateFiles(root, "*.*", SearchOption.TopDirectoryOnly);
+                files = Directory.EnumerateFiles(root, "*.*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = !OperatingSystem.IsWindows(),
+                    IgnoreInaccessible = true,
+                    ReturnSpecialDirectories = false
+                });
             }
             catch
             {

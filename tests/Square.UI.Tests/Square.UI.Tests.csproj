@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
     <ProjectReference Include="..\..\src\Square.Rendering\Square.Rendering.csproj" />
     <ProjectReference Include="..\..\src\Square.Router\Square.Router.csproj" />
+    <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
     <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\samples\Square.Sample\Square.Sample.csproj" />
   </ItemGroup>

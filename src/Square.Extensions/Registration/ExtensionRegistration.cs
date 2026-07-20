@@ -1,4 +1,5 @@
 using Square.Extensions.Markdown;
+using Square.Extensions.RichText;
 using Square.UI;
 
 namespace Square.Extensions.Registration;
@@ -13,5 +14,6 @@ public static class ExtensionRegistration
         _registered = true;
 
         UIDocument.RegisterElement("MarkdownViewer", static () => new MarkdownViewer());
+        UIDocument.RegisterElement("RichTextEditor", static () => new RichTextEditor());
     }
 }

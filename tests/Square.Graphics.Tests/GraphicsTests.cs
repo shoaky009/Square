@@ -128,6 +128,21 @@ public class TextLayoutTests
         Assert.Equal(40, new TextLayout("アイ", font).Measure().Width);
         Assert.Equal(30, new TextLayout("A中", font).Measure().Width);
     }
+
+    [Fact]
+    public void ConvertsBetweenOffsetsAndHorizontalPositions()
+    {
+        var layout = new TextLayout("A中B", new Font("Segoe UI", 20));
+
+        Assert.Equal(0, layout.MeasureOffset(0));
+        Assert.Equal(10, layout.MeasureOffset(1));
+        Assert.Equal(30, layout.MeasureOffset(2));
+        Assert.Equal(40, layout.MeasureOffset(3));
+        Assert.Equal(0, layout.HitTestOffset(4));
+        Assert.Equal(1, layout.HitTestOffset(8));
+        Assert.Equal(2, layout.HitTestOffset(22));
+        Assert.Equal(3, layout.HitTestOffset(36));
+    }
 }
 
 public class BitmapCodecTests

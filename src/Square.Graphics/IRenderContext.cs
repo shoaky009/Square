@@ -61,3 +61,8 @@ public interface IResizableRenderContext
 {
     void Resize(Size canvasSize);
 }
+
+public interface IRenderBitmapSource
+{
+    Bitmap CaptureBitmap();
+}

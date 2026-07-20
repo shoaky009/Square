@@ -1,0 +1,199 @@
+<template>
+  <View class="app-shell">
+    <View class="title-row">
+      <View class="title-copy">
+        <Text class="app-title" text="RichText Editor" />
+        <Text class="app-subtitle" text="Square.Extensions editing surface" />
+      </View>
+      <Text ref={StatusLabel} class="status" text="Ready" />
+    </View>
+
+    <View class="toolbar">
+      <Button class="tool-button" onClick={OnUndo}>Undo</Button>
+      <Button class="tool-button" onClick={OnRedo}>Redo</Button>
+      <View class="divider" />
+      <Button class="tool-button strong" onClick={OnBold}>B</Button>
+      <Button class="tool-button italic" onClick={OnItalic}>I</Button>
+      <Button class="tool-button underline" onClick={OnUnderline}>U</Button>
+      <Button class="tool-button" onClick={OnClearFormatting}>Clear style</Button>
+      <View class="divider" />
+      <Button class="color-blue" onClick={OnBlue}>Blue</Button>
+      <Button class="color-red" onClick={OnRed}>Red</Button>
+      <Button class="color-green" onClick={OnGreen}>Green</Button>
+      <View class="divider" />
+      <Button class="tool-button" onClick={OnSelectAll}>Select all</Button>
+      <Button class="tool-button" onClick={OnCopyRich}>Copy rich</Button>
+      <Button class="tool-button" onClick={OnPasteRich}>Paste rich</Button>
+      <Button class="tool-button" onClick={OnLoadSample}>Load sample</Button>
+      <Button class="tool-button danger" onClick={OnClear}>Clear</Button>
+    </View>
+
+    <View class="workspace">
+      <View class="editor-pane">
+        <Text class="pane-label" text="Document" />
+        <RichTextEditor ref={Editor} class="rich-editor" onInput={OnEditorInput} />
+      </View>
+      <View class="preview-pane">
+        <Text class="pane-label" text="Plain text output" />
+        <Text ref={PreviewText} class="preview-text" text="" />
+        <Text ref={SelectionText} class="selection-text" text="Selection: none" />
+      </View>
+    </View>
+  </View>
+</template>
+<script lang="csharp">
+  private string _richClipboard = "";
+
+  protected override void OnAttachedCore()
+  {
+    base.OnAttachedCore();
+    LoadSample();
+  }
+
+  private void OnUndo()
+  {
+    SetStatus(Editor.Undo() ? "Undo applied" : "Nothing to undo");
+    RefreshInspector();
+  }
+
+  private void OnRedo()
+  {
+    SetStatus(Editor.Redo() ? "Redo applied" : "Nothing to redo");
+    RefreshInspector();
+  }
+
+  private void OnBold()
+  {
+    Editor.ToggleBold();
+    SetStatus("Bold toggled");
+    RefreshInspector();
+  }
+
+  private void OnItalic()
+  {
+    Editor.ToggleItalic();
+    SetStatus("Italic toggled");
+    RefreshInspector();
+  }
+
+  private void OnUnderline()
+  {
+    Editor.ToggleUnderline();
+    SetStatus("Underline toggled");
+    RefreshInspector();
+  }
+
+  private void OnClearFormatting()
+  {
+    Editor.ClearFormatting();
+    SetStatus("Formatting cleared");
+    RefreshInspector();
+  }
+
+  private void OnBlue() => ApplyColor("#175cd3", "Blue applied");
+  private void OnRed() => ApplyColor("#b42318", "Red applied");
+  private void OnGreen() => ApplyColor("#067647", "Green applied");
+
+  private void ApplyColor(string color, string status)
+  {
+    Editor.SetForeground(color);
+    SetStatus(status);
+    RefreshInspector();
+  }
+
+  private void OnSelectAll()
+  {
+    Editor.SelectAll();
+    SetStatus("Document selected");
+    RefreshInspector();
+  }
+
+  private void OnCopyRich()
+  {
+    if (Editor.SelectionLength == 0)
+    {
+      SetStatus("Select text before copying rich content");
+      return;
+    }
+    _richClipboard = Editor.GetSelectedRichText();
+    SetStatus("Rich fragment copied to demo buffer");
+  }
+
+  private void OnPasteRich()
+  {
+    if (string.IsNullOrEmpty(_richClipboard))
+    {
+      SetStatus("Rich clipboard is empty");
+      return;
+    }
+    SetStatus(Editor.InsertRichText(_richClipboard) ? "Rich fragment pasted" : "Rich fragment is invalid");
+    RefreshInspector();
+  }
+
+  private void OnLoadSample()
+  {
+    LoadSample();
+    SetStatus("Sample loaded");
+  }
+
+  private void LoadSample()
+  {
+    Editor.PlainText = "Square RichText Editor\n\nSelect any text and apply formatting from the toolbar.\nThe editor supports multiple paragraphs, soft wrapping, pointer selection, undo and redo.\n\n中文、English and full-width characters can be edited together.";
+    Editor.SelectAll();
+    Editor.ClearFormatting();
+    RefreshInspector();
+  }
+
+  private void OnClear()
+  {
+    Editor.PlainText = "";
+    SetStatus("Document cleared");
+    RefreshInspector();
+  }
+
+  private void OnEditorInput()
+  {
+    SetStatus("Document changed");
+    RefreshInspector();
+  }
+
+  private void RefreshInspector()
+  {
+    PreviewText.TextContent = Editor.PlainText;
+    SelectionText.TextContent = Editor.SelectionLength == 0
+      ? "Selection: none"
+      : "Selection: " + Editor.SelectionLength + " chars - " + Editor.SelectedText;
+  }
+
+  private void SetStatus(string text)
+  {
+    StatusLabel.TextContent = text;
+  }
+</script>
+<style>
+  .app-shell { display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #eef1f4; }
+  .title-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+  .title-copy { display: flex; flex-direction: column; gap: 2px; }
+  .app-title { color: #15181c; font-size: 24px; font-weight: 700; }
+  .app-subtitle { color: #667085; font-size: 13px; }
+  .status { color: #344054; font-size: 13px; background: #ffffff; padding: 6px 10px; border: 1px solid #d0d5dd; }
+  .toolbar { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .toolbar Button { height: 34px; background: #ffffff; color: #344054; border: 1px solid #d0d5dd; }
+  .toolbar Button:hover { background: #f2f4f7; }
+  .tool-button { min-width: 42px; }
+  .strong { font-weight: 700; }
+  .italic { font-style: italic; }
+  .underline { color: #101828; }
+  .divider { width: 1px; height: 26px; background: #d0d5dd; margin-left: 4px; margin-right: 4px; }
+  .color-blue { background: #175cd3; color: #ffffff; border: 1px solid #175cd3; }
+  .color-red { background: #b42318; color: #ffffff; border: 1px solid #b42318; }
+  .color-green { background: #067647; color: #ffffff; border: 1px solid #067647; }
+  .danger { color: #b42318; }
+  .workspace { display: flex; flex-direction: row; gap: 12px; flex-grow: 1; }
+  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex-grow: 2; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex-grow: 1; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; }
+  .pane-label { color: #475467; font-size: 12px; font-weight: 700; }
+  .rich-editor { min-height: 560px; font-size: 16px; color: #101828; background: #ffffff; }
+  .preview-text { color: #344054; font-size: 14px; line-height: 22px; user-select: text; }
+  .selection-text { color: #667085; font-size: 12px; background: #f2f4f7; padding: 8px; }
+</style>

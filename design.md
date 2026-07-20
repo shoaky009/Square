@@ -1,316 +1,439 @@
 # Square Framework 设计文档
 
-> 配套计划：`plan.md`（分阶段路线图、排期、风险、交付）
-> 需求来源：`docs/Requirements.md`（v0.3 Draft）
-> 范围：总体架构、模块划分、Phase 1（M0+M1）详细设计、模板/绑定/流程控制规范、关键技术决策
-> 状态：M0–M2 已完成，架构重建（rebuild）已完成并合并至 main。后续扩展：`.sqv` Vue 模板前端初步实现（规范化路径，详见 `docs/vue-plan.md`）；新增 `Square.Extensions` 扩展模块（`MarkdownViewer` 基于 Markdig）、平台截图 `PlatformScreenshot`（Win32/X11）、PNG 编码 `BitmapPngEncoder` 与 BMP 解码 `BmpPngConverter`、DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试；Software Renderer 完成性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）。
+> 配套计划：`plan.md`（分阶段路线图、排期、风险、交付）  
+> 需求来源：`docs/Requirements.md`（v0.3 Draft）  
+> 架构重建记录：`docs/rebuild-plan.md`（已完成并合并至 main）  
+> 状态：M0-M2 已完成。当前主线是 DOM 化 UI 模型、编译期模板生成、保留模式渲染、可插拔平台/后端，以及面向 NativeAOT 的纯 C# 运行时。
 
 ---
 
 ## 1. 项目定位与核心约束
 
-一句话定位：**纯 C# 实现、编译优先（Compile First）、NativeAOT 优先、渲染后端可插拔** 的跨平台 UI 框架。
+Square 是 **纯 C# 实现、编译优先（Compile First）、NativeAOT 优先、渲染后端可插拔** 的跨平台 UI 框架。
 
-六大核心原则（来自需求 §17）：
+核心原则：
 
-1. **Compile First** —— 所有 UI 在编译期生成 C#，运行时零解析。
-2. **Pure C# Core** —— 框架核心（Parser / Generator / CSS / Layout / Runtime / Display Tree / Animation / Text）全部 C# 实现。
-3. **NativeAOT First** —— 禁用 `Reflection.Emit`、运行时代码生成、`Dynamic`、运行时加载程序集。
-4. **Backend Independent** —— 核心不依赖具体图形库；图形库均为可插拔 Backend。
-5. **Retained Rendering** —— Element Tree + Display Tree，非 Immediate Mode。
-6. **Low Coupling / IDE Friendly** —— 模块间通过抽象接口通信；`.sqx` 提供类型检查、智能补全、编译错误定位。
+1. **Compile First**：`.sqx` / `.sqv` 在编译期生成 C#，运行时零模板解析。
+2. **Pure C# Core**：Parser、Generator、CSS、Layout、Runtime、Display Tree、Animation、Text 均以 C# 实现。
+3. **NativeAOT First**：禁用 `Reflection.Emit`、运行时代码生成、`dynamic` 和运行时程序集加载；注册、绑定、平台分发均采用 AOT 友好机制。
+4. **Backend Independent**：核心不依赖具体图形库；Software、Skia、Blend2D、Cairo 等后端通过 `IRenderContext`/`IRenderBackendFactory` 接入。
+5. **Retained Rendering**：使用 Document/Element Tree + Display Tree；布局与绘制由脏标记驱动，而非 Immediate Mode。
+6. **Low Coupling / IDE Friendly**：模块间通过抽象接口通信；Source Generator 将 `.sqx`/`.sqv` 诊断映射回源文件行列。
 
-**设计约束**：
-- **结构化流程控制编译模型**：条件/列表/分支采用编译期细粒度命令式控制流（`<Show>`/`<For>`/`<Switch>`/`<Match>`），**无虚拟 DOM**；与 `ObservableValue` + Retained Rendering 同构（详见 §4.5.5）。
-- **脚本边界**：每个 `.sqx` 最多一个 `<script>`，当前只支持 `lang="csharp"`；该标签同时承载 C# 逻辑、Props 声明和文件级组件元数据。其他脚本语言不在当前范围内。
+设计边界：
 
----
-
-## 2. 总体架构（保留模式管线）
-
-```
-.sqx (template + style + script)
-      │
-      ▼
-[Square.SourceGenerator] ──► C# 组件类型 (编译期)
-      │
-      ▼
-  Component (C#)
-      │
-      ▼
- Element Tree   (Square.UI / Runtime)
-      │
-      ▼
-Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
-      │
-      ▼
- Display Tree   (Square.Rendering, DrawCommand 列表)
-      │
-      ▼
-IRenderContext  (Square.Graphics 抽象)
-      │
-      ▼
-Backend  (Square.Backends: Software → Skia/Blend2D/Cairo)
-```
-
-- **非 Immediate Mode**：保留 Element Tree + Display Tree，支持脏区增量重绘。
-- **低耦合**：除 `Square.Backends` 与 `Square.Platform` 外，所有模块仅依赖抽象接口，不依赖具体图形库或 OS。
-- **NativeAOT 合规**：组件类型在编译期生成，运行时无反射解析；属性系统使用生成代码与强类型委托。
+- 不引入 JS 引擎、WebView 或 JSBridge 作为运行时 UI 基础。
+- 不采用虚拟 DOM 或运行时模板 diff；结构化流程控制由生成器编译为命令式节点挂卸逻辑。
+- 不采用反射式 / Proxy 响应式绑定；状态使用 `ObservableValue<T>`、`ObservableCollection<T>`、`Signal<T>` 和委托订阅。
+- 平台与后端选择优先在构建层裁剪，运行时仅负责已注册平台/后端的实例化。
 
 ---
 
-## 3. 模块划分与职责
+## 2. 当前架构总览
 
-| 模块 | 职责 | 关键设计 |
+当前运行时主路径：
+
+```text
+.sqx / .sqv (template + script + style)
+      |
+      v
+[Square.SourceGenerator] -> C# partial component (compile time)
+      |
+      v
+UIDocument
+  documentElement = <UI>
+    <Head>   metadata / title-bar extension point
+    <Body>   application content host
+      |
+      v
+  Component / UIElement tree
+      |
+      v
+LayoutEngine (Square.Rendering)
+      |
+      v
+DisplayTree + DrawCommand list
+      |
+      v
+IRenderContext (Square.Graphics)
+      |
+      v
+Backend + Platform host (Software/Win32/X11/...)
+```
+
+关键变化：旧的 `Visual` 类型与术语已经废弃；Square 当前按接近 Web API 的 `EventTarget -> Node -> Document | Element` 模型组织 UI。`Document` 不是 `Element` 子类，`UIDocument.DocumentElement` 是只读 `<UI>` 根，应用内容挂在 `document.Body` 下。
+
+`DesktopApplication` 负责将 `UIDocument` 连接到平台宿主：注册默认控件、平台与后端，构建 Body 下组件树，执行生命周期，处理输入事件，运行 Dispatcher/Reconciler/CSS 更新队列，并根据渲染策略提交全帧或脏区绘制。
+
+---
+
+## 3. 程序集与模块职责
+
+| 模块 | 当前职责 | 关键设计 |
 |---|---|---|
-| `Square.Markup` | `.sqx` 词法/语法解析 → AST（含 template/script/style 三段） | 错误带行列号，供 Source Generator 映射诊断 |
-| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | 缓存键严格设计（IDE 诊断不滞后）；结构原语特判编译；诊断映射回 `.sqx` 行列 |
-| `Square.Runtime` | `Application`、组件生命周期、调度 | 消息循环调度；组件树挂载 |
-| `Square.UI` | 视觉基类型、属性、Element Tree 节点 | 强类型属性（生成代码，无反射依赖属性） |
-| `Square.Controls` | 第一阶段控件 + 结构原语 + 基础动画 | 控件 = 视觉 + 行为 + 默认样式；包含时钟、缓动和属性动画 |
-| `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；M1 子集 |
-| `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语类型 | 工厂 `IRenderBackendFactory` 创建上下文；原语 Geometry/Brush/Pen/Image/Bitmap/Font/Path/Transform/Clip |
-| `Square.Rendering` | Element Tree→Layout→Display Tree→DrawCommand | 包含 Box/Flex/Grid 布局；保留模式、脏区/增量 |
-| `Square.Text` | 文本引擎 | Unicode/Paragraph/Glyph/Font Manager/Layout/Caret/Selection/HitTest/LineBreak/Fallback/BiDi；M1 基础 |
-| `Square.Platform` | 平台宿主抽象（M1: Win32） | `IPlatformHost`：窗口/消息循环/输入泵；P/Invoke 用 `LibraryImport` 源生成 |
-| `Square.Backends` | 渲染后端（M1: Software 纯 C#） | 纯托管、无 C++ 依赖；后续 Skia/Blend2D/Cairo 同接 `IRenderContext` |
+| `Square.Markup` | `.sqx` 词法/语法解析与 AST | 独立解析器，错误含行列信息 |
+| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`/`.sqv` -> C# | `AdditionalText` 输入；Props 校验；诊断映射；扫描 `SqxDirective` 元数据构建指令目录 |
+| `Square.Runtime` | 应用基类、Dispatcher、状态与绑定原语、指令元数据 | `ObservableValue<T>`、`ObservableCollection<T>`、`Signal<T>`、`SqxDirectiveAttribute` |
+| `Square.Events` | DOM 风格事件模型 | `EventTarget`、`Event`、`addEventListener`、`dispatchEvent`、捕获/冒泡路径 |
+| `Square.UI` | DOM 化文档树与 UI 元素基础 | `Node`、`Document`、`UIDocument`、`Element`、`UIElement`、Shell、Range/Selection、Reconciler、属性与样式访问器 |
+| `Square.Controls` | 内置控件、指令声明、基础动画 | View/Text/Button/Input/TextArea/CheckBox/Radio/Select/Image/Canvas 等；`Show`/`For`/`Switch`/`Match`/`Slot` 指令标记 |
+| `Square.CSS` | CSS 解析、选择器、级联、主题、动画协调 | Selector/Cascade/Specificity/Var/Inheritance/Pseudo；`ThemeProvider`；`CssAnimationManager`；`CssStyleReconciler` |
+| `Square.Rendering` | 布局、DisplayTree、DrawCommand、文本片段 | Box/Flex/Grid 布局；脏节点更新；命中测试；`TextFragment` 字符级命中 |
+| `Square.Graphics` | 绘图抽象与图像编解码 | `IRenderContext`、`IRenderBackendFactory`、Color/Rect/Font/Image/Path；PNG 编码与 BMP 转换 |
+| `Square.Backends` | 软件渲染后端与后端注册 | 纯托管 BGRA 软件渲染；脏区 Present；像素/裁剪缓存与批量填充优化 |
+| `Square.Platform` | 平台宿主抽象与实现 | `IPlatformHost`、Win32、X11、截图；P/Invoke 使用 `LibraryImport` |
+| `Square.Hosting` | 桌面应用组合层 | `DesktopApplication`、`RenderMode`、`RenderDecision`、`RenderDiagnostics` |
+| `Square.Router` | 内存路由与导航控件 | Route matcher、nested branch、history、Link、路由指令 |
+| `Square.Extensions` | 可选扩展模块 | Markdown 渲染扩展，基于 Markdig |
+| `Square.Tooling` | 本地 HTTP 调试与自动化 | localhost + token；renderer PNG 截图；指针、键盘、文本、滚轮输入注入 |
+| `Square.Text` | 文本、字体、选择与测量基础 | Font manager、FontFaceSet、文本测量、caret/selection/hit test 基础 |
 
-依赖方向：`SourceGenerator` → `Markup`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（按实际需要引用）；`Backends`/`Platform` → 底层图形抽象。核心层禁止反向依赖 Backend/Platform。
+依赖方向遵循：核心抽象向下游开放，平台/后端/扩展在边缘注册；核心层不得反向依赖具体平台和具体图形库。
 
 ---
 
-## 4. Phase 1 详细设计（M0 + M1）
+## 4. DOM 化 UI 模型
 
-### 4.1 解决方案与项目结构
+### 4.1 类型树
 
-仓库根新增 `Square.slnx`（或 `.sln`）与如下项目（均 `net10.0`，启用 AOT/Trim 友好）：
+当前 UI 树以 DOM 子集为基础：
 
+```text
+EventTarget
+  -> Node
+       -> Document
+            -> UIDocument
+       -> Element
+            -> UIElement
+                 -> UIRootElement   TagName "UI"
+                 -> UIHeadElement   TagName "Head"
+                 -> UIBodyElement   TagName "Body"
+                 -> View, Text, Button, Input, ...
+            -> HTMLElement          reserved abstract placeholder
+            -> SVGElement           reserved abstract placeholder
 ```
-src/
-  Square.Markup/          # .sqx 词法/语法解析 → AST（含 template/script/style 三段）
-  Square.SourceGenerator/ # Roslyn Incremental Generator（.sqx → C#）
-  Square.Runtime/         # Application、组件生命周期、调度
-  Square.UI/              # 视觉基类型、属性、Element Tree 节点
-  Square.Controls/        # 第一阶段控件 + 结构原语 + 基础动画
-  Square.CSS/             # CSS 引擎（M1 子集）
-  Square.Graphics/        # IRenderContext 抽象 + 绘图原语类型
-  Square.Rendering/       # 布局 + Element Tree→Display Tree→DrawCommand
-  Square.Text/            # 基础文本（字形、简单排版）
-  Square.Platform/        # 平台宿主抽象（M1: Win32）
-  Square.Backends/        # 渲染后端（M1: Software 纯 C#）
-  samples/
-    Square.Sample/        # Phase 1 验证 Demo（含 Main.sqx）
+
+`Node` 提供 `OwnerDocument`、`ParentNode`、`ParentElement`、`NodeTypeValue`、`NodeName` 与事件路径父级。`Element` 承载 DOM 风格身份和 Square 的保留模式扩展：`TagName`、`Id`、`ClassList`、`Style`、`ChildNodes`、`Children`、`Geometry`、`Measure`、`Arrange`、`Paint`、`HitTest`、脏标记与生命周期。
+
+### 4.2 UIDocument 壳
+
+`UIDocument` 固定创建：
+
+```text
+UIDocument
+  documentElement = <UI>
+    <Head>
+    <Body>
 ```
 
-> 模板统一为无文件级根标签的单文件 **`.sqx`**：唯一 `<template>`，以及各自最多一个的 `<script lang="csharp">` / `<style>`，详见 §4.5.1。
+规则：
 
-### 4.2 各模块设计要点
+- `DocumentElement` 只读，UI 文档中始终是 `<UI>`。
+- `Head` 当前作为元数据 / 标题栏扩展点，默认高度为 0。
+- `Body` 是窗口客户区内容宿主，应用页面和根组件挂在 Body 下。
+- 更换页面内容应操作 `Body.Children`，而不是替换 `documentElement`。
+- `document.Title` 与平台窗口标题同步。
 
-**Square.Markup（.sqx Parser + AST）**
-- 输入：`.sqx` 文本（含 `<template>`/`<script lang="csharp">`/`<style>` 三段）；输出：强类型 AST（`SqxDocument` → `SqxTemplate`/`SqxScript`/`SqxStyle`）。
-- `<template>` 内为 HTML 风格框架元素；属性值含事件引用（`onClick={OnClick}`）与绑定表达式（`{ Name }`、`prop={ expr }`）；结构原语 `<Show>`/`<For>`/`<Switch>`/`<Match>` 作为特殊节点；`<Show>`/`<For>` 的 `when=`/`each=` 同用 `{expr}` 表达式。
-- 错误带行列号，供 Source Generator 映射诊断。
-- 任务：词法器、递归下降语法器、AST 模型、单元测试。
+### 4.3 查询、Range 与选择
 
-**Square.SourceGenerator（Incremental Generator）**
-- `IIncrementalGenerator`：以 `.sqx` 为 `AdditionalText` 输入（内含 `<template>`/`<script lang="csharp">`/`<style>` 三段）。
-- 流程：读 `.sqx` → 调 `Markup` 解析为 AST → 语义分析（绑定/事件解析到 C# 成员；`<Show>`/`<For>`/`<Switch>`/`<Match>` 识别为结构原语）→ 生成 `partial` 组件类（含 `BuildElementTree()`）。
-- 结构原语：`<Show when>`/`<For each>`/`<Switch>`+`<Match when>` 由生成器特判，编译为 `ObservableValue`/`ObservableCollection` 驱动的 Element 子树增删，而非运行时组件实例。
-- 诊断：将解析错误映射为带 `.sqx` 文件路径与行列的 `Diagnostic`，IDE 可定位。
-- 平台/后端裁剪**不在生成器内处理**：由 C# `#if` + MSBuild 常量/条件引用在构建层完成（见 §4.5.2）。
-- 任务：Generator 骨架、`.sqx`→AST→C# 代码发射、事件/绑定解析、结构原语编译、诊断源、增量缓存键。
+`Document` 已提供：
 
-**Square.CSS（当前子集）**
-- 支持：Selector（类型/类/id/后代/子代/相邻兄弟/通用兄弟/通用/基础属性选择器）、Cascade、Specificity、`!important`、Variables（`--x`）、Inheritance、基础伪类、基础属性（color/background/border/padding/margin/font-size）。
-- 暂不做：属性选择器高级操作符、伪元素、Animation、Grid 全量（后续补）。
-- 任务：Tokenizer、Rule/AST、Selector 匹配、级联计算、属性应用到 Element。
+- `GetElementById`
+- `GetElementsByTagName`
+- `GetElementsByClassName`
+- `QuerySelector` / `QuerySelectorAll`，支持 tag、`.class`、`#id`、后代与 `>` 子集
+- `CreateRange()`
+- `GetSelection()`
+- `Fonts`，对齐 `document.fonts` / CSS Font Loading 的简化模型
 
-**Square.Rendering 布局子系统（M1 子集）**
-- 支持：`display:block/flex`、`flex-direction`、`justify-content`、`align-items`、`flex-grow/shrink`、`width/height`（px/%/auto/rp/vw/vh）、`padding/margin`。
-- 高 DPI：**物理像素对齐**（避免模糊）。
-- 任务：Box 模型测量/排列、Flex 算法、尺寸解析（px/%/auto/rp/vw/vh）。
+`Range`、`Selection` 与 `TextFragment` 用于文本选择和字符级命中测试，是后续富文本与编辑器能力的基础。
 
-**Square.Graphics（IRenderContext 抽象）**
-- 接口原语：Geometry、Brush、Pen、Image、Bitmap、Font、Path、Transform、Clip。
-- 定义 `IRenderContext` 与 `IRenderBackendFactory`（工厂创建上下文）。
-- 任务：抽象接口与基础类型（Color、Rect、Size、Point、Matrix）、Backend 注册机制。
+### 4.4 事件系统
 
-**Square.Backends — Software Renderer（纯 C#）**
-- 纯托管渲染器思路：**无外部 C++ 依赖**，CPU 软渲染。
-- 关键技术：
-  - BGRA32 像素缓冲；**预乘 Alpha（Premultiplied Alpha）** 消除缩放黑边；
-  - 基础 **SIMD** 加速的像素混合（`.NET` `System.Numerics`/`Vector<T>`）；
-  - 设备上下文缓存，脏区重绘。
-- 仅实现 M1 所需原语：填充矩形/文本/线条/基础路径。
-- 任务：SoftwareBackend、光栅化基础、文本光栅（接 Square.Text）、脏区管理。
+事件模型对齐 Web API 子集：
 
-**Square.Rendering（Element Tree → Display Tree → DrawCommand）**
-- Element Tree：由 Source Generator 生成的组件构建；`<Show>` 条件子树需支持**挂卸**，`<For>` 列表需支持**增量增删**（keyed）。
-- Layout 阶段调用 `Square.Rendering` 程序集中的 `LayoutEngine` 计算几何。
-- Display Tree：生成 `DrawCommand` 列表（FillRect/DrawText/DrawPath/...）。
-- 保留模式：脏标记驱动增量重绘。
-- 任务：DisplayTree 构建、DrawCommand 定义、脏区/增量机制（含子树挂卸）、调用 IRenderContext 提交。
-
-**Square.Runtime + Square.UI**
-- `Application.Run(window)`、消息循环调度。
-- 视觉基类型 `Element`/`UIElement`：强类型属性（生成代码，无反射依赖属性）。
-- 任务：Application、Element 基类、属性存储、组件树挂载；组件生命周期（OnAttached/OnDetached/OnLoaded/OnUnloaded、OnMeasure/OnArrange）、应用生命周期（OnStart/OnExit）。
-
-**Square.Controls（M1 控件）**
-- 第一阶段视觉控件：View, Text, Button, Input, TextArea, CheckBox, Radio, Select, Image, Canvas（需求 §4）。
-- **编译器结构原语**（非运行时控件，由 Source Generator 特判）：`Show`（条件子树）、`For`（列表，绑定 `ObservableCollection<T>`）、`Switch`/`Match`（多分支）。
-- **列表可观察原语**：新增 `ObservableCollection<T>`（引用键），作为 `<For>` 的数据源，支撑增量更新。
-- 每个控件 = 视觉 + 行为 + 默认样式钩子。
-- 任务：10 个控件实现、结构原语编译支持、默认 CSS、事件触发（Click/TextChanged/...）。
-
-**Square.Text（M1 基础）**
-- M1：字体加载（系统字体，纯 C# 优先）、字形测量、单行/多行简单排版、命中测试基础。
-- 完整 BiDi/Fallback 留 M7。
-- 任务：FontManager（最小）、Glyph 缓存、文本测量与绘制。
-
-**Square.Platform（M1: Win32）**
-- `IPlatformHost`：窗口创建、消息循环、`Mouse/Keyboard/Focus/Wheel` 输入泵。
-- M1 实现 Win32（P/Invoke 用 `LibraryImport` 源生成以兼容 AOT）。
-- 任务：Win32 宿主、消息循环、输入事件采集并派发到 Runtime 事件系统。
-
-**Square.Controls 动画子系统（M1 最小）**
-- 时间线 + 缓动函数骨架，供后续 CSS Animation 接入。
-- 任务：Clock、Easing、属性动画最小实现。
-
-**事件系统（贯穿 M1）**
-- 支持 Mouse、Keyboard、Touch、Focus、Wheel（需求 §7）。
-- M1 实现 Mouse/Keyboard/Focus/Wheel；Touch 框架预留。
-- 任务：事件类型、路由（冒泡/隧道基础）、`.sqx` 事件 → C# 方法绑定。
-
-**绑定模型**
-- 引入 `ObservableValue<T>`（强类型、委托订阅、零反射），作为 Square 的数据/状态绑定基础；列表用 `ObservableCollection<T>`。
-- `.sqx` 绑定/事件语法（详见 §4.5.4）：文本/属性表达式 `{expr}`、事件 `onEvent={Method}`、双向 `value={expr} onInput={Method}`；后端强制 `ObservableValue<T>`，禁止 Proxy/反射响应式。
-- 结构化流程控制（详见 §4.5.5）编译为细粒度命令式控制流，无 VDOM。
-- 任务：ObservableValue/ObservableCollection 原语、绑定发射、单向/双向绑定（Input/TextArea/CheckBox/Radio/Select）。
-
-### 4.3 示例应用 + NativeAOT 验证
-
-- `samples/Square.Sample`：一个 `Main.sqx`（`<template>` 描述窗口 + `<script lang="csharp">` 处理 `OnClick` 与绑定 + `<style>` 样式），渲染标题、Text、Button、Input、CheckBox。
-- 验证：
-  - `dotnet build` 通过（Source Generator 产出组件）。
-  - `dotnet publish -c Release -p:PublishAot=true` 成功，无反射/动态代码警告阻断。
-  - 运行：窗口渲染正确、点击 Button 触发 C# 逻辑、Input 双向绑定生效。
-  - 记录可执行体积/启动耗时作为基线（目标 2–4MB 量级）。
-
-### 4.4 Phase 1 任务清单（Checklist）
-
-[x] M0：创建 `Square.slnx` 与全部 `Square.*` 项目 + 发布/AOT 配置
-[x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
-[x] `Square.SourceGenerator`：Incremental Generator + 诊断映射（`.sqx` 行列）+ Props 校验
-[x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
-[x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
-[~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Box/Flex/Grid 布局 + Element→DisplayTree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
-[x] `Square.Runtime` + `Square.UI`：Application/Element 基类/属性 + 路由事件
-[x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画
-[x] `Square.Text`：FontManager/测量/绘制（基础）
-[x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
-[x] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定 + Click 合成
-[x] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
-[x] 示例 + NativeAOT 发布验证 + 基线指标（2.53 MiB EXE，512ms 启动，32 MB 内存）
-[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` ✓ / 条件 `ProjectReference` 待实现
-[x] 流程控制结构原语：`<Show>`/`<For>`/`<Switch>`/`<Match>` + `ObservableCollection<T>`
-[x] 组件/应用生命周期钩子（OnAttached/OnDetached/OnLoaded/OnUnloaded + Application.OnStart/OnExit）
-
-### 4.5 模板、绑定与流程控制规范
-
-#### 4.5.1 统一模板格式 `.sqx`
-
-- 模板文件**统一为 `.sqx`**，不使用 `<sqx>` 文件级根标签，以三个顶级 section 内聚：
-  - `<template>`：结构，含绑定表达式 `{expr}`/`prop={expr}`/`onClick={Method}`/`value={}+onInput={}` 与流程控制 `<Show>`/`<For>`/`<Switch>`/`<Match>`。
-  - `<script lang="csharp">`：可选且最多一个；包含 C# 逻辑、Props 声明和 `namespace`/`name`/`access` 等文件级元数据；Source Generator 发射进同一 `partial` 组件类。
-  - `<style>`：可选且最多一个；样式由 CSS 引擎消费。
-- `<template>` 必须且只能有一个，允许多个视觉根节点；生成器不自动插入包装 `View`。
-- 示例结构：
-  ```xml
-  <template>
-    <View>
-      <Show when={LoggedIn}><Text>欢迎</Text></Show>
-      <For each={Items}>{(it)=><Text>{it.Name}</Text>}</For>
-    </View>
-  </template>
-  <script lang="csharp" namespace="MyApp.Components" access="public">
-    // ObservableValue<bool> LoggedIn; ObservableCollection<Item> Items;
-  </script>
-  <style>/* CSS */</style>
-  ```
-- 逻辑内联于 `<script lang="csharp">`，与独立 `.cs` 功能等价（均编译为同一 `partial` 类），差异仅在编写 ergonomics。
-
-#### 4.5.2 平台/后端裁剪（构建层）
-
-- 平台/后端选择由 **构建层** 在编译期完成（AOT 友好、编译期消除）：
-  - C# 逻辑内使用原生 `#if`/`#endif` 预处理。
-  - 平台/后端选择由 **MSBuild `DefineConstants`**（如 `PLATFORM_WIN32`/`BACKEND_SKIA`）与**条件 `ProjectReference`** 控制后端/宿主装配。
-  - 宏名 `PLATFORM_*`/`BACKEND_*`（`PLATFORM_WIN32`/`X11`/`MACOS`/`ANDROID`/`IOS`/`WASM`、`BACKEND_SOFTWARE`/`SKIA`/`BLEND2D`/`CAIRO`）保留为构建符号语义。
-- 价值：避免运行时 `if/else` 平台判断，减小体积；被条件包含的路径不会被 trim 误删（缓解"NativeAOT 裁剪误删后端/平台代码"风险）。
-- 数据驱动的流程控制由 `<Show>`/`<For>` 承担（见 §4.5.5），与构建层裁剪职责分离。
-
-#### 4.5.3 基础组件词表
-
-- Phase 1 已覆盖（需求 §4）：View, Text, Button, Input, TextArea, CheckBox, Radio, Select, Image, Canvas。
-- 补入 Phase 3（M3）：ScrollViewer, Swiper, List, Navigator，以及延续的 Tree/Menu/Dialog/Grid/Popup/Window/Tab。
-- 命名：PascalCase 控件类型（C# 习惯），`.sqx` 内小写标签。
-
-#### 4.5.4 声明式数据绑定语法
-
-- 模板内统一使用 `{expr}` 表达式语法，与流程控制 `when=`/`each=` 同源，无第二套绑定 DSL：
-  - 文本插值：`{ expr }`（如 `<Text>{Name}</Text>`），`{...}` 内的表达式编译为 `ObservableValue` 读取并订阅；同一语法亦用于属性值。
-  - 单向属性：`prop={ expr }`（如 `<Text text={Title} />`），编译为属性绑定并订阅源变化。
-  - 事件：`onEvent={ Method }`（如 `onClick={OnClick}`），映射到 `<script lang="csharp">` 中的 C# 方法；事件名首字母大写（click→onClick、textChanged→onTextChanged）。
-  - 双向：`value={ expr } onInput={ Method }`（如 `<Input value={UserName} onInput={OnUserNameChanged} />`），由单向属性绑定 + 输入事件处理组成；`Method` 在 C# 中写回 `ObservableValue.Value`。不提供隐式双向绑定，保持显式可控。
-- 实现约束：绑定后端**必须**用 `ObservableValue<T>`（强类型、委托驱动、零反射、AOT 安全），**不得**引入 Proxy/反射响应式；`{expr}` 在编译期解析成员引用并生成订阅代码，运行时零解析。
-
-#### 4.5.5 结构化流程控制（`<Show>`/`<For>`/`<Switch>`/`<Match>`）
-
-- 条件/列表/分支采用编译期细粒度命令式控制流、**无虚拟 DOM**，与 `ObservableValue` + Retained Rendering 同构。
-- 映射（`.sqx` 写法 → 编译产物）：
-  - `<Show when={expr}>…</Show>`：条件子树；`when` 中 `{expr}` 绑定 `ObservableValue<bool>`，条件变时增删 Element 子树（记忆化复用）；可选 `fallback` 属性指定条件假时的替代子树。
-  - `<For each={expr}>{(it)=>…}</For>`：列表；`each` 中 `{expr}` 绑定 `ObservableCollection<T>`，引用键增量更新（项移动时节点不重建）；`it` 为列表项。
-  - `<Switch><Match when={expr}>…</Match></Switch>`：多分支（互斥，首项真即渲染）；`Switch` 可带 `fallback`。
-  - `<Index each={expr}>…</Index>`（可选）：索引键列表。
-- `<Show>`/`<For>`/`<Switch>`/`<Match>` 为 **Source Generator 已知的结构原语**（非运行时组件实例），由生成器特判编译为 Element Tree 的挂卸/迭代。
-- 表达式 `when=`/`each=` 中的 `{expr}` 与绑定表达式同语法，绑定到 `ObservableValue`/`ObservableCollection`，编译期解析成员引用。
-- 阶段：M1 可先支持 `<Show>`/`<For>` 基础形态；`<Switch>`/`<Match>`/`<Index>` 与 `keyed` 复用排 M2。
-
-#### 4.5.6 组件 / 应用生命周期钩子
-
-- 组件：`OnAttached`（挂载视觉树）/`OnDetached`（卸载）/`OnLoaded`/`OnUnloaded`；布局回调 `OnMeasure`/`OnArrange`。
-- 应用：`OnStart`/`OnExit`（对标 `Application.Run`）。
-- 落地：编译期生成的 `partial` 组件类提供可重写虚方法，供 C# 业务逻辑订阅。
-
-#### 4.5.7 按标签即用
-
-- 控件按标签名即可用、免手动注册。`Square.SourceGenerator` 已按标签解析控件，沿用"按标签即用"低仪式感；无需显式 `using`/注册清单。
-
-#### 4.5.8 设计边界（明确不支持）
-
-- 不内置 JS 引擎 / WebView / JSBridge 的**运行时**渲染与响应式；`<script>` 仅作为未来 AOT 编译扩展槽保留。
-- 不采用反射式 / Proxy 数据绑定；绑定后端强制 `ObservableValue<T>` 零反射。
-- 不采用运行时平台 `if/else` 判断；平台/后端裁剪在构建层完成（§4.5.2）。
-- 不采用虚拟 DOM 与运行时 diff；采用保留模式 + 结构化流程控制编译为命令式控制流。
-- 不提供隐式双向绑定（自动同步属性与状态的简写）；双向以 `value={}` + `onInput={}` 显式表达。
-- 不采用运行时动态组件（`<Dynamic>` 类）/ 运行时 DOM 搬运（`<Portal>` 类）；暂列范围外。
+- `EventTarget` 负责监听、移除监听与派发。
+- `Node.GetEventParent()` 形成冒泡路径：子元素 -> 父元素 -> `Body` -> `UI` -> `Document`。
+- 平台输入在 `DesktopApplication` 中转换为鼠标、键盘、滚轮、文本输入、焦点和合成 Click 等事件。
+- 元素状态位用于 CSS 伪类：hover、active、focus、disabled 等。
 
 ---
 
-## 5. 关键技术决策与权衡
+## 5. 组件、模板与 Source Generator
 
-- **NativeAOT/Trim 约束**：全程禁用反射式绑定、运行时代码生成；P/Invoke 用 `LibraryImport` 源生成；`ObservableValue` 委托订阅替代反射属性系统。
-- **统一模板格式 `.sqx` + 细粒度命令式流程控制**：结构、逻辑和样式以内聚的顶级 section 组织，不使用文件级根标签；`<Show>`/`<For>` 编译为 `ObservableValue`/`ObservableCollection` 驱动的控制流，无 VDOM，与 Retained Rendering 同构；平台/后端裁剪下沉构建层。
-- **Source Generator 诊断映射**：解析错误携带 `.sqx` 文件路径与行列，经 `Diagnostic` 回抛，保证 IDE 友好（需求 §12、§17）。
-- **纯托管软件渲染器**：Phase 1 后端采用纯 C# CPU 渲染，纯托管、无 C++ 依赖；用 BGRA32 + 预乘 Alpha + SIMD 混合 + 脏区重绘达到可接受性能，并为后续 Skia/Blend2D/Cairo 预留同一 `IRenderContext`。
-- **高 DPI**：布局与光栅均按物理像素对齐，避免模糊。
-- **CSS 范围（M1/M2 起步）**：已覆盖静态样式、flex 布局、常用组合选择器、基础属性选择器、`!important` 与基础伪类；属性选择器高级操作符、伪元素、Animation/Grid 全量延至后续阶段，控制复杂度。
-- **绑定模型选择**：采用 `ObservableValue<T>` 式零反射绑定，确保 AOT 安全与体积；列表用 `ObservableCollection<T>` 支撑 `<For>`。
+### 5.1 模板文件格式
+
+Square 支持两类编译期模板输入：
+
+- `.sqx`：Square 原生单文件模板。
+- `.sqv`：Vue 风格模板前端，采用规范化路径，详见 `docs/vue-plan.md`。
+
+`.sqx` 文件不使用文件级根标签，顶级 section 为：
+
+- `<template>`：结构，含元素、文本、绑定表达式、事件、指令。
+- `<script lang="csharp">`：可选且最多一个；包含 C# 逻辑、Props 声明和文件级元数据。
+- `<style>`：可选且最多一个；样式交由 CSS 引擎消费。
+
+示例：
+
+```xml
+<template>
+  <View class="panel">
+    <Text>{Title}</Text>
+    <Show when={IsReady}>
+      <Button onClick={Save}>Save</Button>
+    </Show>
+  </View>
+</template>
+
+<script lang="csharp" namespace="MyApp.Components" access="public">
+  public ObservableValue<string> Title { get; } = new("Draft");
+  public ObservableValue<bool> IsReady { get; } = new(false);
+  void Save() { }
+</script>
+
+<style>
+  .panel { padding: 12px; }
+</style>
+```
+
+### 5.2 生成器职责
+
+`Square.SourceGenerator` 是 Roslyn `IIncrementalGenerator`：
+
+1. 读取 `.sqx` / `.sqv` AdditionalText。
+2. 解析模板、脚本和样式。
+3. 从当前 Compilation 扫描带 `SqxDirectiveAttribute` 的类型，构建 `DirectiveCatalog`。
+4. 校验 Props、ref 名称、指令嵌套和必需属性。
+5. 生成 partial 组件类与 `BuildElementTree()`。
+6. 将语法、Props、控件和指令错误映射回源模板行列。
+
+Props 校验通过 `<script>` 中的 `[Prop]` 成员提取组件契约；模板中缺少 required prop 或字面值类型不匹配时生成诊断。
+
+### 5.3 指令模型
+
+结构原语不再只是生成器硬编码分支，而是由运行时/控件程序集声明元数据，再由生成器编译期扫描。
+
+内置指令：
+
+| 指令 | 语义 | 生成模式 |
+|---|---|---|
+| `Show` | 条件挂卸子树 | `ControlFlowAttach`，主属性 `when`，运行时节点 `ShowNode` |
+| `For` | 列表挂卸/重建 | `ControlFlowAttach`，主属性 `each`，运行时节点 `ForNode` |
+| `Switch` | 多分支容器 | 只允许 `Match` 子节点 |
+| `Match` | `Switch` 分支 | 不能独立发射，主属性 `when` |
+| `Slot` / `Outlet` | 插槽出口 | `SlotOutlet`，主属性 `name` |
+
+这种设计允许后续 Router、Controls 或第三方扩展通过 `SqxDirectiveAttribute` 暴露编译期可识别的结构能力，同时保持 NativeAOT 友好。
+
+### 5.4 绑定与状态
+
+模板表达式统一使用 `{expr}`：
+
+- 文本插值：`<Text>{Name}</Text>`
+- 属性绑定：`text={Title}`、`value={UserName}`
+- 事件绑定：`onClick={Save}`
+- 显式双向：`value={UserName} onInput={OnUserNameChanged}`
+
+运行时状态原语：
+
+- `ObservableValue<T>`：组件内状态和模板属性绑定的基础。
+- `ObservableCollection<T>`：列表和 `ForNode` 数据源。
+- `Signal<T>`：跨组件或跨线程发布订阅；可通过 `Dispatcher` 投递到 UI 线程。
+- `Reconciler` 和 `CssStyleReconciler`：批处理树更新与样式更新，避免每个状态变化立即完整重绘。
 
 ---
 
-## 6. 关联文档
+## 6. CSS、主题与动画
 
-- `plan.md`：分阶段路线图（M0–M8）、里程碑排期、风险与缓解、交付说明。本设计文档的 §4 对应计划中的 M0+M1 阶段。
-- `docs/Requirements.md`：原始需求（v0.1 Draft）。
+`Square.CSS` 当前覆盖：
+
+- Tokenizer / Parser / AST
+- 类型、类、id、后代、子代、兄弟、通用和基础属性选择器
+- Specificity、Cascade、`!important`
+- CSS Variables、Inheritance
+- 基础伪类和元素状态匹配
+- 常用样式属性：颜色、背景、边框、padding、margin、字体、尺寸、布局相关属性
+- `ThemeProvider` 主题变量
+- `CssAnimationManager` / `CssAnimationTimeline`
+- `CssStyleReconciler` 样式更新队列
+
+CSS 只负责样式计算与属性应用；具体布局由 `Square.Rendering.LayoutEngine` 执行，绘制由元素 `Paint()` 产生命令并进入 DisplayTree。
+
+仍需后续完善的方向：伪元素、高级属性选择器、完整 CSS Grid、完整 animation/keyframes 语义、更多 CSSOM API。
+
+---
+
+## 7. 布局、DisplayTree 与渲染
+
+### 7.1 布局
+
+`LayoutEngine` 支持 Box/Flex/Grid 基础布局，输入为 `Element` 树和可用尺寸，输出写入元素 `Geometry`。
+
+关键规则：
+
+- `Body` 按平台客户区尺寸布局。
+- `Head` 当前高度为 0，后续可扩展为自定义标题栏。
+- 元素通过 `InvalidateLayout()` 和 `InvalidatePaint()` 标记更新。
+- 高 DPI 方向要求布局与光栅阶段进行物理像素对齐，避免模糊。
+
+### 7.2 DisplayTree
+
+`DisplayTree` 将布局后的元素树转换为保留模式绘制树：
+
+- `BuildFrom(root)` 用于布局失效或首次构建。
+- `UpdateDirty()` 用于绘制失效节点更新。
+- `CollectDirtyRects()` 收集局部重绘区域。
+- `HitTestPopups()` 与元素 `HitTest()` 一起支撑输入命中。
+- `Render(IRenderContext)` 或 `Render(IRenderContext, dirtyUnion)` 提交绘制命令。
+
+### 7.3 渲染决策
+
+`Square.Hosting` 提供渲染策略：
+
+- `RenderMode.FullFrame`：每帧全窗口重绘。
+- 脏区模式：收集 dirty rect，依据 `MaxDirtyRectCount` 和 `MaxDirtyAreaRatio` 判断局部 Present 还是退回全帧。
+- `RenderDiagnostics` 记录本帧模式、原因、脏区数量、面积比例和 union。
+- 可开启诊断 overlay 与 dirty union overlay 辅助性能调试。
+
+Software Renderer 当前已经包含 BGRA 软件缓冲、预乘 Alpha、位图像素/裁剪区域缓存、批量 BGRA 填充和局部 Present 能力。SIMD、更多路径/文本高级光栅能力仍可继续扩展。
+
+---
+
+## 8. 平台宿主、截图与图形抽象
+
+### 8.1 图形抽象
+
+`Square.Graphics` 定义：
+
+- `IRenderContext`
+- `IRenderBackendFactory`
+- `RenderBackendRegistry`
+- 基础原语：`Color`、`Point`、`Size`、`Rect`、`Brush`、`Pen`、`Font`、`Image`、`PathGeometry`、`Transform`、`Clip`
+- 图像编解码：`BitmapPngEncoder`、`BmpPngConverter`
+
+图形抽象必须保持后端无关；后端不得泄漏平台或第三方库类型到核心 API。
+
+### 8.2 平台抽象
+
+`Square.Platform` 定义 `IPlatformHost`，负责：
+
+- 窗口创建、显示与消息循环
+- 客户区尺寸与 DPI 信息
+- 鼠标、键盘、滚轮、文本输入、焦点事件
+- 创建 `IRenderContext`
+- 文本输入区域同步
+- 平台截图
+
+当前已有 Win32 与 X11 宿主，以及 Win32/X11 截图实现。平台注册由 `PlatformRegistration.RegisterDefaults()` 完成。
+
+### 8.3 Hosting 组合层
+
+`DesktopApplication` 是桌面端组合入口：
+
+```csharp
+var document = new UIDocument { Title = "Square" };
+document.Body.Children.Add(new Main());
+new DesktopApplication(document, hostInfo).Run();
+```
+
+兼容构造函数仍支持传入单个 `Element` 内容根，内部会包装进新的 `UIDocument.Body`。新代码应优先使用 `UIDocument` 入口。
+
+---
+
+## 9. 路由、组合与扩展
+
+### 9.1 路由
+
+`Square.Router` 当前提供内存路由：
+
+- `Router` 控件继承自 `View`。
+- `RouteDefinition` 描述路径和组件工厂。
+- `RouteMatcher` 支持参数、嵌套 branch 和匹配结果。
+- `INavigationHistory` 默认使用 `MemoryNavigationHistory`。
+- `Navigate`、`Replace`、`Back`、`Forward` 驱动当前页面。
+- 路由上下文通过元素属性向页面分发。
+- 嵌套路由通过默认 Slot 注入子页面。
+
+### 9.2 组件组合
+
+组件组合以 Slot 为基础：
+
+- 调用方内容保持调用方作用域。
+- `Slot` / `Outlet` 作为编译期指令发射。
+- Router 嵌套分支复用默认 Slot 挂载子页面。
+
+### 9.3 扩展模块
+
+`Square.Extensions` 用于承载非核心能力。当前包含：
+
+- Markdown 渲染扩展，基于 Markdig。
+- RichText 前置能力：`RichTextDocument`、block/inline schema、`RichTextMarks`、block/offset selection、基础编辑状态、快照式 undo/redo，以及第一版 `RichTextEditor` 控件壳；已接入跨 run 行内布局、软换行、selection rect、精确 caret/hit test、视觉行键盘导航、Unicode grapheme 删除/移动、Ctrl+单词导航、Bold/Italic/Underline mark 命令，以及保留 block/run/marks 的 JSON 富文本片段复制粘贴。
+- `samples/Square.Sample.RichText` 提供独立编辑器工作台，覆盖格式工具栏、颜色、清格式、撤销/重做、全选、样例加载和纯文本检查视图。
+
+扩展模块应通过显式注册、指令元数据或控件工厂接入，避免核心层反向依赖。
+
+---
+
+## 10. NativeAOT 与裁剪策略
+
+NativeAOT 约束贯穿设计：
+
+- 组件由 Source Generator 生成，不做运行时模板解析。
+- 控件、指令、平台和后端使用显式注册或编译期元数据扫描。
+- P/Invoke 使用 `LibraryImport` 源生成。
+- 绑定和事件使用强类型委托，不依赖反射属性访问。
+- 构建层可通过 MSBuild `DefineConstants` 和条件 `ProjectReference` 裁剪平台/后端。
+
+预留构建符号语义：
+
+- 平台：`PLATFORM_WIN32`、`PLATFORM_X11`、`PLATFORM_MACOS`、`PLATFORM_ANDROID`、`PLATFORM_IOS`、`PLATFORM_WASM`
+- 后端：`BACKEND_SOFTWARE`、`BACKEND_SKIA`、`BACKEND_BLEND2D`、`BACKEND_CAIRO`
+
+当前默认注册路径适合开发与测试；发布裁剪应在样例和模板项目中继续细化。
+
+---
+
+## 11. 已完成里程碑摘要
+
+已完成：
+
+- M0：解决方案、项目结构、统一构建配置、AOT/Trim 基础配置。
+- M1：`.sqx` 编译生成、基础控件、事件、绑定、Win32 宿主、Software Renderer、NativeAOT 样例验证。
+- M2：CSS 能力扩展、Slot/组件组合、Signal/Dispatcher、主题与动画基础。
+- 架构重建：去除 `Visual` 术语，迁移到 `Document`/`Node`/`Element`/`EventTarget` 模型。
+- `.sqv` Vue 模板前端初步实现。
+- `Square.Extensions` Markdown 扩展。
+- Win32/X11 平台截图、PNG 编码、BMP 转 PNG。
+- DOM `Range`/`Selection` 文本选择模型与 `TextFragment` 字符级命中测试。
+- Software Renderer 性能优化：位图像素/裁剪区域缓存、批量 BGRA 填充、脏区 Present。
+
+历史 Phase 1 的详细任务清单已不再作为本文主体；路线图和排期以 `plan.md` 为准，重建细节以 `docs/rebuild-plan.md` 为参考记录。
+
+---
+
+## 12. 当前限制与后续方向
+
+仍需推进：
+
+- 条件 `ProjectReference` 和发布模板中的平台/后端裁剪继续细化。
+- Skia / Blend2D / Cairo 后端接入，并保持 `IRenderContext` API 稳定。
+- macOS、移动端、WASM 平台宿主。
+- 富文本编辑器深化：显式 caret affinity、系统剪贴板多 MIME、列表/链接/图片节点、Markdown/HTML import/export。
+- 完整文本能力：BiDi、Font Fallback、复杂 selection/caret 行为。
+- 完整 CSS Grid、伪元素、更多 CSSOM 与 animation/keyframes 语义。
+- PointerEvent、KeyboardEvent 等事件字段继续对齐 Web API。
+- 自定义标题栏：让 `Head` 从元数据区扩展为可布局、可点击/拖拽的标题栏区域。
+- IDE 智能提示、补全和更完整的 Source Generator 诊断。
+
+---
+
+## 13. 关联文档
+
+- `plan.md`：M0-M8 路线图、风险与交付说明。
+- `docs/rebuild-plan.md`：DOM 化架构重建的目标、命名迁移和实现规格。
+- `docs/Architecture.md`：架构说明。
+- `docs/Rendering.md`：渲染管线说明。
+- `docs/API-Reference.md`：API 参考。
+- `docs/vue-plan.md`：`.sqv` Vue 风格模板前端计划。
+- `docs/Requirements.md`：原始需求。

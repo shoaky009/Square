@@ -32,6 +32,21 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void CaptureBitmapReturnsIndependentFrameCopy()
+    {
+        var context = CreateContext(4, 4);
+        context.Clear(Color.Red);
+
+        using var captured = ((IRenderBitmapSource)context).CaptureBitmap();
+        context.Clear(Color.Blue);
+
+        Assert.Equal(255, captured.Pixels[2]);
+        Assert.Equal(0, captured.Pixels[0]);
+        Assert.Equal(255, context.GetBitmap().Pixels[0]);
+        Assert.NotSame(captured.Pixels, context.GetBitmap().Pixels);
+    }
+
+    [Fact]
     public void ResizeRecreatesFrameBufferAtNewCanvasSize()
     {
         Bitmap? presented = null;
@@ -111,6 +126,15 @@ public class SoftwareRendererTests
                 darkPixels++;
 
         Assert.True(darkPixels > 80);
+    }
+
+    [Fact]
+    public void FallbackGlyphsAreNotHorizontallyMirrored()
+    {
+        Assert.True(RenderContext.IsFallbackGlyphPixelSet('C', 2, 0));
+        Assert.False(RenderContext.IsFallbackGlyphPixelSet('C', 2, 4));
+        Assert.True(RenderContext.IsFallbackGlyphPixelSet('L', 3, 0));
+        Assert.False(RenderContext.IsFallbackGlyphPixelSet('L', 3, 4));
     }
 
     [Fact]

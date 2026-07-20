@@ -34,6 +34,7 @@ public sealed class DesktopApplication : Application
     private readonly List<UIElement> _hoverPath = [];
     private readonly List<UIElement> _activePath = [];
     private bool _renderRequested;
+    private KeyModifiers? _toolingModifiers;
 
     public DesktopApplication(UIDocument document, PlatformHostCreateInfo hostCreateInfo)
     {
@@ -128,6 +129,42 @@ public sealed class DesktopApplication : Application
     }
 
     public void RequestRender() => _renderRequested = true;
+
+    public Task InjectPointerAsync(ToolingPointerInput input) => Dispatcher.InvokeAsync(() =>
+    {
+        WithToolingModifiers(input.Modifiers, () => HandleMouse(input.Position, input.Action));
+    });
+
+    public Task InjectKeyAsync(ToolingKeyInput input) => Dispatcher.InvokeAsync(() =>
+    {
+        WithToolingModifiers(input.Modifiers, () => HandleKey(input.KeyCode, input.Action));
+    });
+
+    public Task InjectTextAsync(string text) => Dispatcher.InvokeAsync(() => HandleTextInput(text ?? ""));
+
+    public Task InjectWheelAsync(ToolingWheelInput input) => Dispatcher.InvokeAsync(() =>
+    {
+        WithToolingModifiers(input.Modifiers, () => HandleWheel(input.Position, input.Delta));
+    });
+
+    public Task<Bitmap> CaptureRendererBitmapAsync()
+    {
+        var completion = new TaskCompletionSource<Bitmap>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                if (_renderContext is not IRenderBitmapSource bitmapSource)
+                    throw new InvalidOperationException("The active render context does not support bitmap capture.");
+                completion.SetResult(bitmapSource.CaptureBitmap());
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+        return completion.Task;
+    }
 
     private void RenderFrame()
     {
@@ -361,7 +398,7 @@ public sealed class DesktopApplication : Application
         if (hit is ITextEditor editor && hit is UIElement editorElement)
         {
             ClearDocumentSelection();
-            editor.HandlePointerDown(point, _host.Modifiers.HasFlag(KeyModifiers.Shift));
+            editor.HandlePointerDown(point, CurrentModifiers.HasFlag(KeyModifiers.Shift));
             _isSelectingText = true;
             return;
         }
@@ -456,8 +493,8 @@ public sealed class DesktopApplication : Application
             action == KeyAction.Down ? StandardEvents.CreateKeyDown() : StandardEvents.CreateKeyUp());
         if (action != KeyAction.Down) return;
 
-        var shift = _host.Modifiers.HasFlag(KeyModifiers.Shift);
-        var control = _host.Modifiers.HasFlag(KeyModifiers.Control);
+        var shift = CurrentModifiers.HasFlag(KeyModifiers.Shift);
+        var control = CurrentModifiers.HasFlag(KeyModifiers.Control);
         if (_focusedEditor == null)
         {
             if (control && keyCode == 67)
@@ -499,6 +536,22 @@ public sealed class DesktopApplication : Application
     {
         _focusedEditor?.HandleTextInput(text);
         RenderFrame();
+    }
+
+    private KeyModifiers CurrentModifiers => _toolingModifiers ?? _host?.Modifiers ?? KeyModifiers.None;
+
+    private void WithToolingModifiers(KeyModifiers modifiers, Action action)
+    {
+        var previous = _toolingModifiers;
+        _toolingModifiers = modifiers;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _toolingModifiers = previous;
+        }
     }
 
     private bool TryStartTextSelection(Element? hit, Point point)
