@@ -182,7 +182,6 @@ public sealed class TextLayout
 - Vulkan Backend：将 coverage 上传为白色 RGB、coverage alpha 的 atlas 区域；glyph 周围使用透明白 padding，避免线性过滤产生暗边
 - Vulkan 普通 DPI 文本使用整数物理像素原点、offset 和 advance，使 atlas texel 与 framebuffer pixel 保持一对一映射
 - Vulkan 旋转、斜切或额外缩放文本保留浮点 quad 与线性过滤，以支持任意变换
-- Impeller Backend：由 Impeller typography 路径负责 glyph shaping 与绘制
 
 ---
 

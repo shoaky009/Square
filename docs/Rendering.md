@@ -28,7 +28,7 @@ Display Tree (DrawCommand 列表)
   ↓ (Square.Graphics)
 IRenderContext
   ↓ (Square.Backends)
-Backend (Software / Vulkan / Impeller / ...)
+Backend (Software / Vulkan / ...)
 ```
 
 ---
@@ -193,7 +193,6 @@ Square Framework - Overlay: Off
 IRenderContext (抽象)
   ├── SoftwareBackend   (纯 C# CPU 渲染)
   ├── VulkanBackend     (Silk.NET 原生 Vulkan)
-  ├── ImpellerBackend   (Flutter Impeller Vulkan)
   └── Future Backends   (Skia / Blend2D / Cairo / ...)
 ```
 
@@ -246,7 +245,7 @@ dotnet run --project tools/ShaderGen
 - 旋转、斜切或额外缩放的文本保留浮点几何和过滤路径
 - Vulkan 曲线按变换后的物理半径自适应细分，避免大圆和圆角使用固定段数产生折角
 - Vulkan 填充/描边椭圆和 path stroke 在边缘生成约 1 个物理像素的 alpha feather，细斜线不只依赖有限的 MSAA coverage level
-- 当前一般 path stroke 仍按独立线段展开，尚未完整实现 `LineCap`、`LineJoin` 和 `MiterLimit`；复杂转角可能出现 feather 重叠或接缝，Impeller 在这类路径上仍具有更完整的 stroke 语义
+- 当前一般 path stroke 仍按独立线段展开，尚未完整实现 `LineCap`、`LineJoin` 和 `MiterLimit`；复杂转角可能出现 feather 重叠或接缝
 
 ---
 

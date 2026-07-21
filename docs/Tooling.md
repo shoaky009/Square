@@ -215,7 +215,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 截图来源取决于活动渲染后端的能力：
 
 - **GPU 实时帧回读（优先）**：当活动 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true` 时，`CaptureRendererBitmapAsync()` 直接读回最近一帧真实呈现的 GPU 图像。这使截图反映真实 GPU 输出，GPU 侧的渲染 bug（例如 render pass 被丢弃导致的白屏）会直接暴露在截图中，而不会被软件重渲染掩盖。Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`；启用后在帧内把 swapchain 颜色附件 copy 到 host-visible buffer，swapchain 格式 B8G8R8A8 与 `Bitmap` 的 BGRA 布局一致，无需通道交换。
-- **软件重渲染（回退）**：当活动后端不提供实时帧（如 Software、Impeller）时，在 UI 线程创建离屏 Software RenderContext，重放与活动后端相同的 DisplayTree 命令、文本选择和诊断覆盖层。它支持当前 Software/Impeller 共享的形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip；不同文字栅格器的抗锯齿和 shaping 仍可能产生像素差异。
+- **软件重渲染（回退）**：当活动后端不提供实时帧时，在 UI 线程创建离屏 Software RenderContext，重放与活动后端相同的 DisplayTree 命令、文本选择和诊断覆盖层。它支持形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip；不同渲染路径的抗锯齿仍可能产生像素差异。
 
 ### POST /api/v1/input/pointer
 
@@ -334,7 +334,7 @@ Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时
 
 Tooling HTTP 请求运行在 ASP.NET Core 轻量 WebApplication 中。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
 
-截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software、Impeller 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
+截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
 
 输入注入后的行为与平台输入路径一致：鼠标命中测试、焦点、文本编辑器、键盘快捷键、滚轮路由和必要的重绘都会由 `DesktopApplication` 统一处理。
 

@@ -32,7 +32,6 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
 - Square 原生 Vulkan GPU Renderer：Windows / Linux(X11)，支持形状、Path、Bitmap、文本、渐变、透明层、Geometry clip、MSAA 和可选 GPU readback
-- Flutter Impeller GPU Renderer：Windows / Linux(X11) Vulkan，支持形状、Path、Bitmap、Typography、渐变、透明层和 Geometry clip
 - Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板
 - X11 窗口宿主（Linux）、键盘、鼠标、滚轮、剪贴板（CLIPBOARD + PRIMARY）和 Software Renderer 上屏
 - DOM 风格事件系统：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent` + 捕获/冒泡
@@ -204,7 +203,6 @@ Square.SourceGenerator ──► C# Component
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer |
 | `Square.Backends.Vulkan` | 基于 Silk.NET 的 Square 原生 Vulkan GPU Renderer |
-| `Square.Backends.Impeller` | Flutter Impeller Standalone SDK Vulkan GPU 后端 |
 | `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
 | `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`、`RichTextEditor` 等，按需引用 |
 | `Square.Tooling` | 本地 HTTP 调试与自动化：截图、输入模拟，按需引用 |
@@ -283,28 +281,6 @@ dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vul
 ```
 
 更多 Vulkan 资源和诊断选项见 [`docs/Rendering.md`](docs/Rendering.md)。
-
-使用 Impeller 运行常规示例：
-
-```bash
-pwsh tools/impeller/download-sdk.ps1
-dotnet run --project samples/Square.Sample/Square.Sample.csproj -- \
-  --backend Impeller
-```
-
-`Square.Sample` 会自动发现 `artifacts/impeller-sdk/<platform>/extracted/lib/` 下由下载脚本安装的 SDK。也可以通过 `--impeller-library` 或 `SQUARE_IMPELLER_LIBRARY` 指定其他位置。
-
-如果 Vulkan validation 报告 `UNASSIGNED-non-acquired-swapchain-image-used`，该错误来自当前固定版 Impeller SDK 的内部 swapchain 同步。Square 使用的 `AcquireNextSurface -> DrawDisplayList -> Present -> Release` 顺序与官方示例一致，C API 不暴露内部 acquire semaphore，无法在托管 wrapper 中补救。详情见 [`docs/Impeller-Backend-Plan.md`](docs/Impeller-Backend-Plan.md#15-known-vulkan-synchronization-issue)。
-
-Impeller 专用冒烟示例：
-
-```bash
-dotnet run --project samples/Square.Sample.Impeller/Square.Sample.Impeller.csproj -- \
-  --library /path/to/impeller.dll-or-libimpeller.so \
-  --screenshot artifacts/impeller-smoke.png
-```
-
-`--screenshot` 使用进程内 DisplayTree 离屏重放，不按 PID 捕获平台窗口。它输出客户区内容，适合自动化和 UI 回归。当前 Impeller Standalone C API 不提供 surface readback，因此该截图不是 GPU framebuffer readback；GPU 与 Software 的文字抗锯齿和 shaping 可能存在像素差异。
 
 运行 Vue 模板语法示例（`.sqv`）：
 

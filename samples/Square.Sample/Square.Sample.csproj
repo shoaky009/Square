@@ -21,7 +21,6 @@
     <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
-    <ProjectReference Include="..\..\src\Square.Backends.Impeller\Square.Backends.Impeller.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" />
     <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" />
