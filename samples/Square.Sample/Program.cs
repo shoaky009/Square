@@ -21,9 +21,13 @@ public static class Program
         document.Body.Children.Add(new Main());
 
         var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
-        var library = GetOption(args, "--impeller-library") ?? Environment.GetEnvironmentVariable("SQUARE_IMPELLER_LIBRARY");
+        var library = ResolveImpellerLibrary(GetOption(args, "--impeller-library"));
         if (string.Equals(backend, "Impeller", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(library))
+                System.Console.WriteLine($"Impeller library: {library}");
             ImpellerRegistration.Register(library);
+        }
         else if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
             VulkanRegistration.Register();
 
@@ -182,5 +186,29 @@ public static class Program
             return true;
         }
         return false;
+    }
+
+    private static string? ResolveImpellerLibrary(string? configuredPath)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredPath)) return configuredPath;
+        var environmentPath = Environment.GetEnvironmentVariable("SQUARE_IMPELLER_LIBRARY");
+        if (!string.IsNullOrWhiteSpace(environmentPath)) return environmentPath;
+
+        var relativePath = OperatingSystem.IsWindows()
+            ? Path.Combine("artifacts", "impeller-sdk", "windows-x64", "extracted", "lib", "impeller.dll")
+            : OperatingSystem.IsLinux()
+                ? Path.Combine("artifacts", "impeller-sdk", "linux-x64", "extracted", "lib", "libimpeller.so")
+                : null;
+        if (relativePath == null) return null;
+
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            for (var directory = new DirectoryInfo(start); directory != null; directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, relativePath);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        return null;
     }
 }

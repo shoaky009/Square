@@ -287,10 +287,14 @@ dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vul
 使用 Impeller 运行常规示例：
 
 ```bash
+pwsh tools/impeller/download-sdk.ps1
 dotnet run --project samples/Square.Sample/Square.Sample.csproj -- \
-  --backend Impeller \
-  --impeller-library /path/to/impeller.dll-or-libimpeller.so
+  --backend Impeller
 ```
+
+`Square.Sample` 会自动发现 `artifacts/impeller-sdk/<platform>/extracted/lib/` 下由下载脚本安装的 SDK。也可以通过 `--impeller-library` 或 `SQUARE_IMPELLER_LIBRARY` 指定其他位置。
+
+如果 Vulkan validation 报告 `UNASSIGNED-non-acquired-swapchain-image-used`，该错误来自当前固定版 Impeller SDK 的内部 swapchain 同步。Square 使用的 `AcquireNextSurface -> DrawDisplayList -> Present -> Release` 顺序与官方示例一致，C API 不暴露内部 acquire semaphore，无法在托管 wrapper 中补救。详情见 [`docs/Impeller-Backend-Plan.md`](docs/Impeller-Backend-Plan.md#15-known-vulkan-synchronization-issue)。
 
 Impeller 专用冒烟示例：
 

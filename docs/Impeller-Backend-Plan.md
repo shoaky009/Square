@@ -242,7 +242,63 @@ The fixed Linux SDK was validated on Ubuntu 24.04 under WSLg with `libX11.so.6`,
 
 Automated screenshots now use `DesktopApplication.CaptureRendererBitmapAsync()`. This replays the retained display tree into an in-process Software bitmap, so it does not enumerate windows, use a PID, depend on the desktop compositor, or include native window borders. The Impeller C API does not currently expose surface pixel readback, so this is a deterministic render-command capture rather than a GPU framebuffer readback. Software replay supports the gradients and geometry clips used by the Impeller smoke scene.
 
-## 14. Out of Scope for Phase 1
+## 14. SDK Discovery And Tooling
+
+下载固定 SDK：
+
+```powershell
+pwsh tools/impeller/download-sdk.ps1
+```
+
+`Square.Sample` 按以下顺序解析原生库：
+
+1. `--impeller-library`
+2. `SQUARE_IMPELLER_LIBRARY`
+3. 从当前目录和应用目录向上查找 `artifacts/impeller-sdk/<platform>/extracted/lib/`
+4. 未找到显式路径时，由系统动态库搜索路径解析 `impeller.dll` 或 `libimpeller.so`
+
+因此从仓库根目录下载一次 SDK 后，可以直接运行：
+
+```powershell
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend=Impeller --tooling
+```
+
+控制台会打印实际加载路径。SDK 二进制位于被 `.gitignore` 排除的 `artifacts/`，不会提交到仓库。
+
+Impeller Standalone C API 当前不提供 surface framebuffer readback。`--tooling` 的 screenshot endpoint 会使用 Software RenderContext 重放 Display Tree，因此适合验证命令流、布局和控件状态，但不能代表 Impeller GPU 输出的逐像素结果。实际窗口仍由 Impeller GPU 后端渲染。
+
+## 15. Known Vulkan Synchronization Issue
+
+固定 SDK `cb07e449603530815f8caf08dbf05408546cda34`（Standalone API 1.4.0）在部分 validation layer / driver 组合上可能报告：
+
+```text
+UNASSIGNED-non-acquired-swapchain-image-used
+vkQueueSubmit() performs a layout transition on a presentable image,
+but the semaphore signaled by image acquire was not waited on.
+```
+
+这表示 Impeller 内部提交了对 swapchain image 的修改，但该次 queue submit 没有等待 `vkAcquireNextImageKHR` 对应的 acquire semaphore。可能表现为 validation error、闪烁、白帧、resize 后异常，极端情况下可能导致 device lost。
+
+Square 的 Standalone C API 调用顺序与 SDK 自带 `example_vk.c` 一致：
+
+```text
+ImpellerVulkanSwapchainAcquireNextSurfaceNew
+ImpellerSurfaceDrawDisplayList
+ImpellerSurfacePresent
+ImpellerSurfaceRelease
+```
+
+Square 无法从该 C API 获得内部的 `VkSwapchainKHR`、image index、`VkImage`、acquire semaphore、render-finished semaphore 或 queue submit，因此不能在 C# wrapper 中补加缺失的等待。不要把 surface acquire 移到更早的位置；SDK 文档要求尽量延迟 acquire。
+
+处理策略：
+
+- 优先升级到包含后续 Vulkan KHR swapchain/frame-synchronizer 修复的 Impeller SDK。
+- 升级时必须使用同一 artifact 中的 `impeller.h` 重新核对 ABI；Standalone SDK 当前不保证 API/ABI 稳定。
+- 升级前保持每帧只 acquire 一个 surface，并严格执行 draw、present、release。
+- 关闭 validation 只能隐藏日志，不是同步修复。
+- 若错误伴随实际渲染故障，使用 Square 原生 Vulkan 或 Software 后端，直到 Impeller SDK pin 完成升级验证。
+
+## 16. Out of Scope for Phase 1
 
 - macOS and Metal.
 - Android and iOS.

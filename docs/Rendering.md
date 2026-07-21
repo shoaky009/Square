@@ -223,7 +223,7 @@ Vulkan 配置均在创建 RenderContext 前通过环境变量读取：
 |---|---|---|
 | `SQUARE_VULKAN_VALIDATION` | `1` / `true` | 关闭；开启时需要可用的 Vulkan validation layer |
 | `SQUARE_VULKAN_READBACK` | `1` / `true` | 关闭；开启后 `CaptureRendererBitmapAsync()` 可读取真实 GPU 帧 |
-| `SQUARE_VULKAN_MSAA` | `1` / `2` / `4` | 小于等于约 300 万物理像素时 2x，更大窗口 1x，并受设备能力限制 |
+| `SQUARE_VULKAN_MSAA` | `1` / `2` / `4` | 小于等于约 300 万物理像素时 4x，更大窗口 2x，并受设备能力限制 |
 | `SQUARE_VULKAN_ATLAS_SIZE` | `512` / `1024` / `2048` | `1024` |
 | `SQUARE_VULKAN_EXTRA_SWAPCHAIN_IMAGE` | `1` / `true` | 关闭；默认请求 surface 最小图像数 |
 
@@ -244,6 +244,9 @@ dotnet run --project tools/ShaderGen
 - 支持多显示器不同 DPI
 - Vulkan 在普通轴对齐 DPI 变换下，将文本原点、glyph offset 和 advance 映射到整数物理像素，避免已经抗锯齿的 coverage atlas 再被线性过滤一次
 - 旋转、斜切或额外缩放的文本保留浮点几何和过滤路径
+- Vulkan 曲线按变换后的物理半径自适应细分，避免大圆和圆角使用固定段数产生折角
+- Vulkan 填充/描边椭圆和 path stroke 在边缘生成约 1 个物理像素的 alpha feather，细斜线不只依赖有限的 MSAA coverage level
+- 当前一般 path stroke 仍按独立线段展开，尚未完整实现 `LineCap`、`LineJoin` 和 `MiterLimit`；复杂转角可能出现 feather 重叠或接缝，Impeller 在这类路径上仍具有更完整的 stroke 语义
 
 ---
 

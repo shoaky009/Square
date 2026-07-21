@@ -201,7 +201,7 @@ internal sealed unsafe class VulkanDevice : IDisposable
             "1" => SampleCountFlags.Count1Bit,
             "4" => SampleCountFlags.Count4Bit,
             "2" => SampleCountFlags.Count2Bit,
-            _ => pixelCount > 3_000_000 ? SampleCountFlags.Count1Bit : SampleCountFlags.Count2Bit
+            _ => pixelCount > 3_000_000 ? SampleCountFlags.Count2Bit : SampleCountFlags.Count4Bit
         };
         if (requested == SampleCountFlags.Count4Bit && (_supportedColorSampleCounts & SampleCountFlags.Count4Bit) != 0)
             return SampleCountFlags.Count4Bit;

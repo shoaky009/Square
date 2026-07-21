@@ -693,85 +693,134 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
 
     private void FillEllipse(Point center, float radiusX, float radiusY, Brush brush)
     {
-        const int segments = 32;
+        var segments = GetCurveSegmentCount(radiusX, radiusY, MathF.Tau);
         var color = ResolveBrushColor(brush, center);
         var packed = PackColor(color);
+        var transparent = packed & 0x00FFFFFFu;
         var (u0, v0, u1, v1) = VulkanTextureAtlas.WhitePixelUV;
+        var feather = GetLogicalFeatherWidth();
+        var innerRadiusX = Math.Max(0, radiusX - feather / 2f);
+        var innerRadiusY = Math.Max(0, radiusY - feather / 2f);
+        var outerRadiusX = radiusX + feather / 2f;
+        var outerRadiusY = radiusY + feather / 2f;
 
-        Span<Vertex2D> vertices = stackalloc Vertex2D[segments + 1];
-        Span<uint> indices = stackalloc uint[segments * 3];
-
-        var c = TransformPoint(center);
-        vertices[0] = new Vertex2D(c.X, c.Y, u0, v0, packed);
-
-        for (var i = 0; i <= segments; i++)
+        var vertices = ArrayPool<Vertex2D>.Shared.Rent(segments * 2 + 1);
+        var indices = ArrayPool<uint>.Shared.Rent(segments * 9);
+        try
         {
-            var angle = (float)(i * 2 * Math.PI / segments);
-            var px = center.X + radiusX * MathF.Cos(angle);
-            var py = center.Y + radiusY * MathF.Sin(angle);
-            var tp = TransformPoint(new Point(px, py));
-            if (i < segments)
-                vertices[i + 1] = new Vertex2D(tp.X, tp.Y, u0, v0, packed);
-        }
+            var c = TransformPoint(center);
+            vertices[0] = new Vertex2D(c.X, c.Y, u0, v0, packed);
 
-        for (var i = 0; i < segments; i++)
-        {
-            indices[i * 3] = 0;
-            indices[i * 3 + 1] = (uint)(i + 1);
-            indices[i * 3 + 2] = (uint)(i + 2 > segments ? 1 : i + 2);
+            for (var i = 0; i < segments; i++)
+            {
+                var angle = i * MathF.Tau / segments;
+                AddEllipseRingVertex(vertices, i + 1, center, angle, innerRadiusX, innerRadiusY, u0, v0, packed);
+                AddEllipseRingVertex(vertices, segments + i + 1, center, angle, outerRadiusX, outerRadiusY, u0, v0, transparent);
+            }
+
+            var indexCount = 0;
+            for (var i = 0; i < segments; i++)
+            {
+                var next = i + 1 == segments ? 0 : i + 1;
+                var inner0 = (uint)(i + 1);
+                var inner1 = (uint)(next + 1);
+                var outer0 = (uint)(segments + i + 1);
+                var outer1 = (uint)(segments + next + 1);
+                indices[indexCount++] = 0;
+                indices[indexCount++] = inner0;
+                indices[indexCount++] = inner1;
+                AddQuadIndices(indices, ref indexCount, inner0, outer0, outer1, inner1);
+            }
+            AddBatch(vertices.AsSpan(0, segments * 2 + 1), indices.AsSpan(0, indexCount));
         }
-        AddBatch(vertices, indices);
+        finally
+        {
+            ArrayPool<Vertex2D>.Shared.Return(vertices);
+            ArrayPool<uint>.Shared.Return(indices);
+        }
     }
 
     private void DrawEllipse(Point center, float radiusX, float radiusY, Pen pen)
     {
-        const int segments = 32;
+        var segments = GetCurveSegmentCount(radiusX + pen.Width / 2f, radiusY + pen.Width / 2f, MathF.Tau);
         var color = ResolveBrushColor(pen.Brush, center);
         var packed = PackColor(color);
+        var transparent = packed & 0x00FFFFFFu;
         var (u0, v0, u1, v1) = VulkanTextureAtlas.WhitePixelUV;
         var halfW = pen.Width / 2f;
+        var feather = GetLogicalFeatherWidth();
+        var outerTransparentX = radiusX + halfW + feather / 2f;
+        var outerTransparentY = radiusY + halfW + feather / 2f;
+        var outerSolidX = Math.Max(0, radiusX + halfW - feather / 2f);
+        var outerSolidY = Math.Max(0, radiusY + halfW - feather / 2f);
+        var innerSolidX = Math.Max(0, radiusX - halfW + feather / 2f);
+        var innerSolidY = Math.Max(0, radiusY - halfW + feather / 2f);
+        var innerTransparentX = Math.Max(0, radiusX - halfW - feather / 2f);
+        var innerTransparentY = Math.Max(0, radiusY - halfW - feather / 2f);
 
-        Span<Vertex2D> vertices = stackalloc Vertex2D[segments * 4];
-        Span<uint> indices = stackalloc uint[segments * 6];
+        var vertices = ArrayPool<Vertex2D>.Shared.Rent(segments * 8);
+        var indices = ArrayPool<uint>.Shared.Rent(segments * 18);
         var vertexCount = 0;
         var indexCount = 0;
-
-        for (var i = 0; i < segments; i++)
+        try
         {
-            var a0 = (float)(i * 2 * Math.PI / segments);
-            var a1 = (float)((i + 1) * 2 * Math.PI / segments);
+            for (var i = 0; i < segments; i++)
+            {
+                var a0 = i * MathF.Tau / segments;
+                var a1 = (i + 1) * MathF.Tau / segments;
+                var baseIdx = (uint)vertexCount;
 
-            var innerX0 = center.X + (radiusX - halfW) * MathF.Cos(a0);
-            var innerY0 = center.Y + (radiusY - halfW) * MathF.Sin(a0);
-            var outerX0 = center.X + (radiusX + halfW) * MathF.Cos(a0);
-            var outerY0 = center.Y + (radiusY + halfW) * MathF.Sin(a0);
-            var innerX1 = center.X + (radiusX - halfW) * MathF.Cos(a1);
-            var innerY1 = center.Y + (radiusY - halfW) * MathF.Sin(a1);
-            var outerX1 = center.X + (radiusX + halfW) * MathF.Cos(a1);
-            var outerY1 = center.Y + (radiusY + halfW) * MathF.Sin(a1);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a0, outerTransparentX, outerTransparentY, u0, v0, transparent);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a0, outerSolidX, outerSolidY, u0, v0, packed);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a0, innerSolidX, innerSolidY, u0, v0, packed);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a0, innerTransparentX, innerTransparentY, u0, v0, transparent);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a1, outerTransparentX, outerTransparentY, u1, v1, transparent);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a1, outerSolidX, outerSolidY, u1, v1, packed);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a1, innerSolidX, innerSolidY, u1, v1, packed);
+                AddEllipseRingVertex(vertices, ref vertexCount, center, a1, innerTransparentX, innerTransparentY, u1, v1, transparent);
 
-            var baseIdx = (uint)vertexCount;
-            var p0 = TransformPoint(new Point(innerX0, innerY0));
-            var p1 = TransformPoint(new Point(outerX0, outerY0));
-            var p2 = TransformPoint(new Point(outerX1, outerY1));
-            var p3 = TransformPoint(new Point(innerX1, innerY1));
-
-            vertices[vertexCount++] = new Vertex2D(p0.X, p0.Y, u0, v0, packed);
-            vertices[vertexCount++] = new Vertex2D(p1.X, p1.Y, u0, v0, packed);
-            vertices[vertexCount++] = new Vertex2D(p2.X, p2.Y, u0, v0, packed);
-            vertices[vertexCount++] = new Vertex2D(p3.X, p3.Y, u0, v0, packed);
-
-            indices[indexCount++] = baseIdx; indices[indexCount++] = baseIdx + 1; indices[indexCount++] = baseIdx + 2;
-            indices[indexCount++] = baseIdx; indices[indexCount++] = baseIdx + 2; indices[indexCount++] = baseIdx + 3;
+                AddQuadIndices(indices, ref indexCount, baseIdx, baseIdx + 4, baseIdx + 5, baseIdx + 1);
+                AddQuadIndices(indices, ref indexCount, baseIdx + 1, baseIdx + 5, baseIdx + 6, baseIdx + 2);
+                AddQuadIndices(indices, ref indexCount, baseIdx + 2, baseIdx + 6, baseIdx + 7, baseIdx + 3);
+            }
+            AddBatch(vertices.AsSpan(0, vertexCount), indices.AsSpan(0, indexCount));
         }
-        AddBatch(vertices[..vertexCount], indices[..indexCount]);
+        finally
+        {
+            ArrayPool<Vertex2D>.Shared.Return(vertices);
+            ArrayPool<uint>.Shared.Return(indices);
+        }
     }
 
-    private static PathGeometry CreateRoundedRectPath(Rect rect, float rx, float ry)
+    private void AddEllipseRingVertex(Vertex2D[] vertices, ref int count, Point center, float angle,
+        float radiusX, float radiusY, float u, float v, uint color)
+    {
+        var point = TransformPoint(new Point(
+            center.X + radiusX * MathF.Cos(angle),
+            center.Y + radiusY * MathF.Sin(angle)));
+        vertices[count++] = new Vertex2D(point.X, point.Y, u, v, color);
+    }
+
+    private void AddEllipseRingVertex(Vertex2D[] vertices, int index, Point center, float angle,
+        float radiusX, float radiusY, float u, float v, uint color)
+    {
+        var point = TransformPoint(new Point(
+            center.X + radiusX * MathF.Cos(angle),
+            center.Y + radiusY * MathF.Sin(angle)));
+        vertices[index] = new Vertex2D(point.X, point.Y, u, v, color);
+    }
+
+    private static void AddQuadIndices(uint[] indices, ref int count, uint a, uint b, uint c, uint d)
+    {
+        indices[count++] = a; indices[count++] = b; indices[count++] = c;
+        indices[count++] = a; indices[count++] = c; indices[count++] = d;
+    }
+
+    private PathGeometry CreateRoundedRectPath(Rect rect, float rx, float ry)
     {
         // Approximate arcs with line segments
         var path = PathGeometry.Create();
-        const int arcSegments = 8;
+        var arcSegments = GetCurveSegmentCount(rx, ry, MathF.PI / 2);
 
         var l = rect.X; var t = rect.Y; var r = rect.Right; var b = rect.Bottom;
 
@@ -834,7 +883,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
         return contours;
     }
 
-    private static void FlattenArc(List<Point> contour, ArcToCmd arc)
+    private void FlattenArc(List<Point> contour, ArcToCmd arc)
     {
         var cx = arc.Oval.X + arc.Oval.Width / 2;
         var cy = arc.Oval.Y + arc.Oval.Height / 2;
@@ -842,13 +891,49 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
         var ry = arc.Oval.Height / 2;
         var startRad = arc.StartAngle * MathF.PI / 180f;
         var sweepRad = arc.SweepAngle * MathF.PI / 180f;
-        const int segments = 16;
+        var segments = GetCurveSegmentCount(rx, ry, MathF.Abs(sweepRad));
 
         for (var i = 1; i <= segments; i++)
         {
             var angle = startRad + sweepRad * i / segments;
             contour.Add(new Point(cx + rx * MathF.Cos(angle), cy + ry * MathF.Sin(angle)));
         }
+    }
+
+    private int GetCurveSegmentCount(float radiusX, float radiusY, float sweepRadians)
+    {
+        const float maxSagitta = 0.2f;
+        const int minFullCircleSegments = 32;
+        const int maxFullCircleSegments = 256;
+
+        var xScale = MathF.Sqrt(
+            _currentTransform.M11 * _currentTransform.M11 +
+            _currentTransform.M12 * _currentTransform.M12);
+        var yScale = MathF.Sqrt(
+            _currentTransform.M21 * _currentTransform.M21 +
+            _currentTransform.M22 * _currentTransform.M22);
+        var physicalRadius = MathF.Max(MathF.Abs(radiusX) * xScale, MathF.Abs(radiusY) * yScale);
+        var sweep = Math.Clamp(MathF.Abs(sweepRadians), 0, MathF.Tau);
+        if (physicalRadius <= maxSagitta || sweep <= float.Epsilon) return 1;
+
+        var segmentAngle = 2f * MathF.Acos(Math.Clamp(1f - maxSagitta / physicalRadius, -1f, 1f));
+        var adaptive = segmentAngle > float.Epsilon
+            ? (int)MathF.Ceiling(sweep / segmentAngle)
+            : maxFullCircleSegments;
+        var minimum = Math.Max(1, (int)MathF.Ceiling(minFullCircleSegments * sweep / MathF.Tau));
+        var maximum = Math.Max(minimum, (int)MathF.Ceiling(maxFullCircleSegments * sweep / MathF.Tau));
+        return Math.Clamp(adaptive, minimum, maximum);
+    }
+
+    private float GetLogicalFeatherWidth()
+    {
+        var xScale = MathF.Sqrt(
+            _currentTransform.M11 * _currentTransform.M11 +
+            _currentTransform.M12 * _currentTransform.M12);
+        var yScale = MathF.Sqrt(
+            _currentTransform.M21 * _currentTransform.M21 +
+            _currentTransform.M22 * _currentTransform.M22);
+        return 1f / MathF.Max(0.001f, MathF.Max(xScale, yScale));
     }
 
     private static LibTessDotNet.Tess Triangulate(List<List<Point>> contours)
@@ -876,6 +961,10 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private void StrokeContour(List<Point> contour, float halfWidth, uint packed,
         float u0, float v0, float u1, float v1, List<Vertex2D> vertices, List<uint> indices)
     {
+        var transparent = packed & 0x00FFFFFFu;
+        var feather = GetLogicalFeatherWidth();
+        var solidHalfWidth = Math.Max(0, halfWidth - feather / 2f);
+        var transparentHalfWidth = halfWidth + feather / 2f;
         for (var i = 0; i < contour.Count - 1; i++)
         {
             var p0 = contour[i];
@@ -885,23 +974,40 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
             var len = MathF.Sqrt(dx * dx + dy * dy);
             if (len < 0.001f) continue;
 
-            var nx = -dy / len * halfWidth;
-            var ny = dx / len * halfWidth;
+            var unitNormalX = -dy / len;
+            var unitNormalY = dx / len;
+            var solidNx = unitNormalX * solidHalfWidth;
+            var solidNy = unitNormalY * solidHalfWidth;
+            var transparentNx = unitNormalX * transparentHalfWidth;
+            var transparentNy = unitNormalY * transparentHalfWidth;
 
             var baseIdx = (uint)vertices.Count;
-            var a = TransformPoint(new Point(p0.X + nx, p0.Y + ny));
-            var b = TransformPoint(new Point(p0.X - nx, p0.Y - ny));
-            var c = TransformPoint(new Point(p1.X - nx, p1.Y - ny));
-            var d = TransformPoint(new Point(p1.X + nx, p1.Y + ny));
+            AddStrokeVertex(vertices, p0, transparentNx, transparentNy, u0, v0, transparent);
+            AddStrokeVertex(vertices, p0, solidNx, solidNy, u0, v0, packed);
+            AddStrokeVertex(vertices, p0, -solidNx, -solidNy, u0, v0, packed);
+            AddStrokeVertex(vertices, p0, -transparentNx, -transparentNy, u0, v0, transparent);
+            AddStrokeVertex(vertices, p1, transparentNx, transparentNy, u1, v1, transparent);
+            AddStrokeVertex(vertices, p1, solidNx, solidNy, u1, v1, packed);
+            AddStrokeVertex(vertices, p1, -solidNx, -solidNy, u1, v1, packed);
+            AddStrokeVertex(vertices, p1, -transparentNx, -transparentNy, u1, v1, transparent);
 
-            vertices.Add(new Vertex2D(a.X, a.Y, u0, v0, packed));
-            vertices.Add(new Vertex2D(b.X, b.Y, u0, v0, packed));
-            vertices.Add(new Vertex2D(c.X, c.Y, u0, v0, packed));
-            vertices.Add(new Vertex2D(d.X, d.Y, u0, v0, packed));
-
-            indices.Add(baseIdx); indices.Add(baseIdx + 1); indices.Add(baseIdx + 2);
-            indices.Add(baseIdx); indices.Add(baseIdx + 2); indices.Add(baseIdx + 3);
+            AddQuadIndices(indices, baseIdx, baseIdx + 4, baseIdx + 5, baseIdx + 1);
+            AddQuadIndices(indices, baseIdx + 1, baseIdx + 5, baseIdx + 6, baseIdx + 2);
+            AddQuadIndices(indices, baseIdx + 2, baseIdx + 6, baseIdx + 7, baseIdx + 3);
         }
+    }
+
+    private void AddStrokeVertex(List<Vertex2D> vertices, Point point, float offsetX, float offsetY,
+        float u, float v, uint color)
+    {
+        var transformed = TransformPoint(new Point(point.X + offsetX, point.Y + offsetY));
+        vertices.Add(new Vertex2D(transformed.X, transformed.Y, u, v, color));
+    }
+
+    private static void AddQuadIndices(List<uint> indices, uint a, uint b, uint c, uint d)
+    {
+        indices.Add(a); indices.Add(b); indices.Add(c);
+        indices.Add(a); indices.Add(c); indices.Add(d);
     }
 
     // ─── Glyph cache ──────────────────────────────────────────────────────
