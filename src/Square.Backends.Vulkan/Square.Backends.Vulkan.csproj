@@ -5,6 +5,7 @@
     <IsPackable>true</IsPackable>
     <Description>Square Vulkan GPU render backend (Silk.NET)</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,14 +1,10 @@
 using System.Diagnostics;
-#if !SQUARE_SAMPLE_AOT
 using Square.Backends.Vulkan;
-#endif
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
-#if !SQUARE_SAMPLE_AOT
 using Square.Tooling;
-#endif
 using Square.UI;
 
 namespace Square.Sample;
@@ -22,12 +18,8 @@ public static class Program
         var circleDiffDirectory = GetOption(args, "--circle-regression-diff");
         if (!string.IsNullOrWhiteSpace(circleDiffDirectory))
         {
-#if SQUARE_SAMPLE_AOT
-            throw new NotSupportedException("--circle-regression-diff is unavailable in Square.Sample AOT builds because it compares against the Vulkan backend.");
-#else
             RunCircleRegressionDiff(circleDiffDirectory);
             return;
-#endif
         }
 
         var document = new UIDocument
@@ -38,13 +30,7 @@ public static class Program
 
         var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
         if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
-        {
-#if SQUARE_SAMPLE_AOT
-            throw new NotSupportedException("The Vulkan backend is unavailable in Square.Sample AOT builds.");
-#else
             VulkanRegistration.Register();
-#endif
-        }
 
         var app = new DesktopApplication(document, new PlatformHostCreateInfo
         {
@@ -60,14 +46,9 @@ public static class Program
         if (!string.IsNullOrWhiteSpace(screenshot))
             ScheduleScreenshot(app, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
 
-#if !SQUARE_SAMPLE_AOT
         ToolingServer? tooling = null;
         if (HasOption(args, "--tooling"))
             tooling = StartTooling(app, args);
-#else
-        if (HasOption(args, "--tooling"))
-            throw new NotSupportedException("--tooling is unavailable in Square.Sample AOT builds.");
-#endif
 
         try
         {
@@ -75,15 +56,12 @@ public static class Program
         }
         finally
         {
-#if !SQUARE_SAMPLE_AOT
             tooling?.Dispose();
-#endif
         }
 
         System.Console.WriteLine("Window closed. Demo complete.");
     }
 
-#if !SQUARE_SAMPLE_AOT
     private static ToolingServer StartTooling(DesktopApplication app, string[] args)
     {
         var port = int.TryParse(GetOption(args, "--tooling-port"), out var parsedPort) ? parsedPort : 0;
@@ -99,9 +77,7 @@ public static class Program
         System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
         return tooling;
     }
-#endif
 
-#if !SQUARE_SAMPLE_AOT
     private static void RunCircleRegressionDiff(string outputDirectory)
     {
         Directory.CreateDirectory(outputDirectory);
@@ -189,8 +165,6 @@ public static class Program
         }
         return bitmap;
     }
-#endif
-
     private static UIElement CreatePage(string[] args)
     {
         if (HasOption(args, "--circle-regression")) return new CircleRegressionPage();
@@ -216,13 +190,7 @@ public static class Program
                 validateScreenshot?.Invoke(bitmap);
                 BitmapPngEncoder.Save(bitmap, path);
                 if (!string.IsNullOrWhiteSpace(bitmapDumpPath))
-                {
-#if SQUARE_SAMPLE_AOT
-                    throw new NotSupportedException("--circle-regression-bgra is unavailable in Square.Sample AOT builds.");
-#else
                     SaveBitmapDump(bitmap, bitmapDumpPath);
-#endif
-                }
                 System.Console.WriteLine($"Screenshot saved to {path}");
             }
             catch (Exception exception)

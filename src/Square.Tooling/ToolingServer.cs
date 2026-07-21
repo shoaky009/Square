@@ -1,13 +1,9 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
@@ -19,11 +15,14 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 {
     public const string TokenHeader = "X-Square-Tooling-Token";
 
-    private readonly WebApplication _webApplication;
+    private readonly HttpListener _listener;
+    private readonly CancellationTokenSource _shutdown = new();
+    private Task _acceptLoop;
 
-    private ToolingServer(WebApplication webApplication, string accessToken, int port)
+    private ToolingServer(HttpListener listener, Task acceptLoop, string accessToken, int port)
     {
-        _webApplication = webApplication;
+        _listener = listener;
+        _acceptLoop = acceptLoop;
         AccessToken = accessToken;
         Port = port;
     }
@@ -41,150 +40,328 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
         var token = string.IsNullOrWhiteSpace(options.AccessToken)
             ? Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant()
             : options.AccessToken;
+        var port = options.Port == 0 ? ReserveLoopbackPort() : options.Port;
+        var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
 
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
-        builder.Services.ConfigureHttpJsonOptions(json =>
-        {
-            json.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        });
-
-        var web = builder.Build();
-        web.Use(async (context, next) =>
-        {
-            if (!context.Request.Headers.TryGetValue(TokenHeader, out var supplied) ||
-                !CryptographicOperations.FixedTimeEquals(
-                    System.Text.Encoding.UTF8.GetBytes(supplied.ToString()),
-                    System.Text.Encoding.UTF8.GetBytes(token)))
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync("{\"error\":\"unauthorized\"}");
-                return;
-            }
-            await next(context);
-        });
-
-        web.MapGet("/api/v1/health", (HttpContext context) => Results.Text(
-            $"{{\"status\":\"ok\",\"processId\":{Environment.ProcessId},\"port\":{context.Connection.LocalPort}," +
-            $"\"baseAddress\":\"http://127.0.0.1:{context.Connection.LocalPort}\"," +
-            $"\"inputInjection\":{options.AllowInputInjection.ToString().ToLowerInvariant()}}}",
-            "application/json"));
-
-        web.MapGet("/api/v1/screenshot", async () =>
-        {
-            using var bitmap = await application.CaptureRendererBitmapAsync();
-            using var stream = new MemoryStream();
-            BitmapPngEncoder.Save(bitmap, stream);
-            return Results.File(stream.ToArray(), "image/png", "square-screenshot.png");
-        });
-
-        web.MapPost("/api/v1/input/pointer", async (HttpRequest request) =>
-        {
-            if (!options.AllowInputInjection) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var payload = await ReadJsonAsync(request);
-            var input = new ToolingPointerInput(
-                new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
-                ReadEnum<MouseAction>(payload, "action"),
-                ReadModifiers(payload));
-            await application.InjectPointerAsync(input);
-            return Results.NoContent();
-        });
-
-        web.MapPost("/api/v1/input/key", async (HttpRequest request) =>
-        {
-            if (!options.AllowInputInjection) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var payload = await ReadJsonAsync(request);
-            var input = new ToolingKeyInput(
-                ReadInt(payload, "keyCode"),
-                ReadEnum<KeyAction>(payload, "action"),
-                ReadModifiers(payload));
-            await application.InjectKeyAsync(input);
-            return Results.NoContent();
-        });
-
-        web.MapPost("/api/v1/input/text", async (HttpRequest request) =>
-        {
-            if (!options.AllowInputInjection) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var payload = await ReadJsonAsync(request);
-            await application.InjectTextAsync(ReadString(payload, "text"));
-            return Results.NoContent();
-        });
-
-        web.MapPost("/api/v1/input/wheel", async (HttpRequest request) =>
-        {
-            if (!options.AllowInputInjection) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var payload = await ReadJsonAsync(request);
-            var input = new ToolingWheelInput(
-                new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
-                ReadInt(payload, "delta"),
-                ReadModifiers(payload));
-            await application.InjectWheelAsync(input);
-            return Results.NoContent();
-        });
-
-        web.MapGet("/api/v1/inspect/tree", async () =>
-        {
-            if (!options.AllowInspector) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            return Json(await application.CaptureInspectionSnapshotAsync(options.IncludeSourcePaths, options.IncludeTextContent));
-        });
-
-        web.MapGet("/api/v1/inspect/hit-test", async (HttpRequest request) =>
-        {
-            if (!options.AllowInspector) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var x = ReadFloat(request.Query, "x");
-            var y = ReadFloat(request.Query, "y");
-            var result = await application.HitTestInspectionAsync(new Point(x, y), options.IncludeSourcePaths, options.IncludeTextContent);
-            return result == null ? Results.NotFound(new { error = "not_found" }) : Json(result);
-        });
-
-        web.MapGet("/api/v1/inspect/elements/{id:int}", async (int id) =>
-        {
-            if (!options.AllowInspector) return Results.StatusCode(StatusCodes.Status403Forbidden);
-            var result = await application.InspectElementAsync(id, options.IncludeSourcePaths, options.IncludeTextContent);
-            return result == null ? Results.NotFound(new { error = "not_found" }) : Json(result);
-        });
-
-        web.Start();
-        var actualPort = ResolveBoundPort(web);
-        return new ToolingServer(web, token, actualPort);
+        var server = new ToolingServer(listener, Task.CompletedTask, token, port);
+        server._acceptLoop = Task.Run(() => server.AcceptLoopAsync(application, options));
+        return server;
     }
 
-    private static int ResolveBoundPort(WebApplication webApplication)
+    private async Task AcceptLoopAsync(DesktopApplication application, ToolingOptions options)
     {
-        var server = webApplication.Services.GetRequiredService<IServer>();
-        var addresses = server.Features.Get<IServerAddressesFeature>()?.Addresses;
-        var address = addresses?.SingleOrDefault();
-        if (address == null || !Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Port < 1)
-            throw new InvalidOperationException("Tooling server started without a discoverable loopback port.");
-        return uri.Port;
+        while (!_shutdown.IsCancellationRequested)
+        {
+            HttpListenerContext context;
+            try
+            {
+                context = await _listener.GetContextAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            catch (HttpListenerException) when (_shutdown.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (InvalidOperationException) when (_shutdown.IsCancellationRequested)
+            {
+                break;
+            }
+
+            _ = Task.Run(() => HandleRequestAsync(context, application, options));
+        }
+    }
+
+    private async Task HandleRequestAsync(HttpListenerContext context, DesktopApplication application, ToolingOptions options)
+    {
+        try
+        {
+            if (!IsAuthorized(context.Request, AccessToken))
+            {
+                await WriteJsonAsync(context.Response, StatusCodes.Unauthorized, "{\"error\":\"unauthorized\"}");
+                return;
+            }
+
+            var method = context.Request.HttpMethod;
+            var path = context.Request.Url?.AbsolutePath ?? "/";
+            if (method == "GET" && path == "/api/v1/health")
+            {
+                var json = $"{{\"status\":\"ok\",\"processId\":{Environment.ProcessId},\"port\":{Port}," +
+                           $"\"baseAddress\":\"{BaseAddress}\",\"inputInjection\":{Bool(options.AllowInputInjection)}}}";
+                await WriteJsonAsync(context.Response, StatusCodes.Ok, json);
+                return;
+            }
+
+            if (method == "GET" && path == "/api/v1/screenshot")
+            {
+                using var bitmap = await application.CaptureRendererBitmapAsync();
+                using var stream = new MemoryStream();
+                BitmapPngEncoder.Save(bitmap, stream);
+                await WriteBytesAsync(context.Response, StatusCodes.Ok, stream.ToArray(), "image/png", "square-screenshot.png");
+                return;
+            }
+
+            if (method == "POST" && path == "/api/v1/input/pointer")
+            {
+                if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var payload = await ReadJsonAsync(context.Request);
+                var input = new ToolingPointerInput(
+                    new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
+                    ReadEnum<MouseAction>(payload, "action"),
+                    ReadModifiers(payload));
+                await application.InjectPointerAsync(input);
+                await WriteNoContentAsync(context.Response);
+                return;
+            }
+
+            if (method == "POST" && path == "/api/v1/input/key")
+            {
+                if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var payload = await ReadJsonAsync(context.Request);
+                var input = new ToolingKeyInput(
+                    ReadInt(payload, "keyCode"),
+                    ReadEnum<KeyAction>(payload, "action"),
+                    ReadModifiers(payload));
+                await application.InjectKeyAsync(input);
+                await WriteNoContentAsync(context.Response);
+                return;
+            }
+
+            if (method == "POST" && path == "/api/v1/input/text")
+            {
+                if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var payload = await ReadJsonAsync(context.Request);
+                await application.InjectTextAsync(ReadString(payload, "text"));
+                await WriteNoContentAsync(context.Response);
+                return;
+            }
+
+            if (method == "POST" && path == "/api/v1/input/wheel")
+            {
+                if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var payload = await ReadJsonAsync(context.Request);
+                var input = new ToolingWheelInput(
+                    new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
+                    ReadInt(payload, "delta"),
+                    ReadModifiers(payload));
+                await application.InjectWheelAsync(input);
+                await WriteNoContentAsync(context.Response);
+                return;
+            }
+
+            if (method == "GET" && path == "/api/v1/inspect/tree")
+            {
+                if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var snapshot = await application.CaptureInspectionSnapshotAsync(options.IncludeSourcePaths, options.IncludeTextContent);
+                await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeSnapshot(snapshot));
+                return;
+            }
+
+            if (method == "GET" && path == "/api/v1/inspect/hit-test")
+            {
+                if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var x = ReadFloat(context.Request.QueryString, "x");
+                var y = ReadFloat(context.Request.QueryString, "y");
+                var result = await application.HitTestInspectionAsync(new Point(x, y), options.IncludeSourcePaths, options.IncludeTextContent);
+                if (result == null) await WriteJsonAsync(context.Response, StatusCodes.NotFound, "{\"error\":\"not_found\"}");
+                else await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeNode(result));
+                return;
+            }
+
+            if (method == "GET" && TryReadElementRoute(path, out var elementId))
+            {
+                if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
+                var result = await application.InspectElementAsync(elementId, options.IncludeSourcePaths, options.IncludeTextContent);
+                if (result == null) await WriteJsonAsync(context.Response, StatusCodes.NotFound, "{\"error\":\"not_found\"}");
+                else await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeNode(result));
+                return;
+            }
+
+            await WriteJsonAsync(context.Response, StatusCodes.NotFound, "{\"error\":\"not_found\"}");
+        }
+        catch (BadHttpRequestException exception)
+        {
+            await WriteJsonAsync(context.Response, StatusCodes.BadRequest, $"{{\"error\":\"{Escape(exception.Message)}\"}}");
+        }
+        catch (Exception exception)
+        {
+            await WriteJsonAsync(context.Response, StatusCodes.InternalServerError, $"{{\"error\":\"{Escape(exception.Message)}\"}}");
+        }
     }
 
     public void Dispose()
     {
-        _webApplication.StopAsync().GetAwaiter().GetResult();
-        _webApplication.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _shutdown.Cancel();
+        if (_listener.IsListening) _listener.Stop();
+        _listener.Close();
+        try { _acceptLoop.GetAwaiter().GetResult(); } catch { }
+        _shutdown.Dispose();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await _webApplication.StopAsync();
-        await _webApplication.DisposeAsync();
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
-    private static async Task<JsonElement> ReadJsonAsync(HttpRequest request)
+    private static int ReserveLoopbackPort()
     {
-        using var document = await JsonDocument.ParseAsync(request.Body);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
+    private static bool IsAuthorized(HttpListenerRequest request, string token)
+    {
+        var supplied = request.Headers[TokenHeader];
+        if (string.IsNullOrEmpty(supplied)) return false;
+        var suppliedBytes = Encoding.UTF8.GetBytes(supplied);
+        var expectedBytes = Encoding.UTF8.GetBytes(token);
+        return suppliedBytes.Length == expectedBytes.Length &&
+               CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
+    }
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpListenerRequest request)
+    {
+        using var document = await JsonDocument.ParseAsync(request.InputStream);
         return document.RootElement.Clone();
     }
 
-    private static IResult Json<T>(T value) => Results.Text(JsonSerializer.Serialize(value, JsonOptions), "application/json");
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, string json)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
-    };
+        await WriteBytesAsync(response, statusCode, Encoding.UTF8.GetBytes(json), "application/json");
+    }
+
+    private static async Task WriteBytesAsync(
+        HttpListenerResponse response, int statusCode, byte[] bytes, string contentType, string? fileName = null)
+    {
+        response.StatusCode = statusCode;
+        response.ContentType = contentType;
+        response.ContentLength64 = bytes.Length;
+        if (!string.IsNullOrEmpty(fileName))
+            response.Headers["Content-Disposition"] = $"attachment; filename=\"{fileName}\"";
+        await response.OutputStream.WriteAsync(bytes);
+        response.Close();
+    }
+
+    private static Task WriteNoContentAsync(HttpListenerResponse response)
+    {
+        response.StatusCode = StatusCodes.NoContent;
+        response.ContentLength64 = 0;
+        response.Close();
+        return Task.CompletedTask;
+    }
+
+    private static bool TryReadElementRoute(string path, out int id)
+    {
+        const string prefix = "/api/v1/inspect/elements/";
+        id = 0;
+        return path.StartsWith(prefix, StringComparison.Ordinal) &&
+               int.TryParse(path[prefix.Length..], NumberStyles.None, CultureInfo.InvariantCulture, out id);
+    }
+
+    private static string SerializeSnapshot(ElementInspectionSnapshot snapshot)
+        => $"{{\"root\":{SerializeNode(snapshot.Root)}}}";
+
+    private static string SerializeNode(ElementInspectionNode node)
+    {
+        var builder = new StringBuilder();
+        builder.Append('{');
+        builder.Append($"\"id\":{node.Id},");
+        builder.Append($"\"tagName\":\"{Escape(node.TagName)}\",");
+        AppendNullableString(builder, "elementId", node.ElementId); builder.Append(',');
+        AppendNullableString(builder, "componentName", node.ComponentName); builder.Append(',');
+        builder.Append("\"bounds\":"); AppendRect(builder, node.Bounds); builder.Append(',');
+        builder.Append("\"state\":"); AppendState(builder, node.State); builder.Append(',');
+        builder.Append("\"source\":"); AppendSource(builder, node.Source); builder.Append(',');
+        AppendNullableString(builder, "text", node.Text); builder.Append(',');
+        builder.Append($"\"childCount\":{node.ChildCount},");
+        builder.Append("\"children\":[");
+        for (var i = 0; i < node.Children.Count; i++)
+        {
+            if (i > 0) builder.Append(',');
+            builder.Append(SerializeNode(node.Children[i]));
+        }
+        builder.Append(']');
+        builder.Append('}');
+        return builder.ToString();
+    }
+
+    private static void AppendRect(StringBuilder builder, Rect rect)
+    {
+        builder.Append('{');
+        AppendNumber(builder, "x", rect.X); builder.Append(',');
+        AppendNumber(builder, "y", rect.Y); builder.Append(',');
+        AppendNumber(builder, "width", rect.Width); builder.Append(',');
+        AppendNumber(builder, "height", rect.Height);
+        builder.Append('}');
+    }
+
+    private static void AppendState(StringBuilder builder, ElementInspectionState state)
+    {
+        builder.Append('{');
+        builder.Append($"\"hover\":{Bool(state.Hover)},");
+        builder.Append($"\"focus\":{Bool(state.Focus)},");
+        builder.Append($"\"active\":{Bool(state.Active)},");
+        builder.Append($"\"disabled\":{Bool(state.Disabled)}");
+        builder.Append('}');
+    }
+
+    private static void AppendSource(StringBuilder builder, ElementInspectionSource? source)
+    {
+        if (source == null) { builder.Append("null"); return; }
+        builder.Append('{');
+        builder.Append($"\"sourceId\":{source.SourceId},");
+        AppendNullableString(builder, "file", source.File); builder.Append(',');
+        builder.Append($"\"startLine\":{source.StartLine},");
+        builder.Append($"\"startColumn\":{source.StartColumn},");
+        builder.Append($"\"endLine\":{source.EndLine},");
+        builder.Append($"\"endColumn\":{source.EndColumn},");
+        builder.Append($"\"kind\":\"{Escape(source.Kind)}\"");
+        builder.Append('}');
+    }
+
+    private static void AppendNullableString(StringBuilder builder, string name, string? value)
+    {
+        builder.Append('"').Append(name).Append("\":");
+        if (value == null) builder.Append("null");
+        else builder.Append('"').Append(Escape(value)).Append('"');
+    }
+
+    private static void AppendNumber(StringBuilder builder, string name, float value)
+    {
+        builder.Append('"').Append(name).Append("\":");
+        builder.Append(value.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    private static string Escape(string value)
+    {
+        var builder = new StringBuilder(value.Length + 8);
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case '\\': builder.Append("\\\\"); break;
+                case '"': builder.Append("\\\""); break;
+                case '\n': builder.Append("\\n"); break;
+                case '\r': builder.Append("\\r"); break;
+                case '\t': builder.Append("\\t"); break;
+                default:
+                    if (char.IsControl(ch)) builder.Append("\\u").Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
+                    else builder.Append(ch);
+                    break;
+            }
+        }
+        return builder.ToString();
+    }
+
+    private static string Bool(bool value) => value ? "true" : "false";
 
     private static string ReadString(JsonElement element, string name)
     {
@@ -207,10 +384,10 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
         return result;
     }
 
-    private static float ReadFloat(IQueryCollection query, string name)
+    private static float ReadFloat(System.Collections.Specialized.NameValueCollection query, string name)
     {
-        if (!query.TryGetValue(name, out var value) ||
-            !float.TryParse(value.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var result))
+        var value = query[name];
+        if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
             throw new BadHttpRequestException($"'{name}' must be a number.");
         return result;
     }
@@ -236,4 +413,17 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
         }
         return result;
     }
+
+    private static class StatusCodes
+    {
+        public const int Ok = 200;
+        public const int NoContent = 204;
+        public const int BadRequest = 400;
+        public const int Unauthorized = 401;
+        public const int Forbidden = 403;
+        public const int NotFound = 404;
+        public const int InternalServerError = 500;
+    }
+
+    private sealed class BadHttpRequestException(string message) : Exception(message);
 }

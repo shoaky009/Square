@@ -622,7 +622,17 @@ dotnet publish -c Release -r win-x64 --self-contained true
 bin/Release/net10.0/win-x64/publish/
 ```
 
-Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dynamic`、运行时程序集加载。P/Invoke 使用 `LibraryImport` 源生成器。
+发布主示例时需显式传入 Sample 的 AOT 开关：
+
+```bash
+dotnet publish samples/Square.Sample/Square.Sample.csproj \
+  -c Release \
+  -r win-x64 \
+  -p:SquareSamplePublishAot=true \
+  --self-contained true
+```
+
+Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dynamic`、运行时程序集加载。P/Invoke 使用 `LibraryImport` 源生成器。Software、Vulkan 与 Tooling 均支持 NativeAOT；Vulkan 后端通过显式系统库加载器加载 `vulkan-1.dll` 或 `libvulkan.so`，shader 使用构建期生成的内嵌 SPIR-V；Tooling 使用 `HttpListener`、显式路由和手写 JSON 输出。
 
 ---
 

@@ -98,7 +98,7 @@ Console.WriteLine($"Tooling endpoint: {tooling.BaseAddress}/api/v1");
 Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
 ```
 
-`ToolingServer.Start` 返回前，Kestrel 已完成监听。此时：
+`ToolingServer.Start` 返回前，`HttpListener` 已完成监听。此时：
 
 - `tooling.Port` 是实际绑定端口，不会是 `0`。
 - `tooling.BaseAddress` 是当前实例的实际根地址。
@@ -334,7 +334,19 @@ Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时
 
 ## 5. 运行模型
 
-Tooling HTTP 请求运行在 ASP.NET Core 轻量 WebApplication 中。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
+Tooling HTTP 请求由仅绑定 loopback 的 `HttpListener` 处理，不依赖 ASP.NET Core。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
+
+`Square.Tooling` 支持 NativeAOT。服务使用显式路由和 JSON 读写，不依赖运行时 endpoint 发现、反射序列化元数据或动态代码生成。主示例 AOT 发布后仍可使用 `--tooling`：
+
+```powershell
+dotnet publish samples/Square.Sample/Square.Sample.csproj `
+  -c Release `
+  -r win-x64 `
+  -p:SquareSamplePublishAot=true `
+  -o artifacts/aot-vulkan-win-x64
+
+artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan --tooling
+```
 
 截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
 

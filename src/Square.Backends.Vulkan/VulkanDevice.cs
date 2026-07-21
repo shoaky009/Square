@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+using Silk.NET.Core;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Vulkan.Extensions.EXT;
@@ -31,13 +33,11 @@ internal sealed unsafe class VulkanDevice : IDisposable
 
     private ExtDebugUtils? _debugUtils;
     private DebugUtilsMessengerEXT _debugMessenger;
-    private static readonly DebugUtilsMessengerCallbackFunctionEXT s_debugCallback = DebugCallback;
-
     private bool _disposed;
 
     public VulkanDevice(INativeRenderTarget nativeTarget, bool enableValidation = false)
     {
-        Api = Vk.GetApi();
+        Api = VulkanApi.Create();
         CreateInstance(enableValidation);
         Surface = VulkanSurface.Create(this, nativeTarget);
         CreateDevice();
@@ -121,7 +121,12 @@ internal sealed unsafe class VulkanDevice : IDisposable
                 MessageType = DebugUtilsMessageTypeFlagsEXT.GeneralBitExt |
                               DebugUtilsMessageTypeFlagsEXT.ValidationBitExt |
                               DebugUtilsMessageTypeFlagsEXT.PerformanceBitExt,
-                PfnUserCallback = new PfnDebugUtilsMessengerCallbackEXT(s_debugCallback)
+                PfnUserCallback = new PfnDebugUtilsMessengerCallbackEXT((delegate* unmanaged[Cdecl]<
+                    DebugUtilsMessageSeverityFlagsEXT,
+                    DebugUtilsMessageTypeFlagsEXT,
+                    DebugUtilsMessengerCallbackDataEXT*,
+                    void*,
+                    Bool32>)&DebugCallback)
             };
             DebugUtilsMessengerEXT messenger;
             debugUtils.CreateDebugUtilsMessenger(Instance, &messengerInfo, null, &messenger);
@@ -348,7 +353,8 @@ internal sealed unsafe class VulkanDevice : IDisposable
             throw new VulkanException($"{operation} failed: {result}");
     }
 
-    private static uint DebugCallback(
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static Bool32 DebugCallback(
         DebugUtilsMessageSeverityFlagsEXT severity,
         DebugUtilsMessageTypeFlagsEXT type,
         DebugUtilsMessengerCallbackDataEXT* data,
@@ -358,7 +364,7 @@ internal sealed unsafe class VulkanDevice : IDisposable
             ? Marshal.PtrToStringAnsi((IntPtr)data->PMessage)
             : string.Empty;
         Console.WriteLine($"[VulkanValidation] {severity} | {message}");
-        return 0;
+        return false;
     }
 
     public void Dispose()
@@ -371,5 +377,6 @@ internal sealed unsafe class VulkanDevice : IDisposable
         if (Device.Handle != 0) Api.DestroyDevice(Device, null);
         if (Surface.Handle != 0) VulkanSurface.Destroy(this, Surface);
         if (Instance.Handle != 0) Api.DestroyInstance(Instance, null);
+        Api.Dispose();
     }
 }

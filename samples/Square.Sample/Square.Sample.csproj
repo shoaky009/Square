@@ -8,7 +8,6 @@
     <PublishAot Condition="'$(SquareSamplePublishAot)' == 'true'">true</PublishAot>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <OptimizationPreference>Size</OptimizationPreference>
-    <DefineConstants Condition="'$(SquareSamplePublishAot)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_AOT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,9 +21,9 @@
     <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
-    <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" Condition="'$(SquareSamplePublishAot)' != 'true'" />
+    <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" />
     <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
-    <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" Condition="'$(SquareSamplePublishAot)' != 'true'" />
+    <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" />
     <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

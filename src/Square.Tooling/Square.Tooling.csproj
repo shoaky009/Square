@@ -4,11 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <Description>Square Tooling: local HTTP diagnostics and input automation</Description>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
-
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Square.Hosting\Square.Hosting.csproj" />

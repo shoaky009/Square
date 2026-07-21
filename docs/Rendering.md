@@ -218,6 +218,20 @@ dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vul
 VulkanRegistration.Register();
 ```
 
+Vulkan 后端支持 NativeAOT。主示例的 Windows x64 AOT 发布命令：
+
+```powershell
+dotnet publish samples/Square.Sample/Square.Sample.csproj `
+  -c Release `
+  -r win-x64 `
+  -p:SquareSamplePublishAot=true `
+  -o artifacts/aot-vulkan-win-x64
+
+artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan
+```
+
+Vulkan loader 由 AOT 安全的显式系统库加载器解析；shader 在构建前已编译为内嵌 SPIR-V，不依赖运行时代码生成或 shader 编译器。
+
 Vulkan 配置均在创建 RenderContext 前通过环境变量读取：
 
 | 环境变量 | 值 | 默认行为 |

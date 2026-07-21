@@ -92,7 +92,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 | `AccessToken` | 实际使用的 token；未配置时为自动生成值 |
 | `Port` | 实际绑定端口；自动端口模式下以此值为准 |
 | `BaseAddress` | 本地服务根地址 |
-| `Dispose()` / `DisposeAsync()` | 停止并释放 ASP.NET Core `WebApplication` |
+| `Dispose()` / `DisposeAsync()` | 停止并释放 loopback `HttpListener` 与后台请求循环 |
 
 Endpoint 以 `/api/v1` 为前缀，提供 `/health`、`/screenshot`、`/input/pointer`、`/input/key`、`/input/text` 和 `/input/wheel`。请求/响应格式见 [`Tooling.md`](Tooling.md)。
 
