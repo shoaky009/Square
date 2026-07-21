@@ -76,6 +76,90 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvScrollViewerLowersToBuiltInControl()
+    {
+        const string source = """
+            <template>
+              <ScrollViewer>
+                <Text>Scrollable</Text>
+              </ScrollViewer>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Scroller.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.Controls.Controls.ScrollViewer()", generated);
+        Assert.DoesNotContain("new ScrollViewer", generated);
+    }
+
+    [Fact]
+    public void SqvPopupLowersToBuiltInControl()
+    {
+        const string source = """
+            <template>
+              <Popup>
+                <Text>Floating</Text>
+              </Popup>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("PopupCard.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.Controls.Controls.Popup()", generated);
+        Assert.DoesNotContain("new Popup", generated);
+    }
+
+    [Fact]
+    public void SqvDialogLowersToBuiltInControl()
+    {
+        const string source = """
+            <template>
+              <Dialog>
+                <Button>Close</Button>
+              </Dialog>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("DialogCard.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.Controls.Controls.Dialog()", generated);
+        Assert.DoesNotContain("new Dialog", generated);
+    }
+
+    [Fact]
+    public void SqvMenuTreeLowersToBuiltInControlsAndProperties()
+    {
+        const string source = """
+            <template>
+              <MenuBar>
+                <MenuItem text="View">
+                  <Menu>
+                    <MenuItem text="Grid" checkable="true" shortcut="Ctrl+G" stays-open-on-click="true" />
+                    <MenuSeparator />
+                    <MenuItem text="Dark" group="theme" />
+                  </Menu>
+                </MenuItem>
+              </MenuBar>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Menus.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.Controls.Controls.MenuBar()", generated);
+        Assert.Contains("new Square.Controls.Controls.MenuItem()", generated);
+        Assert.Contains("new Square.Controls.Controls.Menu()", generated);
+        Assert.Contains("new Square.Controls.Controls.MenuSeparator()", generated);
+        Assert.Contains("SetProperty(\"IsCheckable\", true)", generated);
+        Assert.Contains("SetProperty(\"ShortcutText\", \"Ctrl+G\")", generated);
+        Assert.Contains("SetProperty(\"StaysOpenOnClick\", true)", generated);
+        Assert.Contains("SetProperty(\"GroupName\", \"theme\")", generated);
+    }
+
+    [Fact]
     public void SqvVIfLowersToShowDirective()
     {
         const string source = """

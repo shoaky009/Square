@@ -464,6 +464,14 @@ namespace Square.SourceGenerator.Emit
         private static string MapTagName(string tag) => tag.ToLowerInvariant() switch
         {
             "view" => "Square.Controls.Controls.View",
+            "scrollviewer" => "Square.Controls.Controls.ScrollViewer",
+            "popup" => "Square.Controls.Controls.Popup",
+            "dialog" => "Square.Controls.Controls.Dialog",
+            "menubar" => "Square.Controls.Controls.MenuBar",
+            "menu" => "Square.Controls.Controls.Menu",
+            "contextmenu" => "Square.Controls.Controls.ContextMenu",
+            "menuitem" => "Square.Controls.Controls.MenuItem",
+            "menuseparator" => "Square.Controls.Controls.MenuSeparator",
             "text" => "Square.Controls.Controls.Text",
             "listitem" => "Square.Controls.Controls.ListItem",
             "button" => "Square.Controls.Controls.Button",
@@ -479,7 +487,8 @@ namespace Square.SourceGenerator.Emit
             _ => tag
         };
 
-        private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "text" or "listitem" or
+        private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "scrollviewer" or "popup" or "dialog" or
+            "menubar" or "menu" or "contextmenu" or "menuitem" or "menuseparator" or "text" or "listitem" or
             "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "link";
 
         private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem";
@@ -494,6 +503,9 @@ namespace Square.SourceGenerator.Emit
             "source" => "Source",
             "image" => "ImageContent",
             "group" => "GroupName",
+            "shortcut" => "ShortcutText",
+            "checkable" => "IsCheckable",
+            "stays-open-on-click" => "StaysOpenOnClick",
             "options" => "Options",
             "to" => "To",
             "href" => "Href",

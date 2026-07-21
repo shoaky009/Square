@@ -41,7 +41,18 @@ public sealed class CssTokenizer
             if (c == '#') { _pos++; var name = ReadIdent(); tokens.Add(new CssToken(CssTokenType.Hash, name, _line)); continue; }
             if (c == '@') { _pos++; var name = ReadIdent(); tokens.Add(new CssToken(CssTokenType.AtKeyword, name, _line)); continue; }
             if (c == '"' || c == '\'') { var s = ReadString(c); tokens.Add(new CssToken(CssTokenType.String, s, _line)); continue; }
-            if (char.IsDigit(c) || (c == '-' && char.IsDigit(Peek(1)))) { var (num, unit) = ReadNumber(); tokens.Add(new CssToken(CssTokenType.Number, num, _line)); if (unit != null) tokens.Add(new CssToken(CssTokenType.Unit, unit, _line)); continue; }
+            if (char.IsDigit(c) || (c == '-' && char.IsDigit(Peek(1))))
+            {
+                var (num, unit) = ReadNumber();
+                tokens.Add(new CssToken(CssTokenType.Number, num, _line));
+                if (unit != null) tokens.Add(new CssToken(CssTokenType.Unit, unit, _line));
+                else if (_pos < _source.Length && _source[_pos] == '%')
+                {
+                    tokens.Add(new CssToken(CssTokenType.Percentage, "%", _line));
+                    _pos++;
+                }
+                continue;
+            }
             if (IsIdentStart(c)) { var name = ReadIdent(); tokens.Add(new CssToken(CssTokenType.Identifier, name, _line)); continue; }
             _pos++;
         }

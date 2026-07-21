@@ -44,13 +44,13 @@
 
     <View class="scroll-demo">
       <Text class="card-title" text="overflow-y: auto / wheel scroll" />
-      <View class="scroll-box">
+      <ScrollViewer class="scroll-box">
         <Text class="scroll-item item-a" text="Scrollable item 1" />
         <Text class="scroll-item item-b" text="Scrollable item 2" />
         <Text class="scroll-item item-c" text="Scrollable item 3" />
         <Text class="scroll-item item-d" text="Scrollable item 4" />
         <Text class="scroll-item item-e" text="Scrollable item 5" />
-      </View>
+      </ScrollViewer>
     </View>
   </View>
 </template>
@@ -78,7 +78,7 @@
   .spill-purple { background: #7c3aed; }
   .spill-orange { background: #f97316; }
   .scroll-demo { display: flex; flex-direction: column; gap: 8px; width: 360px; height: 190px; padding: 8px; background: #f8fafc; }
-  .scroll-box { display: flex; flex-direction: column; gap: 8px; width: 300px; height: 100px; overflow-y: auto; background: #ffffff; }
+  .scroll-box { display: flex; flex-direction: column; gap: 8px; width: 300px; height: 100px; background: #ffffff; }
   .scroll-item { height: 34px; color: #ffffff; font-size: 14px; }
   .item-a { background: #0f766e; }
   .item-b { background: #2563eb; }

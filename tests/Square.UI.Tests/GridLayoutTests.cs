@@ -281,6 +281,56 @@ public class GridLayoutTests
     }
 
     [Fact]
+    public void ScrollViewerTracksLayoutExtentAndMapsScrolledHitTesting()
+    {
+        var scroller = new ScrollViewer();
+        scroller.Style.Set("display", "flex");
+        scroller.Style.Set("flex-direction", "column");
+        var first = new MeasuredBox(100, 40);
+        var second = new MeasuredBox(100, 40);
+        var third = new MeasuredBox(100, 40);
+        scroller.Children.Add(first);
+        scroller.Children.Add(second);
+        scroller.Children.Add(third);
+
+        var layout = new LayoutEngine();
+        layout.Measure(scroller, new Size(100, 60));
+        layout.Arrange(scroller, new Rect(0, 0, 100, 60));
+        scroller.ScrollToBottom();
+
+        Assert.Equal(120, scroller.ExtentHeight);
+        Assert.Equal(60, scroller.ScrollableHeight);
+        Assert.Equal(60, scroller.VerticalOffset);
+        Assert.Same(third, scroller.HitTest(new Point(10, 30)));
+    }
+
+    [Fact]
+    public void MenuBarStretchesAndMenuItemsKeepIntrinsicWidthWithSubmenus()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        var bar = new MenuBar();
+        var file = new MenuItem { TextContent = "File" };
+        file.Children.Add(new Menu { Geometry = new Rect(0, 0, 220, 100) });
+        var view = new MenuItem { TextContent = "View" };
+        view.Children.Add(new Menu { Geometry = new Rect(0, 0, 220, 100) });
+        bar.Children.Add(file);
+        bar.Children.Add(view);
+        root.Children.Add(bar);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(600, 200));
+        layout.Arrange(root, new Rect(0, 0, 600, 200));
+
+        Assert.Equal(600, bar.Geometry.Width);
+        Assert.Equal(56, file.Geometry.Width);
+        Assert.Equal(56, view.Geometry.Width);
+        Assert.Equal(file.Geometry.Right, view.Geometry.X);
+        Assert.Equal(32, bar.Geometry.Height);
+    }
+
+    [Fact]
     public void GridMinMaxAndAutoPlacementFillCellsInOrder()
     {
         var root = new View();

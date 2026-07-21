@@ -22,6 +22,7 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
+    <Project Path="tests/Square.Backends.Vulkan.Tests/Square.Backends.Vulkan.Tests.csproj" />
     <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
     <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
     <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />

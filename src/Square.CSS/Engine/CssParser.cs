@@ -269,7 +269,7 @@ public sealed class CssParser
             else if (token.Type == CssTokenType.OpenParen) result.Append('(');
             else if (token.Type == CssTokenType.CloseParen) { while (result.Length > 0 && result[result.Length - 1] == ' ') result.Length--; result.Append(')'); }
             else if (token.Type == CssTokenType.Comma) result.Append(',');
-            else if (token.Type == CssTokenType.Unit) result.Append(token.Text);
+            else if (token.Type is CssTokenType.Unit or CssTokenType.Percentage) result.Append(token.Text);
             else result.Append(token.Text);
             previous = token.Type;
         }

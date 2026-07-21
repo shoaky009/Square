@@ -13,6 +13,14 @@ public static class ControlRegistration
         _registered = true;
 
         UIDocument.RegisterElement("View", static () => new View());
+        UIDocument.RegisterElement("ScrollViewer", static () => new ScrollViewer());
+        UIDocument.RegisterElement("Popup", static () => new Popup());
+        UIDocument.RegisterElement("Dialog", static () => new Dialog());
+        UIDocument.RegisterElement("MenuBar", static () => new MenuBar());
+        UIDocument.RegisterElement("Menu", static () => new Menu());
+        UIDocument.RegisterElement("ContextMenu", static () => new ContextMenu());
+        UIDocument.RegisterElement("MenuItem", static () => new MenuItem());
+        UIDocument.RegisterElement("MenuSeparator", static () => new MenuSeparator());
         UIDocument.RegisterElement("Text", static () => new Controls.Text());
         UIDocument.RegisterElement("ListItem", static () => new ListItem());
         UIDocument.RegisterElement("Link", static () => new Controls.Link());

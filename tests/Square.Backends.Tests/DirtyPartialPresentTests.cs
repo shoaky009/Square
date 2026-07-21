@@ -250,6 +250,51 @@ public class DirtyPartialPresentTests
     }
 
     [Fact]
+    public void DisplayTreeDirtyRectsIncludeBoxShadowVisualBounds()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 160, 100) };
+        var view = new View { Geometry = new Rect(40, 30, 30, 20) };
+        view.Style.Set("background", "#ffffff");
+        view.Style.Set("box-shadow", "5px 7px 10px 2px rgba(0,0,0,0.5)");
+        root.Children.Add(view);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        root.ClearPaintDirty();
+        view.ClearPaintDirty();
+        tree.Render(new RenderContext(new Bitmap(160, 100), 1f));
+
+        view.InvalidatePaint();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+
+        Assert.Contains(dirty, rect => rect.Right >= 87 && rect.Bottom >= 69);
+    }
+
+    [Fact]
+    public void DisplayTreeDirtyRectsIncludePopupShadowWhenClosing()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 200, 120) };
+        var anchor = new View { Geometry = new Rect(50, 30, 20, 10) };
+        var popup = new Popup { Geometry = new Rect(0, 0, 60, 30) };
+        popup.Style.Set("box-shadow", "0 6px 12px rgba(0,0,0,0.5)");
+        popup.Anchor = anchor;
+        root.Children.Add(anchor);
+        root.Children.Add(popup);
+        popup.Open();
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        root.ClearPaintDirty();
+        popup.ClearPaintDirty();
+        tree.Render(new RenderContext(new Bitmap(200, 120), 1f));
+
+        popup.Close();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+
+        Assert.Contains(dirty, rect => rect.X <= 38 && rect.Right >= 122 && rect.Bottom >= 92);
+    }
+
+    [Fact]
     public void RenderContextAppliesPushTransformToFillRect()
     {
         var bmp = new Bitmap(40, 30);

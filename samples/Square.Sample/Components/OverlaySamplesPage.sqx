@@ -1,0 +1,121 @@
+<template>
+  <View class="overlay-page sample-page">
+    <Text class="page-title" text="Popup, Dialog and ContextMenu" />
+    <Text class="description" text="Popup anchors to a control, Dialog uses a modal backdrop, and ContextMenu opens at a screen position." />
+
+    <View class="action-row">
+      <Button ref={PopupButton} class="action-button" onClick={OpenPopup}>Open Popup</Button>
+      <Button ref={DialogButton} class="action-button" onClick={OpenDialog}>Open Dialog</Button>
+      <Button ref={ContextButton} class="action-button" onClick={OpenContextMenu}>Open ContextMenu</Button>
+    </View>
+
+    <Text ref={OverlayStatus} class="status" text="No overlay is open" />
+
+    <Popup ref={DemoPopup} class="demo-popup">
+      <Text class="overlay-title" text="Anchored Popup" />
+      <Text class="overlay-copy" text="This content is rendered in the top-level popup layer." />
+      <Button class="secondary-button" onClick={ClosePopup}>Close Popup</Button>
+    </Popup>
+
+    <Dialog ref={DemoDialog} class="demo-dialog">
+      <Text class="overlay-title" text="Modal Dialog" />
+      <Text class="overlay-copy" text="The backdrop blocks lower content. Escape also closes this dialog." />
+      <Input class="dialog-input" placeholder="Initial focus moves here" />
+      <View class="dialog-actions">
+        <Button class="secondary-button" onClick={CancelDialog}>Cancel</Button>
+        <Button class="primary-button" onClick={ConfirmDialog}>Confirm</Button>
+      </View>
+    </Dialog>
+
+    <ContextMenu ref={DemoContextMenu} class="context-menu">
+      <MenuItem text="Cut" shortcut="Ctrl+X" onClick={OnContextCut} />
+      <MenuItem text="Copy" shortcut="Ctrl+C" onClick={OnContextCopy} />
+      <MenuItem text="Paste" shortcut="Ctrl+V" onClick={OnContextPaste} />
+      <MenuSeparator />
+      <MenuItem text="Options">
+        <Menu class="context-menu">
+          <MenuItem text="Snap to grid" checkable="true" stays-open-on-click="true" onChange={OnSnapChanged} />
+          <MenuItem text="Compact" group="density" onChange={OnDensityChanged} />
+          <MenuItem text="Comfortable" group="density" checked="true" onChange={OnDensityChanged} />
+        </Menu>
+      </MenuItem>
+    </ContextMenu>
+  </View>
+</template>
+<script lang="csharp">
+  protected override void OnAttachedCore()
+  {
+    DemoPopup.Anchor = PopupButton;
+    DemoPopup.Placement = PopupPlacement.Bottom;
+    DemoPopup.Alignment = PopupAlignment.Start;
+    DemoPopup.DismissOnPointerDownOutside = true;
+
+    DemoDialog.CloseOnBackdropClick = true;
+  }
+
+  private void OpenPopup()
+  {
+    DemoPopup.Open();
+    SetStatus("Popup opened below its anchor");
+  }
+
+  private void ClosePopup()
+  {
+    DemoPopup.Close();
+    SetStatus("Popup closed");
+  }
+
+  private void OpenDialog()
+  {
+    DemoDialog.Open();
+    SetStatus("Dialog opened with a modal backdrop");
+  }
+
+  private void CancelDialog()
+  {
+    DemoDialog.Close();
+    SetStatus("Dialog cancelled");
+  }
+
+  private void ConfirmDialog()
+  {
+    DemoDialog.Close();
+    SetStatus("Dialog confirmed");
+  }
+
+  private void OpenContextMenu()
+  {
+    DemoContextMenu.OpenAt(new Point(ContextButton.Geometry.X, ContextButton.Geometry.Bottom + 4));
+    SetStatus("ContextMenu opened programmatically");
+  }
+
+  private void OnContextCut() => SetStatus("Context command: Cut");
+  private void OnContextCopy() => SetStatus("Context command: Copy");
+  private void OnContextPaste() => SetStatus("Context command: Paste");
+
+  private void OnSnapChanged(Event e) =>
+    SetStatus("Snap to grid: " + (((MenuItem)e.Target!).IsChecked ? "on" : "off"));
+
+  private void OnDensityChanged(Event e) =>
+    SetStatus("Density: " + ((MenuItem)e.Target!).TextContent);
+
+  private void SetStatus(string value) => OverlayStatus.TextContent = value;
+</script>
+<style>
+  .sample-page { display: flex; flex-direction: column; gap: 14px; padding: 0; }
+  .page-title { color: #202124; font-size: 18px; }
+  .description { color: #555b61; font-size: 13px; }
+  .action-row { display: flex; flex-direction: row; gap: 10px; height: 42px; }
+  .action-button { width: 180px; height: 38px; }
+  .status { color: #475467; font-size: 14px; }
+
+  .demo-popup { display: flex; flex-direction: column; gap: 10px; width: 300px; height: 150px; padding: 16px; background: #ffffff; border-color: #94a3b8; border-width: 1px; }
+  .demo-dialog { display: flex; flex-direction: column; gap: 12px; width: 420px; height: 250px; padding: 22px; background: #ffffff; border-color: #64748b; border-width: 1px; }
+  .overlay-title { color: #172b4d; font-size: 18px; }
+  .overlay-copy { color: #475467; font-size: 14px; }
+  .dialog-input { height: 38px; }
+  .dialog-actions { display: flex; flex-direction: row; justify-content: flex-end; gap: 10px; height: 40px; }
+  .primary-button { width: 110px; background: #0b6bcb; color: #ffffff; }
+  .secondary-button { width: 120px; background: #eef2f6; color: #344054; }
+  .context-menu { width: 240px; }
+</style>

@@ -13,6 +13,8 @@ public static class StandardEvents
     public const string PointerMove = "pointermove";
     /// <summary>滚轮。</summary>
     public const string Wheel = "wheel";
+    /// <summary>滚动位置变化。</summary>
+    public const string Scroll = "scroll";
     /// <summary>键按下。</summary>
     public const string KeyDown = "keydown";
     /// <summary>键抬起。</summary>
@@ -42,6 +44,7 @@ public static class StandardEvents
         [PointerUp] = BubblingCancelable(),
         [PointerMove] = BubblingCancelable(),
         [Wheel] = BubblingCancelable(),
+        [Scroll] = None(),
         [KeyDown] = BubblingCancelable(),
         [KeyUp] = BubblingCancelable(),
         [TextInput] = Bubbling(),
@@ -75,10 +78,14 @@ public static class StandardEvents
     public static Event CreatePointerMove() => Create(PointerMove);
     /// <summary>创建 wheel 事件。</summary>
     public static WheelEvent CreateWheel(float deltaX = 0, float deltaY = 0) => new(deltaX, deltaY);
+    /// <summary>创建 scroll 事件（不冒泡）。</summary>
+    public static Event CreateScroll() => Create(Scroll);
     /// <summary>创建 keydown 事件。</summary>
-    public static Event CreateKeyDown() => Create(KeyDown);
+    public static KeyboardEvent CreateKeyDown(int keyCode = 0, bool shiftKey = false, bool controlKey = false, bool altKey = false) =>
+        new(KeyDown, keyCode, shiftKey, controlKey, altKey);
     /// <summary>创建 keyup 事件。</summary>
-    public static Event CreateKeyUp() => Create(KeyUp);
+    public static KeyboardEvent CreateKeyUp(int keyCode = 0, bool shiftKey = false, bool controlKey = false, bool altKey = false) =>
+        new(KeyUp, keyCode, shiftKey, controlKey, altKey);
     /// <summary>创建 click 事件。</summary>
     public static Event CreateClick() => Create(Click);
     /// <summary>创建 change 事件。</summary>

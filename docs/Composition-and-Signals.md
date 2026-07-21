@@ -3,7 +3,7 @@
 > 适用版本：Square 0.3 开发版  
 > 相关规范：`Sqx-Spec.md`、`Architecture.md`、`Generator.md`
 
-本文说明如何使用 Slot 组合组件、用 Slot 构建 Tabs，以及如何通过 `Signal<T>` 在组件和线程之间传递状态。
+本文说明如何使用 Slot 组合组件、用 Slot 自定义 Tabs，以及如何通过 `Signal<T>` 在组件和线程之间传递状态。
 
 ---
 
@@ -42,7 +42,7 @@
 
 ---
 
-## 2. 基于 Slot 的 Tabs
+## 2. 基于 Slot 的自定义 Tabs 示例
 
 Sample 中的 `Tabs.sqx` 使用两个区域：
 
@@ -59,7 +59,7 @@ Sample 中的 `Tabs.sqx` 使用两个区域：
 </Tabs>
 ```
 
-`Tabs` 在挂载时读取两个 Slot 的直接子节点，给按钮绑定点击事件，并维护 `SelectedIndex`。切换页签只修改页面的 `IsVisible`，不会销毁页面实例，因此输入内容、路由位置和组件内部状态都会保留。
+`Tabs` 是 Sample 内的应用层组件，不属于 `Square.Controls` 标准控件。它在挂载时读取两个 Slot 的直接子节点，给按钮绑定点击事件，并维护 `SelectedIndex`。切换页签只修改页面的 `IsVisible`，不会销毁页面实例，因此输入内容、路由位置和组件内部状态都会保留。
 
 ### 2.1 数量不一致
 
@@ -181,7 +181,7 @@ _ = Task.Run(async () =>
 
 ## 7. Sample 导航
 
-主示例已拆分为五个页签：
+主示例按能力拆分为多个页签：
 
 | 页签 | 内容 |
 |---|---|
@@ -190,6 +190,9 @@ _ = Task.Run(async () =>
 | Media | Image 和 Canvas |
 | Router | Link、参数路由、查询参数、嵌套路由和 Slot |
 | Signals | 跨组件发布/订阅和后台线程到 UI Dispatcher |
+| Overflow | overflow 裁剪、轴向裁剪和 ScrollViewer |
+| Main 顶部 | MenuBar、多级菜单、Check 多选和 Radio 分组 |
+| Overlays | Popup、Dialog 和命令式 ContextMenu |
 
 关键文件：
 
@@ -206,5 +209,5 @@ _ = Task.Run(async () =>
 - Signal 是进程内通信，不提供跨进程传输或持久化。
 - `SignalHub.Default` 是进程级共享实例；测试或多应用宿主可创建独立 `SignalHub`。
 - Dispatcher 不自行创建线程，也不自行驱动消息循环。
-- Tabs 当前支持鼠标选择；键盘导航和可访问性语义将在完整 Tab 控件阶段补充。
+- Tabs 的键盘导航、可访问性语义、关闭按钮和位置策略由应用按产品需求自行实现；框架不提供统一标准 Tab 控件。
 - 动态 class 的 CSS 重新匹配尚未实现，状态组件需要同步更新必要的内联样式。

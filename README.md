@@ -27,7 +27,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `<Show>`、`<For>`、`<Switch>`、`<Match>` 编译期结构原语
 - 默认插槽、具名插槽和 fallback
 - `ref` 元素引用和命令式元素 API
-- View、Text、ListItem、Link、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
+- View、ScrollViewer、Popup、Dialog、MenuBar、Menu、ContextMenu、MenuItem、MenuSeparator、Text、ListItem、Link、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
 - CSS 选择器、级联、变量、伪类、属性选择器及基础样式
 - Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
@@ -39,6 +39,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `Signal<T>`、`SignalHub` 和 Dispatcher 跨线程投递
 - 基础文本编辑、光标和选择区域
 - `Canvas.RequestFrame()` 下一帧重绘请求
+- `ScrollViewer`、`Popup`、`Dialog`、`MenuBar`、多级 `Menu` 与命令式 `ContextMenu`
 - CSS Animation / `@keyframes` 基础支持
 - Theme 系统（`ThemeProvider` 主题切换）
 - `Document` / `UIDocument` 文档模型（UI/Head/Body 壳）

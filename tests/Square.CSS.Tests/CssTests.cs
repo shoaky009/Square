@@ -39,6 +39,16 @@ public class CssTokenizerTests
     }
 
     [Fact]
+    public void PreservePercentageDeclaration()
+    {
+        var tokens = new CssTokenizer("View { width: 100%; }").Tokenize();
+        var sheet = new CssParser(tokens).Parse();
+
+        Assert.Contains(tokens, t => t.Type == CssTokenType.Percentage && t.Text == "%");
+        Assert.Equal("100%", sheet.Rules[0].Declarations[0].Value);
+    }
+
+    [Fact]
     public void TokenizeString()
     {
         var tokens = new CssTokenizer("\"hello\"").Tokenize();

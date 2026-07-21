@@ -128,3 +128,22 @@ public sealed class WheelEvent : Event
     public float DeltaX { get; }
     public float DeltaY { get; }
 }
+
+/// <summary>键盘事件（Square 对齐 DOM KeyboardEvent 的最小实现）。</summary>
+public sealed class KeyboardEvent : Event
+{
+    public KeyboardEvent(string type, int keyCode, bool shiftKey = false, bool controlKey = false, bool altKey = false,
+        EventInit? init = null)
+        : base(type, init ?? StandardEvents.GetDefaultInit(type))
+    {
+        KeyCode = keyCode;
+        ShiftKey = shiftKey;
+        ControlKey = controlKey;
+        AltKey = altKey;
+    }
+
+    public int KeyCode { get; }
+    public bool ShiftKey { get; }
+    public bool ControlKey { get; }
+    public bool AltKey { get; }
+}

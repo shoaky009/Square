@@ -253,11 +253,15 @@ SQX 支持在模板中标记元素引用。
 
 菜单系统，包含菜单栏（MenuBar）与上下文菜单（ContextMenu）。
 
-- MenuBar：水平顶级菜单，点击展开下拉
-- ContextMenu：右键或命令触发，定位于光标/锚点旁
-- 子菜单（MenuItem 嵌套）、分隔线（Separator）
-- 快捷键提示文本、禁用态、勾选态
-- 键盘导航（方向键、Enter、Esc 关闭）
+- MenuBar：水平顶级菜单，点击展开下拉；菜单模式下悬停切换顶级菜单
+- ContextMenu：支持命令式 `OpenAt(point)`；平台右键自动绑定后置
+- 子菜单：`MenuItem` 内显式嵌套 `Menu`，支持任意层级
+- `MenuSeparator` 分隔线
+- 普通命令项、可独立多选的 Check 项、按 `GroupName` 在同一菜单树内互斥的 Radio 项
+- 点击后默认关闭整条菜单链；`StaysOpenOnClick` 可保持展开
+- `ShortcutText` 仅展示快捷键提示；全局 accelerator 注册后置
+- 键盘导航：Up/Down/Home/End、Left/Right、Enter/Space、Esc、Tab 退出
+- 菜单自动按视口上下/左右翻转并限制在可视区域
 - 基于 Popup 层渲染，不占据布局空间
 
 ### Dialog
@@ -319,16 +323,7 @@ SQX 支持在模板中标记元素引用。
 - 通过 Slot 定义各页内容
 - 切换动画（滑动/淡入淡出）
 
-### Tab
-
-选项卡容器，基于 Slot 组织多页内容。
-
-- 顶部/底部/左侧/右侧标签位置
-- 非活动页保持状态（不销毁）
-- 可关闭标签页（可选）
-- 键盘切换（Ctrl+Tab / 方向键）
-- 溢出时滚动或下拉显示
-- 通过 Slot 定义标签头与内容
+> Tab/Tabs 不作为 Square 标准控件提供。页签的结构、位置、关闭行为、键盘策略和视觉形态高度依赖产品，开发者可基于 Slot、`IsVisible`、事件和状态自行组合。仓库中的 `samples/Square.Sample/Components/Tabs.sqx` 仅作为组合示例。
 
 ---
 

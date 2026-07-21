@@ -52,6 +52,29 @@ public class ColorTests
     }
 }
 
+public class BoxShadowTests
+{
+    [Fact]
+    public void ParseOffsetBlurSpreadAndRgba()
+    {
+        Assert.True(BoxShadow.TryParse("2px 6px 18px 1px rgba(0, 0, 0, 0.22)", out var shadow));
+        Assert.Equal(2, shadow.OffsetX);
+        Assert.Equal(6, shadow.OffsetY);
+        Assert.Equal(18, shadow.BlurRadius);
+        Assert.Equal(1, shadow.SpreadRadius);
+        Assert.Equal(56, shadow.Color.A);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("inset 0 2px 4px #000")]
+    [InlineData("0 2px 4px #000, 0 1px 2px #000")]
+    public void UnsupportedShadowFormsAreRejected(string value)
+    {
+        Assert.False(BoxShadow.TryParse(value, out _));
+    }
+}
+
 public class RectTests
 {
     [Fact]

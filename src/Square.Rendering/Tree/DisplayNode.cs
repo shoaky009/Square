@@ -42,6 +42,10 @@ public sealed class DisplayNode
         // 重放全部命令，避免文本、焦点框、阴影等越过 Geometry 的视觉内容在局部重绘时被跳过。
         ExecuteCommands(ctx);
 
+        // Popup-hosted children are replayed later by DisplayTree's top-level popup layer.
+        if (Element is IPopupElement)
+            return;
+
         var overflowClip = Element?.GetOverflowClipRect() ?? Rect.Empty;
         var clipsChildren = !overflowClip.IsEmpty;
         if (clipsChildren) ctx.PushClip(overflowClip);
@@ -71,7 +75,23 @@ public sealed class DisplayNode
     private static void CollectCommands(Element? element, List<DrawCommand> commands)
     {
         if (element == null || !element.IsVisible) return;
-        element.Paint(new CommandCollector(commands));
+        var collector = new CommandCollector(commands);
+        if (element is not IPopupElement && BoxShadow.TryParse(element.Style.GetPropertyValue("box-shadow"), out var shadow))
+            BoxShadowRendering.Draw(collector, element.Geometry, GetCornerRadius(element), shadow);
+        element.Paint(collector);
+    }
+
+    private static float GetCornerRadius(Element element)
+    {
+        var raw = element.Style.GetPropertyValue("border-radius");
+        if (string.IsNullOrWhiteSpace(raw)) return 0;
+        var token = raw.Trim().Split([' ', '/'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(token)) return 0;
+        var max = MathF.Max(0, MathF.Min(element.Geometry.Width, element.Geometry.Height) / 2f);
+        if (token.EndsWith('%') && float.TryParse(token[..^1], out var percent))
+            return Math.Clamp(max * percent / 100f, 0, max);
+        if (token.EndsWith("px", StringComparison.OrdinalIgnoreCase)) token = token[..^2];
+        return float.TryParse(token, out var pixels) ? Math.Clamp(pixels, 0, max) : 0;
     }
 
     private void SortChildrenByZIndex()

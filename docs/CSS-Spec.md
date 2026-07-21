@@ -144,7 +144,7 @@ await face.LoadAsync();
 ```
 
 `@font-face` 样式表解析尚未接入；当前通过命令式 `FontFace` API 注册。
-| 背景 | `background` `background-color` |
+| 背景 | `background` `background-color` `box-shadow` |
 | 边框 | `border` `border-width` `border-color` `border-radius` |
 | 间距 | `padding` `margin` |
 | 尺寸 | `width` `height` `min-width` `max-width` `min-height` `max-height` |
@@ -152,7 +152,9 @@ await face.LoadAsync();
 | 定位 | `position` `top` `right` `bottom` `left` |
 | 其他 | `opacity` `visibility` `overflow` `overflow-x` `overflow-y` |
 
-当前 `overflow: hidden` / `overflow: clip` 会裁剪子树渲染与命中测试；`visible` 保持子元素可溢出命中。`scroll` / `auto` 与滚动偏移由后续 ScrollViewer 实现。
+当前 `overflow: hidden` / `overflow: clip` 会裁剪子树渲染与命中测试；`visible` 保持子元素可溢出命中。`overflow: scroll` / `auto` 会跟踪内容尺寸、裁剪并平移子树、映射滚动后的命中测试，并通过 wheel 默认动作滚动最近的可滚动祖先。`ScrollViewer` 控件在该通用机制上提供默认纵向滚动和强类型 offset / extent / viewport API。
+
+`box-shadow` 当前支持单个外阴影：`offset-x offset-y [blur-radius] [spread-radius] color`。支持 `px`、十六进制颜色、`rgb()` 和 `rgba()`；暂不支持 `inset`、逗号分隔的多重阴影和 `text-shadow`。阴影不参与布局，但会扩展 DisplayTree 的视觉边界和脏矩形。Popup、Menu、ContextMenu 与 Dialog 默认使用 `0 4px 8px 2px rgba(0,0,0,0.48)` elevation 阴影，可通过 `box-shadow: none` 覆盖。
 
 ---
 

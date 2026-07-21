@@ -684,6 +684,6 @@ app.Run();
 - [API 参考](API-Reference.md) — 完整类型与方法签名
 - [SQX 语言规范](Sqx-Spec.md) — 语法细节
 - [CSS 规范](CSS-Spec.md) — 样式引擎支持范围
-- [组件组合与信号](Composition-and-Signals.md) — Slot、Tabs、Signal
+- [组件组合与信号](Composition-and-Signals.md) — Slot、自定义 Tabs 示例、Signal
 - [总体架构](Architecture.md) — 模块划分与设计决策
 - [示例代码](../samples/Square.Sample/) — 完整示例应用

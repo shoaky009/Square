@@ -12,7 +12,7 @@
 | **M0 脚手架** | 解决方案与全部 `Square.*` 空项目、目录规范、AOT/Trim 发布配置 | 空项目可编译 | ✅ 完成 |
 | **M1 Phase 1 MVP** | 编译优先可运行 Demo：`.sqx`→C#、Props、ref、基础 CSS、flex 布局、纯 C# 软件渲染、基础控件、事件、Win32 宿主、构建层裁剪、生命周期、NativeAOT 验证 | `.sqx` 示例经 Source Generator 编译为 AOT 可执行，窗口渲染并响应交互；Props 传值校验、ref 操作、`<Show>`/`<For>` 可用 | ✅ 完成 |
 | **M2 CSS 完整化 + 组件组合 + 动画 + 主题** | 默认/具名 Slot、fallback、嵌套组件；`Signal<T>` 跨组件/跨线程通信；完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | 插槽保持调用方作用域且不产生隐式布局容器；后台信号经 Dispatcher 安全送达 UI；CSS 测试套件通过 | ✅ 完成 |
-| **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；基于 Slot 的 Tabs；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Swiper | 路由可前进/后退并正确切换生命周期；Tabs 可组合页面且保留状态；各控件可交互 | 🔄 进行中 |
+| **M3 扩展控件 + 路由** | `Square.Router` 内存路由、参数、通配符、嵌套布局、Link；List/Tree/Menu/Dialog/ScrollViewer/Grid/Popup/Swiper | 路由可前进/后退并正确切换生命周期；各控件可交互 | 🔄 进行中 |
 | **M4 图形后端扩展** | Vulkan / Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 | 🔄 Vulkan 已落地 |
 | **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 | 🔄 部分完成 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI | ⏳ 计划 |
@@ -122,8 +122,8 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 
 M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文本命中测试与渲染优化等增量已落地。当前重点：
 
-- M3 扩展控件（List/Tree/Menu/Dialog/ScrollViewer/Popup/Swiper）
-- M4 Vulkan 收尾：完整 `LineCap` / `LineJoin` / `MiterLimit`、任意 Path dash 和复杂路径抗锯齿
+- M3 扩展控件（ScrollViewer、Popup、Dialog、MenuBar/Menu/ContextMenu 已落地；继续 List/Tree/Swiper）
+- M4 Vulkan 描边收尾：`LineCap` / `LineJoin` / `MiterLimit`、任意 Path dash、复杂路径抗锯齿场景与真实 GPU readback 自动验证已落地
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
 - M9 多目标输出：WinUI host + Software bitmap、SVG exporter、NativeUiNode 原型、Godot 嵌入宿主（见 `docs/Rendering-Targets.md`）
 - M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作（基于已落地的 `Range` 与 `TextFragment`）

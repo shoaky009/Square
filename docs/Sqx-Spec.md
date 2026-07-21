@@ -86,6 +86,8 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 | `Select` | 下拉选择 |
 | `Image` | 图片 |
 | `Canvas` | 画布 |
+| `MenuBar` / `Menu` / `ContextMenu` | 顶级菜单栏、弹出菜单与命令式上下文菜单 |
+| `MenuItem` / `MenuSeparator` | 菜单命令、Check/Radio 项、子菜单入口与分隔线 |
 
 `Canvas.RequestFrame()` 请求宿主在下一次平台 Tick 渲染新帧。请求通过 Element Tree 冒泡并合并，同一 Tick 内的多个请求只需触发一次窗口渲染。它用于 Canvas 时钟、游戏循环和后续动画系统；该方法只请求下一帧，不会自动形成持续循环。持续绘制应在每帧完成后再次调用 `RequestFrame()`。
 
@@ -141,7 +143,7 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 
 第一阶段支持默认插槽、具名插槽和 fallback；运行时替换 Slot factory、`::slotted` 样式与跨组件内容搬运后置。
 
-Tabs 等组合控件直接建立在 Slot 上，不增加专用模板语法：
+开发者可直接基于 Slot 自定义 Tabs 等组合组件，不增加专用模板语法：
 
 ```xml
 <Tabs>
@@ -153,7 +155,7 @@ Tabs 等组合控件直接建立在 Slot 上，不增加专用模板语法：
 ```
 
 - `tabs` Slot 中的按钮与默认 Slot 中的页面按顺序一一对应。
-- Tabs 只切换页面的可见性，不重建页面，因此页内输入状态会保留。
+- 示例 Tabs 只切换页面的可见性，不重建页面，因此页内输入状态会保留；它不是框架标准控件。
 - 页签按钮数量与页面数量不一致时，只对可配对部分建立选择关系。
 
 ---

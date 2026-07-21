@@ -1,3 +1,4 @@
+using System.Numerics;
 using Square.Events;
 using Square.Graphics;
 using Square.Text.FontManager;
@@ -12,6 +13,37 @@ public class View : UIElement
         var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
         ControlDrawing.DrawStyledBackground(ctx, this, background);
     }
+}
+
+/// <summary>
+/// Scrollable viewport backed by the framework's CSS overflow, clipping and wheel pipeline.
+/// The default mode scrolls vertically and clips horizontal overflow.
+/// </summary>
+public class ScrollViewer : View
+{
+    public ScrollViewer()
+    {
+        Style.SetCascaded("overflow-x", "hidden", int.MinValue);
+        Style.SetCascaded("overflow-y", "auto", int.MinValue);
+    }
+
+    public float HorizontalOffset => ScrollLeft;
+    public float VerticalOffset => ScrollTop;
+    public float ExtentWidth => ScrollContentSize.Width;
+    public float ExtentHeight => ScrollContentSize.Height;
+    public float ViewportWidth => Geometry.Width;
+    public float ViewportHeight => Geometry.Height;
+    public float ScrollableWidth => Math.Max(0, ExtentWidth - ViewportWidth);
+    public float ScrollableHeight => Math.Max(0, ExtentHeight - ViewportHeight);
+
+    public void ScrollTo(float horizontalOffset, float verticalOffset)
+    {
+        ScrollLeft = horizontalOffset;
+        ScrollTop = verticalOffset;
+    }
+
+    public void ScrollToTop() => ScrollTop = 0;
+    public void ScrollToBottom() => ScrollTop = ScrollableHeight;
 }
 
 public class Text : UIElement, ITextSelectable
@@ -317,6 +349,8 @@ public class Select : UIElement, IPopupElement, ITextSelectable
     public bool IsOpen { get; private set; }
     public bool IsPopupOpen => IsOpen && Options.Length > 0;
     public Rect PopupBounds => GetDropDownRect();
+    public bool DismissOnPointerDownOutside => true;
+    public bool CloseOnEscape => true;
     private int _hoveredOption = -1;
 
     public string SelectableText => string.IsNullOrEmpty(Value) ? Placeholder : Value;
@@ -370,6 +404,10 @@ public class Select : UIElement, IPopupElement, ITextSelectable
     }
 
     public Element? HitTestPopup(Point point) => IsPopupOpen && PopupBounds.Contains(point) ? this : null;
+    public bool ContainsPopupInteraction(Point point) => Geometry.Contains(point) || PopupBounds.Contains(point);
+    public bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt) => false;
+    public Point MapPointToContent(Point point) => point;
+    public void ClosePopup() => CloseDropDown();
 
     public void HandlePointerDown(Point point)
     {
@@ -421,6 +459,306 @@ public class Select : UIElement, IPopupElement, ITextSelectable
     }
 
     private Rect GetDropDownRect() => new(Geometry.X, Geometry.Bottom + 2, Geometry.Width, Options.Length * 32 + 2);
+}
+
+public enum PopupPlacement { Bottom, Top, Left, Right }
+public enum PopupAlignment { Start, Center, End }
+
+/// <summary>Top-level anchored content that does not paint in its layout-tree position.</summary>
+public class Popup : View, IPopupElement
+{
+    private bool _isOpen;
+
+    public Popup()
+    {
+        Style.SetCascaded("position", "absolute", int.MinValue);
+        Style.SetCascaded("box-shadow", "0 4px 8px 2px rgba(0,0,0,0.48)", int.MinValue);
+    }
+
+    public Element? Anchor { get; set; }
+    public PopupPlacement Placement { get; set; } = PopupPlacement.Bottom;
+    public PopupAlignment Alignment { get; set; } = PopupAlignment.Start;
+    public float HorizontalOffset { get; set; }
+    public float VerticalOffset { get; set; } = 4;
+    public bool DismissOnPointerDownOutside { get; set; } = true;
+    public bool CloseOnEscape { get; set; }
+    public bool FlipOnOverflow { get; set; }
+    public bool ConstrainToViewport { get; set; }
+    public bool IsOpen
+    {
+        get => _isOpen;
+        set
+        {
+            if (value) Open();
+            else Close();
+        }
+    }
+
+    public bool IsPopupOpen => _isOpen && !PopupBounds.IsEmpty;
+    public virtual Rect PopupBounds => ContentBounds;
+    protected virtual Rect ContentBounds => GetPopupBounds();
+
+    public override int ZIndex
+    {
+        get => IsOpen ? 1000 : base.ZIndex;
+        set => base.ZIndex = value;
+    }
+
+    public virtual void Open()
+    {
+        if (_isOpen) return;
+        _isOpen = true;
+        Parent?.InvalidatePaint();
+        InvalidatePaint();
+        DispatchEvent(new Event("open"));
+    }
+
+    public virtual void Close()
+    {
+        if (!_isOpen) return;
+        _isOpen = false;
+        Parent?.InvalidatePaint();
+        InvalidatePaint();
+        DispatchEvent(new Event("close"));
+    }
+
+    public void ClosePopup() => Close();
+
+    public virtual bool ContainsPopupInteraction(Point point)
+        => ContentBounds.Contains(point) || Anchor?.Geometry.Contains(point) == true;
+
+    public virtual bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt) => false;
+
+    public virtual Point MapPointToContent(Point point)
+    {
+        var bounds = ContentBounds;
+        return new Point(
+            point.X - bounds.X + Geometry.X,
+            point.Y - bounds.Y + Geometry.Y);
+    }
+
+    public override void Paint(IRenderContext context)
+    {
+        // Popup content is replayed by PaintPopup in the top-level popup layer.
+    }
+
+    public virtual void PaintPopup(IRenderContext context)
+    {
+        if (!IsPopupOpen) return;
+        var bounds = ContentBounds;
+        var translation = new Vector2(bounds.X - Geometry.X, bounds.Y - Geometry.Y);
+        context.PushTransform(Matrix3x2.CreateTranslation(translation));
+        if (BoxShadow.TryParse(Style.GetPropertyValue("box-shadow"), out var shadow))
+            BoxShadowRendering.Draw(context, Geometry, ControlDrawing.GetStyledRadius(this, Geometry), shadow);
+        context.PushClip(Geometry);
+        var background = ControlDrawing.GetStyledColor(this, "background", Color.White);
+        ControlDrawing.DrawStyledBackground(context, this, background);
+        foreach (var child in Children.OrderBy(child => child.ZIndex))
+            PaintPopupSubtree(context, child);
+        context.PopClip();
+        context.PopTransform();
+    }
+
+    public virtual Element? HitTestPopup(Point point)
+    {
+        var bounds = ContentBounds;
+        if (!IsPopupOpen || !bounds.Contains(point)) return null;
+        var localPoint = MapPointToContent(point);
+        foreach (var child in Children.OrderByDescending(child => child.ZIndex))
+        {
+            var hit = child.HitTest(localPoint);
+            if (hit != null) return hit;
+        }
+        return this;
+    }
+
+    protected virtual Rect GetPopupBounds()
+    {
+        if (Geometry.Width <= 0 || Geometry.Height <= 0) return Rect.Empty;
+        var anchor = Anchor == null ? Geometry : GetAnchorBounds(Anchor);
+        var x = Placement is PopupPlacement.Bottom or PopupPlacement.Top
+            ? Align(anchor.X, anchor.Width, Geometry.Width, Alignment) + HorizontalOffset
+            : Placement == PopupPlacement.Left
+                ? anchor.X - Geometry.Width - HorizontalOffset
+                : anchor.Right + HorizontalOffset;
+        var y = Placement is PopupPlacement.Left or PopupPlacement.Right
+            ? Align(anchor.Y, anchor.Height, Geometry.Height, Alignment) + VerticalOffset
+            : Placement == PopupPlacement.Top
+                ? anchor.Y - Geometry.Height - VerticalOffset
+                : anchor.Bottom + VerticalOffset;
+        var bounds = new Rect(x, y, Geometry.Width, Geometry.Height);
+        var viewport = GetPopupViewportBounds();
+        if (FlipOnOverflow && !viewport.IsEmpty)
+        {
+            bounds = Placement switch
+            {
+                PopupPlacement.Bottom when bounds.Bottom > viewport.Bottom &&
+                    anchor.Y - Geometry.Height - VerticalOffset >= viewport.Y =>
+                    new Rect(bounds.X, anchor.Y - Geometry.Height - VerticalOffset, bounds.Width, bounds.Height),
+                PopupPlacement.Top when bounds.Y < viewport.Y &&
+                    anchor.Bottom + Geometry.Height + VerticalOffset <= viewport.Bottom =>
+                    new Rect(bounds.X, anchor.Bottom + VerticalOffset, bounds.Width, bounds.Height),
+                PopupPlacement.Right when bounds.Right > viewport.Right &&
+                    anchor.X - Geometry.Width - HorizontalOffset >= viewport.X =>
+                    new Rect(anchor.X - Geometry.Width - HorizontalOffset, bounds.Y, bounds.Width, bounds.Height),
+                PopupPlacement.Left when bounds.X < viewport.X &&
+                    anchor.Right + Geometry.Width + HorizontalOffset <= viewport.Right =>
+                    new Rect(anchor.Right + HorizontalOffset, bounds.Y, bounds.Width, bounds.Height),
+                _ => bounds
+            };
+        }
+        return ConstrainPopupBounds(bounds);
+    }
+
+    private static Rect GetAnchorBounds(Element anchor)
+    {
+        var bounds = anchor.Geometry;
+        for (var current = anchor.Parent; current != null; current = current.Parent)
+        {
+            if (current is not IPopupElement popup) continue;
+            var popupBounds = popup.PopupBounds;
+            var geometry = current.Geometry;
+            return new Rect(
+                bounds.X + popupBounds.X - geometry.X,
+                bounds.Y + popupBounds.Y - geometry.Y,
+                bounds.Width,
+                bounds.Height);
+        }
+        return bounds;
+    }
+
+    protected Rect ConstrainPopupBounds(Rect bounds)
+    {
+        if (!ConstrainToViewport) return bounds;
+        var viewport = GetPopupViewportBounds();
+        if (viewport.IsEmpty) return bounds;
+        var width = Math.Min(bounds.Width, viewport.Width);
+        var height = Math.Min(bounds.Height, viewport.Height);
+        return new Rect(
+            Math.Clamp(bounds.X, viewport.X, viewport.Right - width),
+            Math.Clamp(bounds.Y, viewport.Y, viewport.Bottom - height),
+            width,
+            height);
+    }
+
+    protected Rect GetPopupViewportBounds()
+    {
+        if (OwnerDocument is not UIDocument document) return Rect.Empty;
+        if (!document.DocumentElement.Geometry.IsEmpty) return document.DocumentElement.Geometry;
+        return !document.Body.Geometry.IsEmpty ? document.Body.Geometry : Rect.Empty;
+    }
+
+    private static float Align(float start, float anchorLength, float popupLength, PopupAlignment alignment) => alignment switch
+    {
+        PopupAlignment.Center => start + (anchorLength - popupLength) / 2f,
+        PopupAlignment.End => start + anchorLength - popupLength,
+        _ => start
+    };
+
+    private static void PaintPopupSubtree(IRenderContext context, Element element)
+    {
+        if (!element.IsVisible || element is IPopupElement) return;
+        element.Paint(context);
+        var clip = element.GetOverflowClipRect();
+        if (!clip.IsEmpty) context.PushClip(clip);
+        var offset = element.ScrollOffset;
+        var scrolls = element.MapsScrollOffsetForChildren();
+        if (scrolls) context.PushTransform(Matrix3x2.CreateTranslation(-offset.X, -offset.Y));
+        foreach (var child in element.Children.OrderBy(child => child.ZIndex))
+            PaintPopupSubtree(context, child);
+        if (scrolls) context.PopTransform();
+        if (!clip.IsEmpty) context.PopClip();
+    }
+}
+
+/// <summary>Modal dialog rendered through the popup layer with a blocking backdrop.</summary>
+public class Dialog : Popup
+{
+    private UIElement? _restoreFocus;
+
+    public Dialog()
+    {
+        CloseOnEscape = true;
+        DismissOnPointerDownOutside = false;
+        Style.SetCascaded("background", "#ffffff", int.MinValue);
+    }
+
+    public bool IsModal { get; set; } = true;
+    public bool CloseOnBackdropClick
+    {
+        get => DismissOnPointerDownOutside;
+        set => DismissOnPointerDownOutside = value;
+    }
+    public Color BackdropColor { get; set; } = Color.FromRgba(0, 0, 0, 112);
+
+    protected override Rect ContentBounds
+    {
+        get
+        {
+            var viewport = GetViewportBounds();
+            if (viewport.IsEmpty) return base.ContentBounds;
+            return new Rect(
+                viewport.X + (viewport.Width - Geometry.Width) / 2f + HorizontalOffset,
+                viewport.Y + (viewport.Height - Geometry.Height) / 2f + VerticalOffset,
+                Geometry.Width,
+                Geometry.Height);
+        }
+    }
+
+    public override Rect PopupBounds => IsModal ? GetViewportBounds() : ContentBounds;
+
+    public override void Open()
+    {
+        if (IsOpen) return;
+        _restoreFocus = OwnerDocument?.DocumentElement.QueryAll<UIElement>()
+            .LastOrDefault(element => element.IsFocused);
+        _restoreFocus?.Unfocus();
+        base.Open();
+        FindInitialFocus()?.Focus();
+    }
+
+    public override void Close()
+    {
+        if (!IsOpen) return;
+        foreach (var focused in QueryAll<UIElement>().Where(element => element.IsFocused))
+            focused.Unfocus();
+        base.Close();
+        if (_restoreFocus is { IsAttached: true, IsEnabled: true })
+            _restoreFocus.Focus();
+        _restoreFocus = null;
+    }
+
+    public override bool ContainsPopupInteraction(Point point) => ContentBounds.Contains(point);
+
+    public override void PaintPopup(IRenderContext context)
+    {
+        if (!IsPopupOpen) return;
+        if (IsModal)
+            context.FillRect(GetViewportBounds(), new SolidColorBrush(BackdropColor));
+        base.PaintPopup(context);
+    }
+
+    public override Element? HitTestPopup(Point point)
+    {
+        if (!IsPopupOpen) return null;
+        var hit = base.HitTestPopup(point);
+        if (hit != null) return hit;
+        return IsModal && GetViewportBounds().Contains(point) ? this : null;
+    }
+
+    private Rect GetViewportBounds()
+    {
+        if (OwnerDocument is UIDocument document)
+        {
+            if (!document.DocumentElement.Geometry.IsEmpty) return document.DocumentElement.Geometry;
+            if (!document.Body.Geometry.IsEmpty) return document.Body.Geometry;
+        }
+        return Anchor?.Geometry ?? Geometry;
+    }
+
+    private UIElement? FindInitialFocus()
+        => QueryAll<UIElement>().FirstOrDefault(element => element.IsEnabled &&
+            element is Button or Input or TextArea or CheckBox or Radio or Select or Link);
 }
 
 public class Image : UIElement, ITextSelectable
@@ -618,7 +956,22 @@ internal static class ControlDrawing
         var radius = GetStyledRadius(element, element.Geometry);
         if (radius <= 0)
         {
-            context.DrawRect(element.Geometry, Pen.FromColor(color, width));
+            var geometry = element.Geometry;
+            var horizontalWidth = Math.Min(width, geometry.Width);
+            var verticalWidth = Math.Min(width, geometry.Height);
+            var brush = new SolidColorBrush(color);
+            context.FillRect(new Rect(geometry.X, geometry.Y, geometry.Width, verticalWidth), brush);
+            context.FillRect(new Rect(geometry.X, geometry.Bottom - verticalWidth, geometry.Width, verticalWidth), brush);
+            context.FillRect(new Rect(
+                geometry.X,
+                geometry.Y + verticalWidth,
+                horizontalWidth,
+                Math.Max(0, geometry.Height - verticalWidth * 2)), brush);
+            context.FillRect(new Rect(
+                geometry.Right - horizontalWidth,
+                geometry.Y + verticalWidth,
+                horizontalWidth,
+                Math.Max(0, geometry.Height - verticalWidth * 2)), brush);
             return;
         }
 
@@ -682,6 +1035,11 @@ internal static class ControlDrawing
     internal static Color GetStyledColor(Element element, string name, Color fallback)
     {
         var value = element.Style.GetPropertyValue(name);
+        if (name == "background")
+        {
+            var backgroundColor = element.Style.GetPropertyValue("background-color");
+            if (!string.IsNullOrWhiteSpace(backgroundColor)) value = backgroundColor;
+        }
         if (string.IsNullOrWhiteSpace(value)) return fallback;
         try { return Color.Parse(value.Replace(" ", "")); }
         catch (FormatException) { return fallback; }

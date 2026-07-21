@@ -115,6 +115,7 @@ public sealed class LayoutEngine
 
         using var session = BuildYogaTree(element, finalRect.Width, finalRect.Height);
         ApplyYogaLayout(element, session.Root, finalRect.X, finalRect.Y);
+        ArrangePopupSubtrees(element);
         ClearDirtyRecursive(element);
     }
 
@@ -193,7 +194,6 @@ public sealed class LayoutEngine
             if (visibleCount == 0)
             {
                 YGNodeSetMeasureFunc(node, LeafMeasureCallback);
-                ApplyIntrinsicLeafMinSize(element, node);
             }
             else
             {
@@ -203,6 +203,7 @@ public sealed class LayoutEngine
                 for (var j = 0; j < visibleCount; j++)
                 {
                     var child = visibleChildren[j];
+                    if (child is IPopupElement) continue;
                     var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
                     if (element.IsScrollContainer() && child.Style.Get("flex-shrink") == null)
                         YGNodeStyleSetFlexShrink(childNode, 0);
@@ -214,8 +215,24 @@ public sealed class LayoutEngine
         {
             ReturnVisibleChildren(visibleChildren);
         }
+        ApplyIntrinsicLeafMinSize(element, node);
+        ApplyIntrinsicRowItemSize(element, node);
 
         return node;
+    }
+
+    private static void ApplyIntrinsicRowItemSize(Element element, YogaNode node)
+    {
+        if (!element.HasCustomMeasure || element.Style.Get("width") != null || element.Parent == null) return;
+        if (!string.Equals(element.Parent.Style.Get("flex-direction")?.Trim(), "row", StringComparison.OrdinalIgnoreCase)) return;
+        foreach (var child in element.Children)
+        {
+            if (child.IsVisible && !string.Equals(child.Style.Get("position")?.Trim(), "absolute", StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        var measured = element.Measure(new Size(float.MaxValue, float.MaxValue));
+        if (IsFiniteLayoutSize(measured.Width)) YGNodeStyleSetWidth(node, measured.Width);
     }
 
     private static void ApplyIntrinsicLeafMinSize(Element element, YogaNode node)
@@ -312,9 +329,11 @@ public sealed class LayoutEngine
         try
         {
             var count = (int)YGNodeGetChildCount(yoga);
-            for (var i = 0; i < visibleCount && i < count; i++)
+            var yogaIndex = 0;
+            for (var i = 0; i < visibleCount && yogaIndex < count; i++)
             {
-                var childYoga = YGNodeGetChild(yoga, (nuint)i);
+                if (visibleChildren[i] is IPopupElement) continue;
+                var childYoga = YGNodeGetChild(yoga, (nuint) yogaIndex++);
                 if (childYoga != null)
                     ApplyYogaLayout(visibleChildren[i], childYoga, absX, absY);
             }
@@ -324,6 +343,28 @@ public sealed class LayoutEngine
             ReturnVisibleChildren(visibleChildren);
         }
         UpdateScrollContentSize(element, rect);
+    }
+
+    private void ArrangePopupSubtrees(Element element)
+    {
+        foreach (var child in element.Children)
+        {
+            if (child is IPopupElement)
+            {
+                var measured = child.Measure(new Size(float.MaxValue, float.MaxValue));
+                var width = ResolvePopupDimension(child.Style.Get("width"), measured.Width);
+                var height = ResolvePopupDimension(child.Style.Get("height"), measured.Height);
+                using var session = BuildYogaTree(child, width, height);
+                ApplyYogaLayout(child, session.Root, 0, 0);
+            }
+            ArrangePopupSubtrees(child);
+        }
+    }
+
+    private static float ResolvePopupDimension(string? value, float measured)
+    {
+        if (TryParsePoints(value, float.MaxValue, float.MaxValue, 16, 16, out var points)) return points;
+        return IsFiniteLayoutSize(measured) ? measured : 0;
     }
 
     private static void UpdateScrollContentSize(Element element, Rect rect)

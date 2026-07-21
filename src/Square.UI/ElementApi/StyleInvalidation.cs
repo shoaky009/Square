@@ -12,7 +12,7 @@ internal static class StyleInvalidation
 
         return property switch
         {
-            "background" or "background-color" or "color" or "border-color" or "border-radius" or "caret-color" or
+            "background" or "background-color" or "box-shadow" or "color" or "border-color" or "border-radius" or "caret-color" or
                 "selection-background" or "selection-color" => ElementInvalidation.Paint,
 
             "z-index" or "visibility" or "overflow" or "overflow-x" or "overflow-y" or "user-select" =>

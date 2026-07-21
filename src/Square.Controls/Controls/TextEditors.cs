@@ -2,7 +2,6 @@ using System.Text;
 using Square.Controls.Animation;
 using Square.Events;
 using Square.Graphics;
-using Square.Text.Glyph;
 using Square.UI;
 
 namespace Square.Controls.Controls;
@@ -34,7 +33,6 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private const float DefaultFontSize = 14f;
     private const float ContentPaddingX = 8f;
     private const float ContentPaddingY = 8f;
-    private static readonly SystemGlyphRasterizer GlyphRasterizer = new();
     private int _caretIndex;
     private int _selectionAnchor;
     private bool _isDragging;
@@ -398,7 +396,6 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var fontSize = GetFontSize();
         var lineHeight = GetLineHeight(fontSize);
         var origin = GetTextOrigin(fontSize, lineHeight);
-        var inkBottom = GetTextInkBottom(displayValue, fontSize);
         var lines = GetLines(displayValue);
         var selectionEnd = SelectionStart + SelectionLength;
         for (var i = 0; i < lines.Count; i++)
@@ -412,27 +409,13 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             var width = MeasureRange(displayValue, start, end - start);
             if (includesNewline) width += 6;
             var visualLineBox = GetVisualLineBox(fontSize, lineHeight, i);
-            var selectionBottom = Math.Max(visualLineBox.Top + visualLineBox.Height, origin.Y + i * lineHeight + inkBottom);
             result.Add(new Rect(
                 origin.X + x,
                 visualLineBox.Top,
                 Math.Max(2, width),
-                selectionBottom - visualLineBox.Top));
+                visualLineBox.Height));
         }
         return result;
-    }
-
-    private float GetTextInkBottom(string text, float fontSize)
-    {
-        var font = ControlDrawing.ResolveFont(this, fontSize);
-        var bottom = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
-        foreach (var character in text)
-        {
-            if (character == '\n') continue;
-            var glyph = GlyphRasterizer.Rasterize(font, character);
-            if (glyph != null) bottom = Math.Max(bottom, glyph.OffsetY + glyph.Height);
-        }
-        return bottom;
     }
 
     private Rect GetCaretRect()
@@ -446,14 +429,11 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var line = lines[lineIndex];
         var width = MeasureRange(displayValue, line.Start, Math.Max(0, _caretIndex - line.Start));
         var visualLineBox = GetVisualLineBox(fontSize, lineHeight, lineIndex);
-        var inset = Math.Min(2f, Math.Max(0, (visualLineBox.Height - 1) / 2));
         return new Rect(
             MathF.Round(Geometry.X + TextPaddingX - _horizontalScroll + width),
-            MathF.Round(visualLineBox.Top + inset),
+            MathF.Round(visualLineBox.Top),
             1,
-            Math.Max(1, Math.Min(
-                visualLineBox.Height - inset * 2,
-                Geometry.Bottom - visualLineBox.Top - inset - 1)));
+            Math.Max(1, Math.Min(visualLineBox.Height, Geometry.Bottom - visualLineBox.Top - 1)));
     }
 
     private Point GetTextOrigin(float fontSize, float lineHeight)
@@ -474,7 +454,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         var naturalLineHeight = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
         var visualHeight = Math.Max(lineHeight, naturalLineHeight);
         var lineTop = GetFirstLineTop(lineHeight) + lineIndex * lineHeight;
-        return (lineTop + (lineHeight - visualHeight) / 2f, visualHeight);
+        return (MathF.Round(lineTop + (lineHeight - visualHeight) / 2f), visualHeight);
     }
 
     private float GetFontSize() => ControlDrawing.GetStyledFloat(this, "font-size", DefaultFontSize);

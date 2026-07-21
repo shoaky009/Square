@@ -299,7 +299,8 @@ public sealed class DesktopApplication : Application
             }
         }
 
-        if (_focusedEditor != null) _host.SetTextInputRect(_focusedEditor.CaretRect);
+        if (_focusedEditor != null)
+            _host.SetTextInputRect(MapContentRectToScreen(_focusedInput, _focusedEditor.CaretRect));
     }
 
     private static ElementInspectionNode CreateInspectionNode(Element element, bool includeSourcePaths, bool includeTextContent, bool includeChildren)
@@ -444,13 +445,15 @@ public sealed class DesktopApplication : Application
         if (_host == null) return;
 
         var hit = HitTest(point);
+        if (action == MouseAction.Down && _displayTree.DismissPopupsOutside(point))
+            RequestRender();
         if (action == MouseAction.Move)
         {
             var needsRender = UpdateHoverPath(hit);
             _host.Cursor = ResolveCursor(hit);
             if (_isSelectingText && _focusedEditor != null)
             {
-                _focusedEditor.HandlePointerMove(point);
+                _focusedEditor.HandlePointerMove(MapPointerPoint(_focusedInput, point));
                 needsRender = true;
             }
             else if (_textSelection is { IsSelecting: true } selection)
@@ -467,7 +470,7 @@ public sealed class DesktopApplication : Application
         {
             if (_isSelectingText && _focusedEditor != null)
             {
-                _focusedEditor.HandlePointerUp(point);
+                _focusedEditor.HandlePointerUp(MapPointerPoint(_focusedInput, point));
                 _isSelectingText = false;
             }
             if (_textSelection is { IsSelecting: true } selection)
@@ -500,9 +503,6 @@ public sealed class DesktopApplication : Application
         hit?.DispatchTrusted(StandardEvents.CreatePointerDown());
         UpdateFocus(hit, point, isDoubleClick);
 
-        foreach (var select in _root.QueryAll<Select>())
-            if (hit != select) select.CloseDropDown();
-
         if (hit is Select selected) selected.HandlePointerDown(point);
         RenderFrame();
     }
@@ -524,8 +524,9 @@ public sealed class DesktopApplication : Application
         if (hit is ITextEditor editor && hit is UIElement editorElement)
         {
             ClearDocumentSelection();
-            editor.HandlePointerDown(point, CurrentModifiers.HasFlag(KeyModifiers.Shift));
-            if (selectWord) editor.SelectWordAt(point);
+            var editorPoint = MapPointerPoint(editorElement, point);
+            editor.HandlePointerDown(editorPoint, CurrentModifiers.HasFlag(KeyModifiers.Shift));
+            if (selectWord) editor.SelectWordAt(editorPoint);
             _isSelectingText = true;
             return;
         }
@@ -553,6 +554,24 @@ public sealed class DesktopApplication : Application
 
     private static bool IsFocusable(UIElement element) => element.IsEnabled &&
         (element is ITextEditor or Button or CheckBox or Radio or Select or Link);
+
+    private static Point MapPointerPoint(Element? target, Point point)
+    {
+        for (var current = target?.Parent; current != null; current = current.Parent)
+            if (current is IPopupElement popup) return popup.MapPointToContent(point);
+        return point;
+    }
+
+    private static Rect MapContentRectToScreen(Element? target, Rect rect)
+    {
+        for (var current = target?.Parent; current != null; current = current.Parent)
+        {
+            if (current is not IPopupElement popup) continue;
+            var origin = popup.MapPointToContent(Point.Zero);
+            return rect.Offset(-origin.X, -origin.Y);
+        }
+        return rect;
+    }
 
     private static UIElement? FindFocusableAncestor(Element? hit)
     {
@@ -616,12 +635,31 @@ public sealed class DesktopApplication : Application
 
         GlobalKeyEvent?.Invoke(keyCode, action);
 
-        _focusedInput?.DispatchTrusted(
-            action == KeyAction.Down ? StandardEvents.CreateKeyDown() : StandardEvents.CreateKeyUp());
-        if (action != KeyAction.Down) return;
-
         var shift = CurrentModifiers.HasFlag(KeyModifiers.Shift);
         var control = CurrentModifiers.HasFlag(KeyModifiers.Control);
+        var alt = CurrentModifiers.HasFlag(KeyModifiers.Alt);
+
+        if (action == KeyAction.Down && _displayTree.HandlePopupKey(keyCode, shift, control, alt))
+        {
+            RenderFrame();
+            return;
+        }
+
+        if (action == KeyAction.Down && keyCode == 27 && _displayTree.DismissTopmostPopupOnEscape())
+        {
+            SyncFocusedInputFromTree();
+            RenderFrame();
+            return;
+        }
+
+        SyncFocusedInputFromTree();
+
+        _focusedInput?.DispatchTrusted(
+            action == KeyAction.Down
+                ? StandardEvents.CreateKeyDown(keyCode, shift, control, alt)
+                : StandardEvents.CreateKeyUp(keyCode, shift, control, alt));
+        if (action != KeyAction.Down) return;
+
         if (_focusedEditor == null)
         {
             if (control && keyCode == 67)
@@ -657,6 +695,14 @@ public sealed class DesktopApplication : Application
             _focusedEditor.HandleKey(keyCode, shift, control);
         }
         RenderFrame();
+    }
+
+    private void SyncFocusedInputFromTree()
+    {
+        var focused = _root.QueryAll<UIElement>().LastOrDefault(element => element.IsFocused);
+        if (ReferenceEquals(_focusedInput, focused)) return;
+        _focusedInput = focused;
+        _focusedEditor = focused as ITextEditor;
     }
 
     private void HandleTextInput(string text)

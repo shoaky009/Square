@@ -18,6 +18,7 @@ public enum CssTokenType
     String,
     Number,
     Unit,
+    Percentage,
     Whitespace,
     AtKeyword,
     Comment,

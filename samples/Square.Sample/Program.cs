@@ -17,7 +17,9 @@ public static class Program
         {
             Title = "Square Framework"
         };
-        document.Body.Children.Add(new Main());
+        document.Body.Children.Add(HasOption(args, "--stroke-regression")
+            ? new VulkanStrokeRegressionPage()
+            : new Main());
 
         var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
         if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
@@ -34,7 +36,8 @@ public static class Program
         ConfigureDebugOverlayToggle(app, document);
         SampleSignals.Initialize(app.Dispatcher);
         var screenshot = GetOption(args, "--screenshot");
-        if (!string.IsNullOrWhiteSpace(screenshot)) ScheduleScreenshot(app, screenshot);
+        if (!string.IsNullOrWhiteSpace(screenshot))
+            ScheduleScreenshot(app, screenshot, HasOption(args, "--verify-stroke-regression"));
 
         ToolingServer? tooling = null;
         if (HasOption(args, "--tooling"))
@@ -68,7 +71,7 @@ public static class Program
         return tooling;
     }
 
-    private static void ScheduleScreenshot(DesktopApplication app, string path)
+    private static void ScheduleScreenshot(DesktopApplication app, string path, bool verifyStrokeRegression)
     {
         _ = Task.Run(async () =>
         {
@@ -76,6 +79,8 @@ public static class Program
             try
             {
                 using var bitmap = await app.CaptureRendererBitmapAsync();
+                if (verifyStrokeRegression)
+                    VulkanStrokeRegressionPage.ValidateScreenshot(bitmap);
                 BitmapPngEncoder.Save(bitmap, path);
                 System.Console.WriteLine($"Screenshot saved to {path}");
             }

@@ -46,9 +46,11 @@ public class M1IntegrationTests
         Assert.Equal("Button - add activity", button.TextContent);
         Assert.Equal("flex", root.Style.Get("display"));
         Assert.Contains("16", root.Style.Get("padding"));
-        Assert.Equal(2, root.Children.Count);
-        Assert.Equal(6, tabs.QueryAll<Button>().Count(control => control.ClassList.Contains("tab-button")));
-        Assert.Equal(3, inputs.Count);
+        Assert.Equal(4, root.Children.Count);
+        Assert.IsType<MenuBar>(root.Children[0]);
+        Assert.IsType<Tabs>(root.Children[3]);
+        Assert.Equal(7, tabs.QueryAll<Button>().Count(control => control.ClassList.Contains("tab-button")));
+        Assert.Equal(4, inputs.Count);
         Assert.Equal(2, root.QueryAll<TextArea>().Count);
         Assert.Equal("14px", inputs[1].Style.Get("line-height"));
         Assert.Equal("#067647", inputs[2].Style.Get("color"));
@@ -68,6 +70,80 @@ public class M1IntegrationTests
 
         textPage.Name.Value = "Square";
         Assert.Equal("Square", input.Value);
+    }
+
+    [Fact]
+    public void OverlaySampleIncludesPopupDialogAndContextMenu()
+    {
+        var page = new OverlaySamplesPage();
+
+        page.BuildElementTree();
+
+        Assert.Single(page.QueryAll<Popup>(), popup => popup.GetType() == typeof(Popup));
+        Assert.Single(page.QueryAll<Dialog>());
+        var contextMenu = Assert.Single(page.QueryAll<ContextMenu>());
+        Assert.Equal(7, contextMenu.QueryAll<MenuItem>().Count);
+        Assert.Single(contextMenu.QueryAll<MenuSeparator>());
+    }
+
+    [Fact]
+    public void MainMenuBarFillsViewportAndKeepsConfiguredBackground()
+    {
+        var main = new Main();
+        main.BuildElementTree();
+        var layout = new LayoutEngine();
+
+        layout.Measure(main, new Size(900, 980));
+        layout.Arrange(main, new Rect(0, 0, 900, 980));
+
+        var bar = Assert.Single(main.QueryAll<MenuBar>());
+        Assert.Equal("#dbeafe", bar.Style.Get("background-color"));
+        Assert.True(bar.Geometry.Width >= 800,
+            $"bar={bar.Geometry}, parent={bar.Parent?.Geometry}, width={bar.Style.Get("width")}, align={bar.Style.Get("align-self")}");
+        var items = bar.Children.OfType<MenuItem>().ToArray();
+        Assert.All(items, item => Assert.InRange(item.Geometry.Width, 56, 80));
+        Assert.Equal(items[0].Geometry.Right, items[1].Geometry.X);
+
+        items[0].DispatchEvent(StandardEvents.CreateClick());
+        var menu = Assert.IsType<Menu>(items[0].Submenu);
+        Assert.True(menu.IsOpen);
+        Assert.Equal(240, menu.PopupBounds.Width);
+        Assert.Equal(105, menu.PopupBounds.Height);
+        Assert.Equal(3, menu.Items.Count);
+        Assert.Single(menu.Children.OfType<MenuSeparator>());
+        Assert.All(menu.Items, item => Assert.True(item.Geometry.Height > 0));
+
+        var export = Assert.Single(menu.Items, item => item.TextContent == "Export");
+        export.DispatchEvent(StandardEvents.CreateClick());
+        var exportMenu = Assert.IsType<Menu>(export.Submenu);
+        Assert.Equal(96, exportMenu.PopupBounds.Height);
+        Assert.Equal(menu.PopupBounds.Right, exportMenu.PopupBounds.X);
+        Assert.Equal(menu.PopupBounds.Y + export.Geometry.Y - menu.Geometry.Y, exportMenu.PopupBounds.Y);
+
+        var advanced = Assert.Single(exportMenu.Items, item => item.TextContent == "Advanced");
+        advanced.DispatchEvent(StandardEvents.CreateClick());
+        var advancedMenu = Assert.IsType<Menu>(advanced.Submenu);
+        Assert.Equal(32, advancedMenu.PopupBounds.Height);
+        Assert.Equal(exportMenu.PopupBounds.Right, advancedMenu.PopupBounds.X);
+        Assert.Equal(exportMenu.PopupBounds.Y + advanced.Geometry.Y - exportMenu.Geometry.Y, advancedMenu.PopupBounds.Y);
+    }
+
+    [Fact]
+    public void DocumentLayoutKeepsTopLevelMenuItemsContentSized()
+    {
+        var document = new UIDocument();
+        document.Body.Children.Add(new Main());
+        document.Build();
+        var layout = new LayoutEngine();
+
+        layout.Measure(document.DocumentElement, new Size(900, 980));
+        layout.Arrange(document.DocumentElement, new Rect(0, 0, 900, 980));
+
+        var bar = Assert.Single(document.DocumentElement.QueryAll<MenuBar>());
+        var items = bar.Children.OfType<MenuItem>().ToArray();
+        Assert.Equal(56, items[0].Geometry.Width);
+        Assert.Equal(56, items[1].Geometry.Width);
+        Assert.Equal(items[0].Geometry.Right, items[1].Geometry.X);
     }
 
     [Fact]
@@ -238,13 +314,13 @@ public class M1IntegrationTests
         Assert.Equal(2, textArea.CaretIndex);
         Assert.Equal(input.CaretRect.X, textArea.CaretRect.X);
         Assert.Equal(input.CaretRect.Height, textArea.CaretRect.Height);
-        Assert.Equal(12, input.CaretRect.Y - input.Geometry.Y);
-        Assert.Equal(10, textArea.CaretRect.Y - textArea.Geometry.Y);
-        Assert.Equal(13, input.CaretRect.Height);
+        Assert.Equal(10, input.CaretRect.Y - input.Geometry.Y);
+        Assert.Equal(8, textArea.CaretRect.Y - textArea.Geometry.Y);
+        Assert.Equal(17, input.CaretRect.Height);
 
         textArea.HandleKey(40);
         Assert.Equal(5, textArea.CaretIndex);
-        Assert.Equal(27, textArea.CaretRect.Y - textArea.Geometry.Y);
+        Assert.Equal(25, textArea.CaretRect.Y - textArea.Geometry.Y);
     }
 
     [Fact]
@@ -258,11 +334,19 @@ public class M1IntegrationTests
 
         Assert.Equal(Color.FromRgb(51, 144, 255), input.SelectionBackground);
         Assert.Equal(Color.White, input.SelectionForeground);
-        Assert.Equal(10, input.CaretRect.Y - input.Geometry.Y);
-        Assert.Equal(24, input.CaretRect.Height);
+        Assert.Equal(8, input.CaretRect.Y - input.Geometry.Y);
+        Assert.Equal(28, input.CaretRect.Height);
+
+        input.SelectAll();
+        var getSelectionRects = typeof(TextEditorBase).GetMethod(
+            "GetSelectionRects",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var selection = Assert.Single((List<Rect>)getSelectionRects.Invoke(input, [input.Value])!);
+        Assert.Equal(input.CaretRect.Y, selection.Y);
+        Assert.Equal(input.CaretRect.Height, selection.Height);
 
         input.Style.Set("line-height", "2");
-        Assert.Equal(24, input.CaretRect.Height);
+        Assert.Equal(28, input.CaretRect.Height);
     }
 
     [Fact]
@@ -497,6 +581,65 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void ScrollViewerDefaultsToVerticalOverflowAndClampsOffsets()
+    {
+        var scroller = new ScrollViewer { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.SetScrollContentSize(new Size(180, 140));
+
+        scroller.ScrollTo(50, 200);
+
+        Assert.Equal(0, scroller.HorizontalOffset);
+        Assert.Equal(100, scroller.VerticalOffset);
+        Assert.Equal(80, scroller.ScrollableWidth);
+        Assert.Equal(100, scroller.ScrollableHeight);
+        Assert.Equal(100, scroller.ViewportWidth);
+        Assert.Equal(40, scroller.ViewportHeight);
+    }
+
+    [Fact]
+    public void ScrollViewerDispatchesScrollWhenOffsetChanges()
+    {
+        var scroller = new ScrollViewer { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.SetScrollContentSize(new Size(100, 140));
+        var events = 0;
+        scroller.AddEventListener(StandardEvents.Scroll, _ => events++);
+
+        scroller.ScrollToBottom();
+        scroller.ScrollToBottom();
+        scroller.ScrollToTop();
+
+        Assert.Equal(2, events);
+        Assert.Equal(0, scroller.VerticalOffset);
+    }
+
+    [Fact]
+    public void ScrollViewerWheelUsesExistingOverflowDefaultAction()
+    {
+        var scroller = new ScrollViewer { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.SetScrollContentSize(new Size(100, 140));
+        var child = new Button { Geometry = new Rect(0, 80, 100, 20) };
+        scroller.Children.Add(child);
+
+        child.DispatchTrusted(StandardEvents.CreateWheel(0, 30));
+
+        Assert.Equal(30, scroller.VerticalOffset);
+    }
+
+    [Fact]
+    public void ScrollViewerDefaultOverflowCanBeOverriddenByCss()
+    {
+        var scroller = new ScrollViewer { Geometry = new Rect(0, 0, 100, 40) };
+        scroller.Style.SetCascaded("overflow-x", "auto", 10);
+        scroller.Style.SetCascaded("overflow-y", "hidden", 10);
+        scroller.SetScrollContentSize(new Size(180, 140));
+
+        scroller.ScrollTo(50, 50);
+
+        Assert.Equal(50, scroller.HorizontalOffset);
+        Assert.Equal(0, scroller.VerticalOffset);
+    }
+
+    [Fact]
     public void EventCapturesThenBubblesLikeDom()
     {
         var root = new View();
@@ -709,6 +852,480 @@ public class M1IntegrationTests
         Assert.Equal("Green", select.Value);
         Assert.False(select.IsOpen);
         Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void PopupPositionsBelowAnchorAndHitTestsTranslatedChildren()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 400, 300) };
+        var anchor = new Button { Geometry = new Rect(100, 40, 80, 30) };
+        var popup = new Popup
+        {
+            Geometry = new Rect(0, 0, 120, 60),
+            Anchor = anchor,
+            Placement = PopupPlacement.Bottom,
+            Alignment = PopupAlignment.Center,
+            VerticalOffset = 6
+        };
+        var child = new Button { Geometry = new Rect(10, 10, 80, 30) };
+        popup.Children.Add(child);
+        root.Children.Add(anchor);
+        root.Children.Add(popup);
+        popup.Open();
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        Assert.Equal(new Rect(80, 76, 120, 60), popup.PopupBounds);
+        Assert.Same(child, tree.HitTestPopups(new Point(95, 90)));
+        Assert.Same(root, root.HitTest(new Point(95, 90)));
+    }
+
+    [Theory]
+    [InlineData(PopupPlacement.Top, 109, 34)]
+    [InlineData(PopupPlacement.Left, 26, 81)]
+    [InlineData(PopupPlacement.Right, 184, 81)]
+    public void PopupSupportsTopLeftAndRightPlacement(PopupPlacement placement, float expectedX, float expectedY)
+    {
+        var anchor = new Button { Geometry = new Rect(100, 80, 80, 30) };
+        var popup = new Popup
+        {
+            Geometry = new Rect(0, 0, 70, 40),
+            Anchor = anchor,
+            Placement = placement,
+            Alignment = PopupAlignment.Center,
+            HorizontalOffset = 4,
+            VerticalOffset = 6
+        };
+        popup.Open();
+
+        Assert.Equal(new Rect(expectedX, expectedY, 70, 40), popup.PopupBounds);
+    }
+
+    [Fact]
+    public void DisplayTreeDismissesPopupOnlyOutsidePopupAndAnchor()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 400, 300) };
+        var anchor = new Button { Geometry = new Rect(100, 40, 80, 30) };
+        var popup = new Popup { Geometry = new Rect(0, 0, 120, 60), Anchor = anchor };
+        root.Children.Add(anchor);
+        root.Children.Add(popup);
+        var tree = new DisplayTree();
+
+        popup.Open();
+        tree.BuildFrom(root);
+        Assert.False(tree.DismissPopupsOutside(new Point(110, 50)));
+        Assert.True(popup.IsOpen);
+        Assert.False(tree.DismissPopupsOutside(new Point(110, 90)));
+        Assert.True(popup.IsOpen);
+
+        Assert.True(tree.DismissPopupsOutside(new Point(300, 250)));
+        Assert.False(popup.IsOpen);
+    }
+
+    [Fact]
+    public void PopupOpenCloseEventsFireOnlyWhenStateChanges()
+    {
+        var popup = new Popup { Geometry = new Rect(0, 0, 100, 40) };
+        var opens = 0;
+        var closes = 0;
+        popup.AddEventListener("open", _ => opens++);
+        popup.AddEventListener("close", _ => closes++);
+
+        popup.Open();
+        popup.Open();
+        popup.Close();
+        popup.Close();
+
+        Assert.Equal(1, opens);
+        Assert.Equal(1, closes);
+    }
+
+    [Fact]
+    public void ModalDialogCentersInDocumentAndBlocksBackdropHitTesting()
+    {
+        var document = new UIDocument();
+        document.Body.Geometry = new Rect(0, 0, 400, 300);
+        var underlying = new Button { Geometry = new Rect(10, 10, 100, 40) };
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 160, 100) };
+        document.Body.Children.Add(underlying);
+        document.Body.Children.Add(dialog);
+        dialog.Open();
+        var tree = new DisplayTree();
+        tree.BuildFrom(document.Body);
+
+        Assert.Equal(new Rect(0, 0, 400, 300), dialog.PopupBounds);
+        Assert.Same(dialog, tree.HitTestPopups(new Point(20, 20)));
+        Assert.Same(dialog, tree.HitTestPopups(new Point(130, 110)));
+    }
+
+    [Fact]
+    public void ClosedDialogDoesNotInterceptPopupHitTesting()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 400, 300) };
+        var button = new Button { Geometry = new Rect(20, 20, 120, 36) };
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 240, 140) };
+        root.Children.Add(button);
+        root.Children.Add(dialog);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        Assert.Null(tree.HitTestPopups(new Point(40, 30)));
+        Assert.Same(button, root.HitTest(new Point(40, 30)));
+    }
+
+    [Fact]
+    public void DialogMapsScreenPointerCoordinatesForTextSelection()
+    {
+        var document = new UIDocument();
+        document.Ui.Geometry = new Rect(0, 0, 500, 300);
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 300, 140) };
+        var input = new Input { Value = "selectable text", Geometry = new Rect(20, 40, 220, 36) };
+        dialog.Children.Add(input);
+        document.Body.Children.Add(dialog);
+        dialog.Open();
+        var contentX = (document.Ui.Geometry.Width - dialog.Geometry.Width) / 2f;
+        var contentY = (document.Ui.Geometry.Height - dialog.Geometry.Height) / 2f;
+
+        input.HandlePointerDown(dialog.MapPointToContent(new Point(contentX + 30, contentY + 58)));
+        input.HandlePointerMove(dialog.MapPointToContent(new Point(contentX + 130, contentY + 58)));
+        input.HandlePointerUp(dialog.MapPointToContent(new Point(contentX + 130, contentY + 58)));
+
+        Assert.True(input.SelectionLength > 0);
+        Assert.NotEmpty(input.SelectedText);
+    }
+
+    [Fact]
+    public void DialogBackdropDismissIsConfigurable()
+    {
+        var document = new UIDocument();
+        document.Body.Geometry = new Rect(0, 0, 400, 300);
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 160, 100), CloseOnBackdropClick = true };
+        document.Body.Children.Add(dialog);
+        dialog.Open();
+        var tree = new DisplayTree();
+        tree.BuildFrom(document.Body);
+
+        Assert.True(tree.DismissPopupsOutside(new Point(20, 20)));
+        Assert.False(dialog.IsOpen);
+
+        dialog.CloseOnBackdropClick = false;
+        dialog.Open();
+        Assert.False(tree.DismissPopupsOutside(new Point(20, 20)));
+        Assert.True(dialog.IsOpen);
+    }
+
+    [Fact]
+    public void DialogEscapeClosesTopmostEligiblePopup()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 400, 300) };
+        var first = new Dialog { Geometry = new Rect(0, 0, 160, 100) };
+        var second = new Dialog { Geometry = new Rect(0, 0, 120, 80), CloseOnEscape = false };
+        root.Children.Add(first);
+        root.Children.Add(second);
+        first.Open();
+        second.Open();
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        Assert.True(tree.DismissTopmostPopupOnEscape());
+        Assert.False(first.IsOpen);
+        Assert.True(second.IsOpen);
+    }
+
+    [Fact]
+    public void DialogMovesFocusInsideAndRestoresPreviousFocus()
+    {
+        var document = new UIDocument();
+        document.Body.Geometry = new Rect(0, 0, 400, 300);
+        var trigger = new Button { Geometry = new Rect(10, 10, 80, 30) };
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 160, 100) };
+        var input = new Input { Geometry = new Rect(10, 10, 120, 36) };
+        dialog.Children.Add(input);
+        document.Body.Children.Add(trigger);
+        document.Body.Children.Add(dialog);
+        ((IComponentLifecycle)document.Body).OnAttached();
+        trigger.Focus();
+
+        dialog.Open();
+
+        Assert.False(trigger.IsFocused);
+        Assert.True(input.IsFocused);
+
+        dialog.Close();
+
+        Assert.False(input.IsFocused);
+        Assert.True(trigger.IsFocused);
+    }
+
+    [Fact]
+    public void MenuCheckItemsToggleIndependentlyAndCanStayOpen()
+    {
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 100) };
+        var grid = new MenuItem { TextContent = "Grid", IsCheckable = true, Geometry = new Rect(0, 0, 220, 32) };
+        var guides = new MenuItem
+        {
+            TextContent = "Guides",
+            IsCheckable = true,
+            StaysOpenOnClick = true,
+            Geometry = new Rect(0, 32, 220, 32)
+        };
+        menu.Children.Add(grid);
+        menu.Children.Add(guides);
+        menu.OpenAt(new Point(10, 10));
+
+        guides.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.True(guides.IsChecked);
+        Assert.False(grid.IsChecked);
+        Assert.True(menu.IsOpen);
+
+        grid.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.True(grid.IsChecked);
+        Assert.True(guides.IsChecked);
+        Assert.False(menu.IsOpen);
+    }
+
+    [Fact]
+    public void MenuRadioGroupsAreExclusiveAcrossNestedMenuTree()
+    {
+        var rootMenu = new Menu { Geometry = new Rect(0, 0, 220, 120) };
+        var light = new MenuItem { TextContent = "Light", GroupName = "theme", Geometry = new Rect(0, 0, 220, 32) };
+        var owner = new MenuItem { TextContent = "More", Geometry = new Rect(0, 32, 220, 32) };
+        var submenu = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var dark = new MenuItem { TextContent = "Dark", GroupName = "theme", Geometry = new Rect(0, 0, 220, 32) };
+        var accent = new MenuItem { TextContent = "Blue", GroupName = "accent", Geometry = new Rect(0, 32, 220, 32) };
+        submenu.Children.Add(dark);
+        submenu.Children.Add(accent);
+        owner.Children.Add(submenu);
+        rootMenu.Children.Add(light);
+        rootMenu.Children.Add(owner);
+
+        light.DispatchEvent(StandardEvents.CreateClick());
+        dark.DispatchEvent(StandardEvents.CreateClick());
+        accent.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.False(light.IsChecked);
+        Assert.True(dark.IsChecked);
+        Assert.True(accent.IsChecked);
+    }
+
+    [Fact]
+    public void MenuItemCommandExecutesAfterCancelableClickAndClosesTree()
+    {
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var item = new MenuItem { TextContent = "Run", Geometry = new Rect(0, 0, 220, 32) };
+        var executions = 0;
+        item.Command = _ => executions++;
+        menu.Children.Add(item);
+        menu.OpenAt(new Point(0, 0));
+
+        item.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.Equal(1, executions);
+        Assert.False(menu.IsOpen);
+    }
+
+    [Fact]
+    public void MenuItemPreventDefaultSkipsActivation()
+    {
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var item = new MenuItem { TextContent = "Run", IsCheckable = true, Geometry = new Rect(0, 0, 220, 32) };
+        var executions = 0;
+        item.Command = _ => executions++;
+        item.AddEventListener(StandardEvents.Click, e => e.PreventDefault());
+        menu.Children.Add(item);
+        menu.OpenAt(new Point(0, 0));
+
+        item.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.False(item.IsChecked);
+        Assert.Equal(0, executions);
+        Assert.True(menu.IsOpen);
+    }
+
+    [Fact]
+    public void MenuSupportsThreeLevelsAndClosesWholeTreeFromLeaf()
+    {
+        var root = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var firstOwner = new MenuItem { TextContent = "Export", Geometry = new Rect(0, 0, 220, 32) };
+        var first = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var secondOwner = new MenuItem { TextContent = "Advanced", Geometry = new Rect(0, 0, 220, 32) };
+        var second = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var leaf = new MenuItem { TextContent = "PDF", Geometry = new Rect(0, 0, 220, 32) };
+        second.Children.Add(leaf);
+        secondOwner.Children.Add(second);
+        first.Children.Add(secondOwner);
+        firstOwner.Children.Add(first);
+        root.Children.Add(firstOwner);
+
+        root.OpenAt(new Point(0, 0));
+        firstOwner.DispatchEvent(StandardEvents.CreateClick());
+        secondOwner.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.True(root.IsOpen);
+        Assert.True(first.IsOpen);
+        Assert.True(second.IsOpen);
+
+        leaf.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.False(root.IsOpen);
+        Assert.False(first.IsOpen);
+        Assert.False(second.IsOpen);
+    }
+
+    [Fact]
+    public void MenuBarHoverSwitchesOnlyAfterMenuModeStarts()
+    {
+        var bar = new MenuBar();
+        var file = new MenuItem { TextContent = "File" };
+        var edit = new MenuItem { TextContent = "Edit" };
+        var fileMenu = new Menu { Geometry = new Rect(0, 0, 200, 80) };
+        var editMenu = new Menu { Geometry = new Rect(0, 0, 200, 80) };
+        file.Children.Add(fileMenu);
+        edit.Children.Add(editMenu);
+        bar.Children.Add(file);
+        bar.Children.Add(edit);
+
+        edit.SetState(ElementState.Hover, true);
+        Assert.False(editMenu.IsOpen);
+
+        file.DispatchEvent(StandardEvents.CreateClick());
+        edit.SetState(ElementState.Hover, false);
+        edit.SetState(ElementState.Hover, true);
+
+        Assert.False(fileMenu.IsOpen);
+        Assert.True(editMenu.IsOpen);
+        Assert.Equal(1, bar.ActiveIndex);
+    }
+
+    [Fact]
+    public void MenuKeyboardNavigationSkipsDisabledItemsAndActivatesSelection()
+    {
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 120) };
+        var disabled = new MenuItem { TextContent = "Disabled", IsDisabled = true };
+        var first = new MenuItem { TextContent = "First" };
+        var second = new MenuItem { TextContent = "Second", IsCheckable = true, StaysOpenOnClick = true };
+        menu.Children.Add(disabled);
+        menu.Children.Add(first);
+        menu.Children.Add(second);
+        menu.OpenAt(new Point(0, 0));
+
+        Assert.True(menu.HandleKey(40));
+        Assert.Same(first, menu.ActiveItem);
+        Assert.True(menu.HandleKey(40));
+        Assert.Same(second, menu.ActiveItem);
+        Assert.True(menu.HandleKey(13));
+
+        Assert.True(second.IsChecked);
+        Assert.True(menu.IsOpen);
+
+        Assert.True(menu.HandleKey(36));
+        Assert.Same(first, menu.ActiveItem);
+        Assert.True(menu.HandleKey(35));
+        Assert.Same(second, menu.ActiveItem);
+    }
+
+    [Fact]
+    public void MenuKeyboardRightOpensSubmenuAndLeftReturnsToParent()
+    {
+        var root = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var owner = new MenuItem { TextContent = "More" };
+        var submenu = new Menu { Geometry = new Rect(0, 0, 180, 80) };
+        var child = new MenuItem { TextContent = "Child" };
+        submenu.Children.Add(child);
+        owner.Children.Add(submenu);
+        root.Children.Add(owner);
+        root.OpenAt(new Point(0, 0));
+        Assert.True(root.HandleKey(40));
+
+        Assert.True(root.HandleKey(39));
+        Assert.True(submenu.IsOpen);
+        Assert.Same(child, submenu.ActiveItem);
+
+        Assert.True(submenu.HandleKey(37));
+        Assert.False(submenu.IsOpen);
+        Assert.Same(owner, root.ActiveItem);
+    }
+
+    [Fact]
+    public void DisplayTreeRoutesKeyboardToDeepestOpenMenu()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 400, 300) };
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 80) };
+        var item = new MenuItem { TextContent = "Toggle", IsCheckable = true, StaysOpenOnClick = true };
+        menu.Children.Add(item);
+        root.Children.Add(menu);
+        menu.OpenAt(new Point(0, 0));
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        Assert.True(tree.HandlePopupKey(40, false, false, false));
+        Assert.True(tree.HandlePopupKey(32, false, false, false));
+
+        Assert.True(item.IsChecked);
+    }
+
+    [Fact]
+    public void MenuFlipsAtViewportEdges()
+    {
+        var document = new UIDocument();
+        document.Body.Geometry = new Rect(0, 0, 300, 200);
+        var bar = new MenuBar();
+        var bottomOwner = new MenuItem { Geometry = new Rect(20, 170, 80, 28) };
+        var bottomMenu = new Menu { Geometry = new Rect(0, 0, 140, 100) };
+        bottomOwner.Children.Add(bottomMenu);
+        bar.Children.Add(bottomOwner);
+        document.Body.Children.Add(bar);
+        bottomMenu.OpenFor(bottomOwner);
+
+        Assert.True(bottomMenu.PopupBounds.Bottom <= bottomOwner.Geometry.Y);
+
+        var rightOwner = new MenuItem { Geometry = new Rect(270, 40, 28, 32) };
+        var rightMenu = new Menu { Geometry = new Rect(0, 0, 120, 100) };
+        var parentMenu = new Menu { Geometry = new Rect(0, 0, 160, 100) };
+        parentMenu.Children.Add(rightOwner);
+        rightOwner.Children.Add(rightMenu);
+        document.Body.Children.Add(parentMenu);
+        rightMenu.OpenFor(rightOwner);
+
+        Assert.True(rightMenu.PopupBounds.Right <= rightOwner.Geometry.X);
+    }
+
+    [Fact]
+    public void NestedMenuDoesNotFlipWhenDocumentViewportHasRoom()
+    {
+        var document = new UIDocument();
+        document.Ui.Geometry = new Rect(0, 0, 900, 600);
+        document.Body.Geometry = new Rect(0, 0, 480, 600);
+        var parentMenu = new Menu { Geometry = new Rect(0, 0, 240, 96) };
+        var owner = new MenuItem { Geometry = new Rect(0, 64, 240, 32) };
+        var childMenu = new Menu { Geometry = new Rect(0, 0, 240, 32) };
+        owner.Children.Add(childMenu);
+        parentMenu.Children.Add(owner);
+        document.Body.Children.Add(parentMenu);
+        parentMenu.OpenAt(new Point(248, 96));
+
+        childMenu.OpenFor(owner);
+
+        Assert.Equal(parentMenu.PopupBounds.Right, childMenu.PopupBounds.X);
+        Assert.Equal(parentMenu.PopupBounds.Y + 64, childMenu.PopupBounds.Y);
+    }
+
+    [Fact]
+    public void KeyboardEventCarriesKeyCodeAndModifiers()
+    {
+        var target = new Button();
+        KeyboardEvent? received = null;
+        target.AddEventListener<KeyboardEvent>(StandardEvents.KeyDown, e => received = e);
+
+        target.DispatchTrusted(StandardEvents.CreateKeyDown(40, shiftKey: true, controlKey: true));
+
+        Assert.NotNull(received);
+        Assert.Equal(40, received!.KeyCode);
+        Assert.True(received.ShiftKey);
+        Assert.True(received.ControlKey);
+        Assert.False(received.AltKey);
     }
 
     [Fact]

@@ -768,6 +768,14 @@ public sealed class PropertyStore
 | 控件 | 基类 | 关键属性 |
 |---|---|---|
 | `View` | `UIElement` | — |
+| `ScrollViewer` | `View` | `HorizontalOffset`, `VerticalOffset`, `ExtentWidth/Height`, `ViewportWidth/Height`, `ScrollableWidth/Height`, `ScrollTo()` |
+| `Popup` | `View` | `Anchor`, `Placement`, `Alignment`, `IsOpen`, `DismissOnPointerDownOutside`, `Open()`, `Close()` |
+| `Dialog` | `Popup` | `IsModal`, `CloseOnBackdropClick`, `CloseOnEscape`, `BackdropColor` |
+| `MenuBar` | `View` | `ActiveIndex`, `IsMenuModeActive`, `CloseMenus()` |
+| `Menu` | `Popup` | `OwnerItem`, `ActiveItem`, `Items`, `OpenFor()`, `OpenAt()`, `CloseMenuTree()` |
+| `ContextMenu` | `Menu` | `OpenAt(Point)` |
+| `MenuItem` | `UIElement` | `TextContent`, `ShortcutText`, `Icon`, `IsCheckable`, `IsChecked`, `GroupName`, `StaysOpenOnClick`, `Command`, `Submenu` |
+| `MenuSeparator` | `UIElement` | — |
 | `Text` | `UIElement` | `TextContent`, `Color`, `FontSize` |
 | `ListItem` | `UIElement` | `TextContent`, `Marker`, `Color`, `FontSize`（类似 HTML `li`） |
 | `Link` | `UIElement` | `TextContent`, `Href`, `Color`, `FontSize`, `Underline`（类似 HTML `a`；路由导航见 `Square.Router.Link`） |
@@ -779,6 +787,106 @@ public sealed class PropertyStore
 | `Canvas` | `UIElement` | `DrawContent` |
 | `Input` | `TextEditorBase` | `Value`, `Placeholder` |
 | `TextArea` | `TextEditorBase` | `Value`, `Placeholder` |
+
+### ScrollViewer
+
+`ScrollViewer` 复用通用 CSS overflow 管线，默认 `overflow-x: hidden`、`overflow-y: auto`。滚轮默认动作会滚动最近仍可继续滚动的祖先容器；偏移变化派发不冒泡的 `scroll` 事件。
+
+```csharp
+public class ScrollViewer : View
+{
+    public float HorizontalOffset { get; }
+    public float VerticalOffset { get; }
+    public float ExtentWidth { get; }
+    public float ExtentHeight { get; }
+    public float ViewportWidth { get; }
+    public float ViewportHeight { get; }
+    public float ScrollableWidth { get; }
+    public float ScrollableHeight { get; }
+
+    public void ScrollTo(float horizontalOffset, float verticalOffset);
+    public void ScrollToTop();
+    public void ScrollToBottom();
+}
+```
+
+### Popup
+
+`Popup` 的内容保留在 Element Tree 中参与样式和布局，但由 DisplayTree 在顶层 popup layer 重放，不占用其锚点附近的普通布局空间。当前支持相对锚点的上、下、左、右定位，起始、居中、结束对齐，命令式打开关闭和可配置的点击外部关闭。
+
+```csharp
+public enum PopupPlacement { Bottom, Top, Left, Right }
+public enum PopupAlignment { Start, Center, End }
+
+public class Popup : View
+{
+    public Element? Anchor { get; set; }
+    public PopupPlacement Placement { get; set; }
+    public PopupAlignment Alignment { get; set; }
+    public float HorizontalOffset { get; set; }
+    public float VerticalOffset { get; set; }
+    public bool DismissOnPointerDownOutside { get; set; }
+    public bool IsOpen { get; set; }
+
+    public Rect PopupBounds { get; }
+    public void Open();
+    public void Close();
+}
+```
+
+状态变化分别派发不冒泡的 `open` / `close` 事件。当前阶段不包含视口边缘自动翻转、悬停触发和弹出动画。
+
+Popup 后代的 `Geometry`、文本选择和光标矩形均使用内容局部坐标。`DisplayTree` 负责顶层绘制和命中，桌面宿主负责指针与 IME 矩形的窗口坐标转换；应用代码不应手动叠加 `PopupBounds`。
+
+### Dialog
+
+`Dialog` 基于 `Popup` 顶层渲染。默认以 `UIDocument.Body` 为视口居中，绘制 modal backdrop 并阻断下层命中。打开时保存当前焦点并聚焦对话框内第一个可交互控件；关闭时恢复原焦点。
+
+```csharp
+public class Dialog : Popup
+{
+    public bool IsModal { get; set; }                 // 默认 true
+    public bool CloseOnBackdropClick { get; set; }    // 默认 false
+    public bool CloseOnEscape { get; set; }           // 默认 true
+    public Color BackdropColor { get; set; }
+}
+```
+
+Escape 关闭由宿主选择最上层允许关闭的 popup；关闭遮罩的 pointerdown 使用关闭前的 popup 命中结果，因此不会点击穿透到背景控件。当前阶段不包含 Tab 焦点陷阱、拖拽和打开/关闭动画。
+
+### MenuBar / Menu / ContextMenu
+
+菜单使用显式嵌套结构。顶级 `MenuBar` 项的 `Menu` 向下展开，普通 `MenuItem` 的嵌套 `Menu` 向右展开；空间不足时自动翻转。
+
+```xml
+<MenuBar>
+  <MenuItem text="File">
+    <Menu>
+      <MenuItem text="New" shortcut="Ctrl+N" onClick={CreateDocument} />
+      <MenuSeparator />
+      <MenuItem text="Export">
+        <Menu>
+          <MenuItem text="PNG" onClick={ExportPng} />
+          <MenuItem text="SVG" onClick={ExportSvg} />
+        </Menu>
+      </MenuItem>
+    </Menu>
+  </MenuItem>
+</MenuBar>
+```
+
+MenuItem 角色由属性推导：
+
+| 属性 | 角色 |
+|---|---|
+| 无 `checkable` / `group` | 普通命令 |
+| `checkable="true"` | 独立 Check，可与其他项同时选中 |
+| `group="name"` | Radio，同一根菜单树内同 GroupName 互斥 |
+| 内含 `<Menu>` | 子菜单入口 |
+
+叶子项先派发可取消的 `click`；未取消时更新 Check/Radio 状态、派发 `change`、执行可选 `Command`，并默认关闭整条菜单链。`StaysOpenOnClick` 可保持菜单展开。`ShortcutText` 当前只负责显示，不注册全局快捷键。
+
+键盘支持 Up/Down/Home/End、Left/Right、Enter/Space、Escape 和 Tab。`ContextMenu.OpenAt(point)` 已可命令式使用；自动右键触发将在平台输入增加鼠标按键字段后接入。
 
 ### Text
 
@@ -931,6 +1039,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 public class Input : TextEditorBase { protected override bool IsMultiline => false; }
 public class TextArea : TextEditorBase { protected override bool IsMultiline => true; }
 ```
+
+光标与选择高亮共享同一视觉行盒，其高度为 CSS `line-height` 与字体自然行高的较大值，因此单行和多行编辑器中的光标、高亮及 IME 定位保持一致。
 
 ### 结构原语
 
@@ -1766,7 +1876,7 @@ private void OnClick(Event e) { }
 | `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
-| `Square.Controls.Controls` | `View`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
+| `Square.Controls.Controls` | `View`, `ScrollViewer`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
 | `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `Bitmap`, `RenderBackendRegistry` |
 | `Square.Graphics.Codecs` | `BitmapPngEncoder`, `BmpPngConverter`, `Crc32` |

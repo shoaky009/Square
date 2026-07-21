@@ -309,12 +309,12 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     {
         if (!EnsureFrame()) return;
         if (rect.IsEmpty || pen.Width <= 0) return;
-        var w = pen.Width;
-        // Draw as 4 filled rects (top, right, bottom, left)
-        FillRect(new Rect(rect.X, rect.Y, rect.Width, w), pen.Brush);
-        FillRect(new Rect(rect.Right - w, rect.Y, w, rect.Height), pen.Brush);
-        FillRect(new Rect(rect.X, rect.Bottom - w, rect.Width, w), pen.Brush);
-        FillRect(new Rect(rect.X, rect.Y, w, rect.Height), pen.Brush);
+        DrawPath(PathGeometry.Create()
+            .MoveTo(new Point(rect.X, rect.Y))
+            .LineTo(new Point(rect.Right, rect.Y))
+            .LineTo(new Point(rect.Right, rect.Bottom))
+            .LineTo(new Point(rect.X, rect.Bottom))
+            .Close(), pen);
     }
 
     public void FillPath(PathGeometry path, Brush brush)
@@ -356,7 +356,6 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     {
         if (!EnsureFrame()) return;
         if (pen.Width <= 0) return;
-        // Stroke as filled outline: expand path by pen width
         var contours = FlattenPath(path);
         if (contours.Count == 0) return;
 
@@ -370,7 +369,8 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
         foreach (var contour in contours)
         {
             if (contour.Count < 2) continue;
-            StrokeContour(contour, pen.Width / 2f, packed, u0, v0, u1, v1, _scratchVertices, _scratchIndices);
+            VulkanStrokeTessellator.Append(contour, pen.Width / 2f, GetLogicalFeatherWidth(), pen.StrokeStyle,
+                packed, u0, v0, u1, v1, TransformPoint, _scratchVertices, _scratchIndices);
         }
 
         if (_scratchVertices.Count > 0)
@@ -956,58 +956,6 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
         tess.Tessellate(LibTessDotNet.WindingRule.EvenOdd, LibTessDotNet.ElementType.Polygons, 3);
 
         return tess;
-    }
-
-    private void StrokeContour(List<Point> contour, float halfWidth, uint packed,
-        float u0, float v0, float u1, float v1, List<Vertex2D> vertices, List<uint> indices)
-    {
-        var transparent = packed & 0x00FFFFFFu;
-        var feather = GetLogicalFeatherWidth();
-        var solidHalfWidth = Math.Max(0, halfWidth - feather / 2f);
-        var transparentHalfWidth = halfWidth + feather / 2f;
-        for (var i = 0; i < contour.Count - 1; i++)
-        {
-            var p0 = contour[i];
-            var p1 = contour[i + 1];
-            var dx = p1.X - p0.X;
-            var dy = p1.Y - p0.Y;
-            var len = MathF.Sqrt(dx * dx + dy * dy);
-            if (len < 0.001f) continue;
-
-            var unitNormalX = -dy / len;
-            var unitNormalY = dx / len;
-            var solidNx = unitNormalX * solidHalfWidth;
-            var solidNy = unitNormalY * solidHalfWidth;
-            var transparentNx = unitNormalX * transparentHalfWidth;
-            var transparentNy = unitNormalY * transparentHalfWidth;
-
-            var baseIdx = (uint)vertices.Count;
-            AddStrokeVertex(vertices, p0, transparentNx, transparentNy, u0, v0, transparent);
-            AddStrokeVertex(vertices, p0, solidNx, solidNy, u0, v0, packed);
-            AddStrokeVertex(vertices, p0, -solidNx, -solidNy, u0, v0, packed);
-            AddStrokeVertex(vertices, p0, -transparentNx, -transparentNy, u0, v0, transparent);
-            AddStrokeVertex(vertices, p1, transparentNx, transparentNy, u1, v1, transparent);
-            AddStrokeVertex(vertices, p1, solidNx, solidNy, u1, v1, packed);
-            AddStrokeVertex(vertices, p1, -solidNx, -solidNy, u1, v1, packed);
-            AddStrokeVertex(vertices, p1, -transparentNx, -transparentNy, u1, v1, transparent);
-
-            AddQuadIndices(indices, baseIdx, baseIdx + 4, baseIdx + 5, baseIdx + 1);
-            AddQuadIndices(indices, baseIdx + 1, baseIdx + 5, baseIdx + 6, baseIdx + 2);
-            AddQuadIndices(indices, baseIdx + 2, baseIdx + 6, baseIdx + 7, baseIdx + 3);
-        }
-    }
-
-    private void AddStrokeVertex(List<Vertex2D> vertices, Point point, float offsetX, float offsetY,
-        float u, float v, uint color)
-    {
-        var transformed = TransformPoint(new Point(point.X + offsetX, point.Y + offsetY));
-        vertices.Add(new Vertex2D(transformed.X, transformed.Y, u, v, color));
-    }
-
-    private static void AddQuadIndices(List<uint> indices, uint a, uint b, uint c, uint d)
-    {
-        indices.Add(a); indices.Add(b); indices.Add(c);
-        indices.Add(a); indices.Add(c); indices.Add(d);
     }
 
     // ─── Glyph cache ──────────────────────────────────────────────────────

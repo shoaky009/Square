@@ -101,6 +101,8 @@ Backend (Software / Vulkan / ...)
 - 仅重绘脏区范围内的 DrawCommand
 - `VisualBounds` 使用 DrawCommand 的实际视觉范围，而不是只使用元素 `Geometry`
 - Path、clip、transform、popup 等都会参与脏区计算，避免局部重绘漏绘或过度扩大
+- Popup 内容使用 popup 局部坐标生成 DrawCommand；任一后代需要重绘时，脏区会提升到整个 Popup 视觉范围，包含 `box-shadow`
+- 宿主将窗口指针坐标映射到 Popup 内容坐标，并将文本光标矩形映射回窗口坐标后交给平台 IME
 
 ### 6.2 渲染模式
 
@@ -228,6 +230,17 @@ Vulkan 配置均在创建 RenderContext 前通过环境变量读取：
 
 GPU readback 默认关闭，因为它需要额外的 host-visible buffer 和 GPU 到 CPU 拷贝。关闭时截图 API自动回退为 Software RenderContext 重放；开启时截图反映真实 Vulkan framebuffer。
 
+Vulkan 描边回归场景可通过主示例的确定性页面运行。该页面覆盖锐角 miter、bevel/round join、三种 cap、跨折点 dash、闭合 dash、弧线和变换后的亚像素细线；`--verify-stroke-regression` 会验证关键颜色、dash 连通分量和抗锯齿混合像素：
+
+```powershell
+$env:SQUARE_VULKAN_READBACK = "1"
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- \
+  --stroke-regression \
+  --verify-stroke-regression \
+  --backend Vulkan \
+  --screenshot artifacts/vulkan-stroke-regression.png
+```
+
 Shader 源码位于 `src/Square.Backends.Vulkan/Shaders/`，修改后运行以下命令重新生成内嵌 SPIR-V：
 
 ```bash
@@ -245,7 +258,7 @@ dotnet run --project tools/ShaderGen
 - 旋转、斜切或额外缩放的文本保留浮点几何和过滤路径
 - Vulkan 曲线按变换后的物理半径自适应细分，避免大圆和圆角使用固定段数产生折角
 - Vulkan 填充/描边椭圆和 path stroke 在边缘生成约 1 个物理像素的 alpha feather，细斜线不只依赖有限的 MSAA coverage level
-- 当前一般 path stroke 仍按独立线段展开，尚未完整实现 `LineCap`、`LineJoin` 和 `MiterLimit`；复杂转角可能出现 feather 重叠或接缝
+- Vulkan path stroke 已支持 `Butt` / `Round` / `Square` LineCap、`Miter` / `Round` / `Bevel` LineJoin、`MiterLimit` 回退，以及带 `DashOffset` 的任意 Path dash；dash 可跨折点保留 join，闭合路径会合并跨接缝的首尾 dash，并有真实 GPU readback 描边回归场景验证复杂路径和 alpha feather
 
 ---
 

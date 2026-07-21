@@ -1,6 +1,37 @@
 <template>
   <View class="app">
+    <MenuBar class="main-menu-bar">
+      <MenuItem text="File">
+        <Menu class="main-menu">
+          <MenuItem text="New" shortcut="Ctrl+N" onClick={OnNew} />
+          <MenuItem text="Open" shortcut="Ctrl+O" onClick={OnOpen} />
+          <MenuSeparator />
+          <MenuItem text="Export">
+            <Menu class="main-menu">
+              <MenuItem text="PNG" onClick={OnExportPng} />
+              <MenuItem text="SVG" onClick={OnExportSvg} />
+              <MenuItem text="Advanced">
+                <Menu class="main-menu">
+                  <MenuItem text="PDF" onClick={OnExportPdf} />
+                </Menu>
+              </MenuItem>
+            </Menu>
+          </MenuItem>
+        </Menu>
+      </MenuItem>
+      <MenuItem text="View">
+        <Menu class="main-menu">
+          <MenuItem text="Show grid" checkable="true" stays-open-on-click="true" onChange={OnGridChanged} />
+          <MenuItem text="Show guides" checkable="true" stays-open-on-click="true" onChange={OnGuidesChanged} />
+          <MenuSeparator />
+          <MenuItem text="Light theme" group="theme" onChange={OnThemeChanged} />
+          <MenuItem text="Dark theme" group="theme" checked="true" onChange={OnThemeChanged} />
+          <MenuItem text="System theme" group="theme" onChange={OnThemeChanged} />
+        </Menu>
+      </MenuItem>
+    </MenuBar>
     <Text class="app-title" text="Square Framework Samples" />
+    <Text ref={MenuStatus} class="menu-status" text="Choose a menu command" />
     <Tabs>
       <Button slot="tabs" class="tab-button">Text</Button>
       <Button slot="tabs" class="tab-button">Controls</Button>
@@ -8,16 +39,39 @@
       <Button slot="tabs" class="tab-button">Router</Button>
       <Button slot="tabs" class="tab-button">Signals</Button>
       <Button slot="tabs" class="tab-button">Overflow</Button>
+      <Button slot="tabs" class="tab-button">Overlays</Button>
       <TextSamplesPage />
       <ControlsSamplesPage />
       <MediaSamplesPage />
       <RouterSamplesPage />
       <SignalsSamplesPage />
       <OverflowSamplesPage />
+      <OverlaySamplesPage />
     </Tabs>
   </View>
 </template>
+<script lang="csharp">
+  private void OnNew() => SetMenuStatus("New document");
+  private void OnOpen() => SetMenuStatus("Open document");
+  private void OnExportPng() => SetMenuStatus("Export PNG");
+  private void OnExportSvg() => SetMenuStatus("Export SVG");
+  private void OnExportPdf() => SetMenuStatus("Export PDF");
+
+  private void OnGridChanged(Event e) =>
+    SetMenuStatus("Grid: " + (((MenuItem)e.Target!).IsChecked ? "on" : "off"));
+
+  private void OnGuidesChanged(Event e) =>
+    SetMenuStatus("Guides: " + (((MenuItem)e.Target!).IsChecked ? "on" : "off"));
+
+  private void OnThemeChanged(Event e) =>
+    SetMenuStatus("Theme: " + ((MenuItem)e.Target!).TextContent);
+
+  private void SetMenuStatus(string text) => MenuStatus.TextContent = text;
+</script>
 <style>
   .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .main-menu-bar { display: flex; flex-direction: row; width: 100%; height: 32px; background-color: #dbeafe; }
+  .main-menu { width: 240px; box-shadow: 0 0px 14px 4px rgba(255, 0, 0, 0.85); }
   .app-title { color: #202124; font-size: 22px; }
+  .menu-status { color: #475467; font-size: 13px; }
 </style>

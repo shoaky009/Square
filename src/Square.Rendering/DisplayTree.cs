@@ -19,7 +19,7 @@ public sealed class DisplayTree
         _root.Element = element;
         _root.Bounds = element.Geometry;
         _root.RebuildCommands();
-        _root.PopupBounds = element is IPopupElement { IsPopupOpen: true } popup ? popup.PopupBounds : Rect.Empty;
+        _root.PopupBounds = GetPopupVisualBounds(element);
         _root.IsDirty = true;
         _root.Children.Clear();
         BuildChildren(_root, element);
@@ -40,7 +40,7 @@ public sealed class DisplayTree
             if (!child.IsVisible) continue;
             var node = new DisplayNode { Element = child, Bounds = child.Geometry, IsDirty = true };
             node.RebuildCommands();
-            node.PopupBounds = child is IPopupElement { IsPopupOpen: true } popup ? popup.PopupBounds : Rect.Empty;
+            node.PopupBounds = GetPopupVisualBounds(child);
             node.IsDirty = true;
             parent.Children.Add(node);
             BuildChildren(node, child);
@@ -74,9 +74,7 @@ public sealed class DisplayTree
                 _dirtyRects.Add(PadAndSnap(Union(oldVisualBounds, node.VisualBounds)));
             }
 
-            var popupBounds = node.Element is IPopupElement { IsPopupOpen: true } popup
-                ? popup.PopupBounds
-                : Rect.Empty;
+            var popupBounds = GetPopupVisualBounds(node.Element);
             if (oldPopupBounds != popupBounds)
             {
                 _dirtyRects.Add(PadAndSnap(Union(oldPopupBounds, popupBounds)));
@@ -112,19 +110,26 @@ public sealed class DisplayTree
         return dirty;
     }
 
-    private static void CollectDirtyRects(DisplayNode node, List<Rect> dest)
+    private static bool CollectDirtyRects(DisplayNode node, List<Rect> dest)
     {
-        if (node.IsDirty || (node.Element != null && node.Element.NeedsPaint))
+        var subtreeDirty = node.IsDirty || (node.Element != null && node.Element.NeedsPaint);
+        if (subtreeDirty)
         {
             var g = node.VisualBounds.IsEmpty ? node.Element?.Geometry ?? node.Bounds : node.VisualBounds;
             // Geometry 尚未 arrange 时用 Bounds；仍空则跳过（父/兄弟可能有有效区）
             if (!g.IsEmpty)
                 dest.Add(PadAndSnap(g));
-            if (node.Element is IPopupElement { IsPopupOpen: true } popup && !popup.PopupBounds.IsEmpty)
-                dest.Add(PadAndSnap(popup.PopupBounds));
+            var popupBounds = GetPopupVisualBounds(node.Element);
+            if (!popupBounds.IsEmpty) dest.Add(PadAndSnap(popupBounds));
         }
         foreach (var child in node.Children)
-            CollectDirtyRects(child, dest);
+            subtreeDirty |= CollectDirtyRects(child, dest);
+        if (subtreeDirty && node.Element is IPopupElement { IsPopupOpen: true })
+        {
+            var popupBounds = GetPopupVisualBounds(node.Element);
+            if (!popupBounds.IsEmpty) dest.Add(PadAndSnap(popupBounds));
+        }
+        return subtreeDirty;
     }
 
     /// <summary>外扩 1 逻辑像素并 snap 到整数像素，减少抗锯齿残影。</summary>
@@ -220,10 +225,48 @@ public sealed class DisplayTree
     {
         for (var i = _popups.Count - 1; i >= 0; i--)
         {
+            if (!_popups[i].IsPopupOpen) continue;
             var hit = _popups[i].HitTestPopup(point);
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    public bool DismissPopupsOutside(Point point)
+    {
+        var changed = false;
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            var popup = _popups[i];
+            if (!popup.IsPopupOpen || !popup.DismissOnPointerDownOutside || popup.ContainsPopupInteraction(point))
+                continue;
+            popup.ClosePopup();
+            changed = true;
+        }
+        return changed;
+    }
+
+    public bool DismissTopmostPopupOnEscape()
+    {
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            var popup = _popups[i];
+            if (!popup.IsPopupOpen || !popup.CloseOnEscape) continue;
+            popup.ClosePopup();
+            return true;
+        }
+        return false;
+    }
+
+    public bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt)
+    {
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            var popup = _popups[i];
+            if (!popup.IsPopupOpen) continue;
+            if (popup.HandlePopupKey(keyCode, shift, control, alt)) return true;
+        }
+        return false;
     }
 
     public List<TextFragment> CollectTextFragments(Element root)
@@ -330,8 +373,18 @@ public sealed class DisplayTree
         foreach (var popup in _popups)
         {
             if (!popup.IsPopupOpen) continue;
-            if (dirtyClip is { } clip && !popup.PopupBounds.IntersectsWith(clip)) continue;
+            var visualBounds = popup is Element element ? GetPopupVisualBounds(element) : popup.PopupBounds;
+            if (dirtyClip is { } clip && !visualBounds.IntersectsWith(clip)) continue;
             popup.PaintPopup(ctx);
         }
+    }
+
+    private static Rect GetPopupVisualBounds(Element? element)
+    {
+        if (element is not IPopupElement { IsPopupOpen: true } popup) return Rect.Empty;
+        var bounds = popup.PopupBounds;
+        return BoxShadow.TryParse(element.Style.GetPropertyValue("box-shadow"), out var shadow)
+            ? BoxShadowRendering.GetVisualBounds(bounds, shadow)
+            : bounds;
     }
 }

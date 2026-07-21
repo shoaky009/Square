@@ -158,8 +158,12 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         if (on) State |= flag;
         else State &= ~flag;
         if (State == previous) return;
+        OnStateChanged(flag, on);
         Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
+
+    /// <summary>交互/伪类状态变化扩展点。</summary>
+    protected virtual void OnStateChanged(ElementState flag, bool on) { }
 
     /// <summary>是否包含指定状态标志（Square 扩展）。</summary>
     public bool HasState(ElementState flag) => State.Has(flag);
@@ -417,6 +421,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         if (Math.Abs(_scrollOffset.X - x) < 0.01f && Math.Abs(_scrollOffset.Y - y) < 0.01f) return;
         _scrollOffset = new Point(x, y);
         InvalidatePaint();
+        DispatchEvent(StandardEvents.CreateScroll());
     }
 
     private (float maxX, float maxY) GetMaxScrollOffset() =>

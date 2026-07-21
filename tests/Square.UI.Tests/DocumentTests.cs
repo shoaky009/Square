@@ -49,6 +49,55 @@ public class DocumentTests
     }
 
     [Fact]
+    public void CreateElementRegistersScrollViewer()
+    {
+        var doc = new UIDocument();
+
+        var scroller = doc.CreateElement("ScrollViewer");
+
+        Assert.IsType<ScrollViewer>(scroller);
+        Assert.Same(doc, scroller.OwnerDocument);
+    }
+
+    [Fact]
+    public void CreateElementRegistersPopup()
+    {
+        var doc = new UIDocument();
+
+        var popup = doc.CreateElement("Popup");
+
+        Assert.IsType<Popup>(popup);
+        Assert.Same(doc, popup.OwnerDocument);
+    }
+
+    [Fact]
+    public void CreateElementRegistersDialog()
+    {
+        var doc = new UIDocument();
+
+        var dialog = doc.CreateElement("Dialog");
+
+        Assert.IsType<Dialog>(dialog);
+        Assert.Same(doc, dialog.OwnerDocument);
+    }
+
+    [Theory]
+    [InlineData("MenuBar", typeof(MenuBar))]
+    [InlineData("Menu", typeof(Menu))]
+    [InlineData("ContextMenu", typeof(ContextMenu))]
+    [InlineData("MenuItem", typeof(MenuItem))]
+    [InlineData("MenuSeparator", typeof(MenuSeparator))]
+    public void CreateElementRegistersMenuControls(string tag, Type expectedType)
+    {
+        var doc = new UIDocument();
+
+        var element = doc.CreateElement(tag);
+
+        Assert.Equal(expectedType, element.GetType());
+        Assert.Same(doc, element.OwnerDocument);
+    }
+
+    [Fact]
     public void CreateElementUnknownTagThrows()
     {
         var doc = new UIDocument();

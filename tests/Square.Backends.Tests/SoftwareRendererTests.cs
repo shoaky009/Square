@@ -366,6 +366,143 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void PopupRendersChildrenOnlyInTopLevelAnchoredPosition()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 120, 100) };
+        var anchor = new Button { Geometry = new Rect(50, 10, 30, 20) };
+        var popup = new Popup
+        {
+            Geometry = new Rect(0, 0, 40, 30),
+            Anchor = anchor,
+            VerticalOffset = 2
+        };
+        popup.Style.Set("background", "#ff0000");
+        var child = new View { Geometry = new Rect(5, 5, 10, 10) };
+        child.Style.Set("background", "#0000ff");
+        popup.Children.Add(child);
+        root.Children.Add(anchor);
+        root.Children.Add(popup);
+        popup.Open();
+        var context = CreateContext(120, 100);
+        context.Clear(Color.Transparent);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, bitmap.GetPixel(2, 2)[3]);
+        Assert.Equal(255, bitmap.GetPixel(52, 34)[2]);
+        Assert.Equal(255, bitmap.GetPixel(56, 38)[0]);
+    }
+
+    [Fact]
+    public void ModalDialogRendersBackdropAndCenteredContent()
+    {
+        var document = new UIDocument();
+        document.Body.Geometry = new Rect(0, 0, 120, 100);
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 40, 30) };
+        dialog.Style.Set("background", "#ff0000");
+        document.Body.Children.Add(dialog);
+        dialog.Open();
+        var context = CreateContext(120, 100);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(document.Body);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        var backdrop = bitmap.GetPixel(5, 5);
+        Assert.True(backdrop[0] < 200 && backdrop[1] < 200 && backdrop[2] < 200);
+        Assert.Equal(255, bitmap.GetPixel(60, 50)[2]);
+    }
+
+    [Fact]
+    public void MenuPopupRendersChecksSeparatorsAndSubmenuArrow()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 320, 220) };
+        var menu = new Menu { Geometry = new Rect(0, 0, 220, 110) };
+        var checkedItem = new MenuItem
+        {
+            TextContent = "Grid",
+            IsCheckable = true,
+            IsChecked = true,
+            Geometry = new Rect(0, 0, 220, 32)
+        };
+        var separator = new MenuSeparator { Geometry = new Rect(0, 32, 220, 9) };
+        var submenuOwner = new MenuItem { TextContent = "Export", Geometry = new Rect(0, 41, 220, 32) };
+        submenuOwner.Children.Add(new Menu { Geometry = new Rect(0, 0, 180, 60) });
+        menu.Children.Add(checkedItem);
+        menu.Children.Add(separator);
+        menu.Children.Add(submenuOwner);
+        root.Children.Add(menu);
+        menu.OpenAt(new Point(20, 20));
+        var context = CreateContext(320, 220);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.True(CountColorNear(bitmap, Color.FromRgb(32, 36, 40), 20) > 20);
+        Assert.True(CountColorNear(bitmap, Color.FromRgb(218, 221, 225), 12) > 50);
+        Assert.Equal(255, bitmap.GetPixel(30, 26)[3]);
+    }
+
+    [Fact]
+    public void LaidOutMenuPopupRendersEveryRow()
+    {
+        var root = new View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        var bar = new MenuBar();
+        var owner = new MenuItem { TextContent = "File" };
+        var menu = new Menu();
+        menu.Style.Set("background-color", "#123456");
+        menu.Children.Add(new MenuItem { TextContent = "New" });
+        menu.Children.Add(new MenuItem { TextContent = "Open" });
+        menu.Children.Add(new MenuSeparator());
+        menu.Children.Add(new MenuItem { TextContent = "Export" });
+        owner.Children.Add(menu);
+        bar.Children.Add(owner);
+        root.Children.Add(bar);
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(320, 220));
+        layout.Arrange(root, new Rect(0, 0, 320, 220));
+        menu.OpenFor(owner);
+        var context = CreateContext(320, 220);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        Assert.Equal(105, menu.PopupBounds.Height);
+        var pixel = context.GetBitmap().GetPixel(230, 90);
+        Assert.Equal(0x56, pixel[0]);
+        Assert.Equal(0x34, pixel[1]);
+        Assert.Equal(0x12, pixel[2]);
+    }
+
+    [Fact]
+    public void MenuBarPaintUsesCustomBackgroundAcrossItsGeometry()
+    {
+        var bar = new MenuBar { Geometry = new Rect(0, 0, 200, 32) };
+        bar.Style.Set("background-color", "#123456");
+        var context = CreateContext(220, 50);
+        context.Clear(Color.White);
+
+        bar.Paint(context);
+
+        var pixel = context.GetBitmap().GetPixel(190, 16);
+        Assert.Equal(0x56, pixel[0]);
+        Assert.Equal(0x34, pixel[1]);
+        Assert.Equal(0x12, pixel[2]);
+    }
+
+    [Fact]
     public void RetainedRendererDrawsFocusedTextCarets()
     {
         var controls = new UIElement[] { new Input(), new TextArea() };
@@ -428,6 +565,46 @@ public class SoftwareRendererTests
         expectedTree.Render(expectedContext);
 
         AssertRegionEqual(expectedContext.GetBitmap(), context.GetBitmap(), union);
+    }
+
+    [Fact]
+    public void DirtyRenderRepaintsAllInputBordersAfterDialogInputLosesFocus()
+    {
+        var document = new UIDocument();
+        document.Ui.Geometry = new Rect(0, 0, 500, 300);
+        document.Body.Geometry = document.Ui.Geometry;
+        var dialog = new Dialog { Geometry = new Rect(0, 0, 300, 160) };
+        var input = new Input { Geometry = new Rect(20, 50, 220, 36), Value = "Dialog input" };
+        dialog.Children.Add(input);
+        document.Body.Children.Add(dialog);
+        dialog.Open();
+        input.Focus();
+        var context = CreateContext(500, 300);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(document.Ui);
+        tree.Render(context);
+
+        input.Unfocus();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = dirty.Aggregate(DisplayTree.Union);
+        context.Clear(Color.White, union);
+        context.PushClip(union);
+        tree.Render(context, union);
+        context.PopClip();
+
+        var popupX = (document.Ui.Geometry.Width - dialog.Geometry.Width) / 2f;
+        var popupY = (document.Ui.Geometry.Height - dialog.Geometry.Height) / 2f + dialog.VerticalOffset;
+        var left = (int)(popupX + input.Geometry.X);
+        var top = (int)(popupY + input.Geometry.Y);
+        var right = (int)(popupX + input.Geometry.Right) - 1;
+        var bottom = (int)(popupY + input.Geometry.Bottom) - 1;
+        var bitmap = context.GetBitmap();
+        AssertBorderPixel(bitmap, left + 20, top);
+        AssertBorderPixel(bitmap, left + 20, bottom);
+        AssertBorderPixel(bitmap, left, top + 10);
+        AssertBorderPixel(bitmap, right, top + 10);
     }
 
     [Fact]
@@ -909,6 +1086,13 @@ public class SoftwareRendererTests
         Assert.Equal(expected.Pixels, actual.Pixels);
     }
 
+    private static void AssertBorderPixel(Bitmap bitmap, int x, int y)
+    {
+        var pixel = bitmap.GetPixel(x, y);
+        Assert.True(pixel[0] < 220 && pixel[1] < 220 && pixel[2] < 220,
+            $"Expected border at ({x},{y}), got BGR=({pixel[0]},{pixel[1]},{pixel[2]})");
+    }
+
     private static Rect UnionAll(IReadOnlyList<Rect> rects)
     {
         Assert.NotEmpty(rects);
@@ -1200,6 +1384,45 @@ public class SoftwareRendererTests
         Assert.Equal(255, AlphaAt(bitmap, 16, 16));
     }
 
+    [Fact]
+    public void DisplayTreeRendersStyledBoxShadowOutsideElementGeometry()
+    {
+        var view = new View { Geometry = new Rect(20, 20, 30, 20) };
+        view.Style.Set("background", "#ffffff");
+        view.Style.Set("border-radius", "5px");
+        view.Style.Set("box-shadow", "0 4px 8px rgba(0,0,0,0.5)");
+        var context = CreateContext(80, 70);
+        context.Clear(Color.Transparent);
+        var tree = new DisplayTree();
+        tree.BuildFrom(view);
+
+        tree.Render(context);
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, AlphaAt(bitmap, 35, 30));
+        Assert.InRange(AlphaAt(bitmap, 35, 47), 1, 254);
+        Assert.Equal(0, AlphaAt(bitmap, 5, 5));
+    }
+
+    [Fact]
+    public void DefaultMenuShadowIsVisibleOnWhiteBackground()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 160, 120) };
+        var menu = new Menu { Geometry = new Rect(0, 0, 80, 40) };
+        root.Children.Add(menu);
+        menu.OpenAt(new Point(30, 30));
+        var context = CreateContext(160, 120);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        tree.Render(context);
+
+        var pixel = context.GetBitmap().GetPixel(70, 76);
+        Assert.True(pixel[0] < 180 && pixel[1] < 180 && pixel[2] < 180,
+            $"Expected visible menu shadow, got BGR=({pixel[0]},{pixel[1]},{pixel[2]})");
+    }
+
     private static IEnumerable<byte> AlphaValues(Bitmap bitmap)
     {
         for (var i = 3; i < bitmap.Pixels.Length; i += 4)
@@ -1207,6 +1430,20 @@ public class SoftwareRendererTests
     }
 
     private static byte AlphaAt(Bitmap bitmap, int x, int y) => bitmap.Pixels[y * bitmap.Stride + x * 4 + 3];
+
+    private static int CountColorNear(Bitmap bitmap, Color color, int tolerance)
+    {
+        var count = 0;
+        for (var i = 0; i < bitmap.Pixels.Length; i += 4)
+        {
+            if (Math.Abs(bitmap.Pixels[i] - color.B) <= tolerance &&
+                Math.Abs(bitmap.Pixels[i + 1] - color.G) <= tolerance &&
+                Math.Abs(bitmap.Pixels[i + 2] - color.R) <= tolerance &&
+                bitmap.Pixels[i + 3] > 0)
+                count++;
+        }
+        return count;
+    }
 
     [Fact]
     public void DrawText()
