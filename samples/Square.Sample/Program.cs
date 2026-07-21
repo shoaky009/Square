@@ -1,8 +1,14 @@
+using System.Diagnostics;
+#if !SQUARE_SAMPLE_AOT
 using Square.Backends.Vulkan;
+#endif
+using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
+#if !SQUARE_SAMPLE_AOT
 using Square.Tooling;
+#endif
 using Square.UI;
 
 namespace Square.Sample;
@@ -13,17 +19,32 @@ public static class Program
     {
         System.Console.WriteLine("Square Framework - M1 Window Demo");
 
+        var circleDiffDirectory = GetOption(args, "--circle-regression-diff");
+        if (!string.IsNullOrWhiteSpace(circleDiffDirectory))
+        {
+#if SQUARE_SAMPLE_AOT
+            throw new NotSupportedException("--circle-regression-diff is unavailable in Square.Sample AOT builds because it compares against the Vulkan backend.");
+#else
+            RunCircleRegressionDiff(circleDiffDirectory);
+            return;
+#endif
+        }
+
         var document = new UIDocument
         {
             Title = "Square Framework"
         };
-        document.Body.Children.Add(HasOption(args, "--stroke-regression")
-            ? new VulkanStrokeRegressionPage()
-            : new Main());
+        document.Body.Children.Add(CreatePage(args));
 
         var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
         if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+        {
+#if SQUARE_SAMPLE_AOT
+            throw new NotSupportedException("The Vulkan backend is unavailable in Square.Sample AOT builds.");
+#else
             VulkanRegistration.Register();
+#endif
+        }
 
         var app = new DesktopApplication(document, new PlatformHostCreateInfo
         {
@@ -37,11 +58,16 @@ public static class Program
         SampleSignals.Initialize(app.Dispatcher);
         var screenshot = GetOption(args, "--screenshot");
         if (!string.IsNullOrWhiteSpace(screenshot))
-            ScheduleScreenshot(app, screenshot, HasOption(args, "--verify-stroke-regression"));
+            ScheduleScreenshot(app, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
 
+#if !SQUARE_SAMPLE_AOT
         ToolingServer? tooling = null;
         if (HasOption(args, "--tooling"))
             tooling = StartTooling(app, args);
+#else
+        if (HasOption(args, "--tooling"))
+            throw new NotSupportedException("--tooling is unavailable in Square.Sample AOT builds.");
+#endif
 
         try
         {
@@ -49,12 +75,15 @@ public static class Program
         }
         finally
         {
+#if !SQUARE_SAMPLE_AOT
             tooling?.Dispose();
+#endif
         }
 
         System.Console.WriteLine("Window closed. Demo complete.");
     }
 
+#if !SQUARE_SAMPLE_AOT
     private static ToolingServer StartTooling(DesktopApplication app, string[] args)
     {
         var port = int.TryParse(GetOption(args, "--tooling-port"), out var parsedPort) ? parsedPort : 0;
@@ -70,8 +99,113 @@ public static class Program
         System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
         return tooling;
     }
+#endif
 
-    private static void ScheduleScreenshot(DesktopApplication app, string path, bool verifyStrokeRegression)
+#if !SQUARE_SAMPLE_AOT
+    private static void RunCircleRegressionDiff(string outputDirectory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var softwarePng = Path.Combine(outputDirectory, "software.png");
+        var vulkanPng = Path.Combine(outputDirectory, "vulkan.png");
+        var softwareBgra = Path.Combine(outputDirectory, "software.bgra");
+        var vulkanBgra = Path.Combine(outputDirectory, "vulkan.bgra");
+
+        RunCircleRegressionCapture("Software", softwarePng, softwareBgra);
+        RunCircleRegressionCapture("Vulkan", vulkanPng, vulkanBgra);
+
+        using var software = LoadBitmapDump(softwareBgra);
+        using var vulkan = LoadBitmapDump(vulkanBgra);
+        var result = CircleRegressionDiff.Save(software, vulkan, outputDirectory);
+
+        System.Console.WriteLine($"Circle regression diff written to {outputDirectory}");
+        System.Console.WriteLine($"Software: {result.SoftwarePath}");
+        System.Console.WriteLine($"Vulkan:   {result.VulkanPath}");
+        System.Console.WriteLine($"Diff:     {result.DiffPath}");
+        System.Console.WriteLine($"Report:   {result.ReportPath}");
+        foreach (var (name, stats) in result.Regions)
+        {
+            System.Console.WriteLine(
+                $"{name}: differingPixels={stats.DifferingPixels}, totalDelta={stats.TotalDelta}, maxDelta={stats.MaxDelta}, " +
+                $"softwareHeavier={stats.SoftwareHeavier}, vulkanHeavier={stats.VulkanHeavier}, shapeOnly={stats.ShapeOnly}");
+        }
+    }
+
+    private static void RunCircleRegressionCapture(string backend, string pngPath, string bgraPath)
+    {
+        var processPath = Environment.ProcessPath ?? "dotnet";
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Square.Sample.dll");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = processPath,
+            UseShellExecute = false
+        };
+        if (Path.GetFileNameWithoutExtension(startInfo.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            startInfo.ArgumentList.Add(assemblyPath);
+        startInfo.ArgumentList.Add("--backend");
+        startInfo.ArgumentList.Add(backend);
+        startInfo.ArgumentList.Add("--circle-regression");
+        startInfo.ArgumentList.Add("--verify-circle-regression");
+        startInfo.ArgumentList.Add("--screenshot");
+        startInfo.ArgumentList.Add(pngPath);
+        startInfo.ArgumentList.Add("--circle-regression-bgra");
+        startInfo.ArgumentList.Add(bgraPath);
+        if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+            startInfo.Environment["SQUARE_VULKAN_READBACK"] = "1";
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {backend} capture process.");
+        if (!process.WaitForExit(30000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException($"{backend} circle regression capture timed out.");
+        }
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"{backend} circle regression capture exited with code {process.ExitCode}.");
+    }
+
+    private static void SaveBitmapDump(Bitmap bitmap, string path)
+    {
+        using var stream = File.Create(path);
+        using var writer = new BinaryWriter(stream);
+        writer.Write("SQBGRA1");
+        writer.Write(bitmap.Width);
+        writer.Write(bitmap.Height);
+        writer.Write(bitmap.Pixels);
+    }
+
+    private static Bitmap LoadBitmapDump(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var reader = new BinaryReader(stream);
+        if (reader.ReadString() != "SQBGRA1")
+            throw new InvalidOperationException($"Invalid bitmap dump: {path}");
+        var width = reader.ReadInt32();
+        var height = reader.ReadInt32();
+        var bitmap = new Bitmap(width, height);
+        var bytesRead = reader.Read(bitmap.Pixels, 0, bitmap.Pixels.Length);
+        if (bytesRead != bitmap.Pixels.Length)
+        {
+            bitmap.Dispose();
+            throw new InvalidOperationException($"Bitmap dump is truncated: {path}");
+        }
+        return bitmap;
+    }
+#endif
+
+    private static UIElement CreatePage(string[] args)
+    {
+        if (HasOption(args, "--circle-regression")) return new CircleRegressionPage();
+        if (HasOption(args, "--stroke-regression")) return new VulkanStrokeRegressionPage();
+        return new Main();
+    }
+
+    private static Action<Bitmap>? GetScreenshotValidator(string[] args)
+    {
+        if (HasOption(args, "--verify-circle-regression")) return CircleRegressionPage.ValidateScreenshot;
+        if (HasOption(args, "--verify-stroke-regression")) return VulkanStrokeRegressionPage.ValidateScreenshot;
+        return null;
+    }
+
+    private static void ScheduleScreenshot(DesktopApplication app, string path, Action<Bitmap>? validateScreenshot, string? bitmapDumpPath = null)
     {
         _ = Task.Run(async () =>
         {
@@ -79,9 +213,16 @@ public static class Program
             try
             {
                 using var bitmap = await app.CaptureRendererBitmapAsync();
-                if (verifyStrokeRegression)
-                    VulkanStrokeRegressionPage.ValidateScreenshot(bitmap);
+                validateScreenshot?.Invoke(bitmap);
                 BitmapPngEncoder.Save(bitmap, path);
+                if (!string.IsNullOrWhiteSpace(bitmapDumpPath))
+                {
+#if SQUARE_SAMPLE_AOT
+                    throw new NotSupportedException("--circle-regression-bgra is unavailable in Square.Sample AOT builds.");
+#else
+                    SaveBitmapDump(bitmap, bitmapDumpPath);
+#endif
+                }
                 System.Console.WriteLine($"Screenshot saved to {path}");
             }
             catch (Exception exception)

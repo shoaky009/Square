@@ -198,7 +198,10 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 FillRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, sc.Color);
                 break;
             case EllipseGeometry eg:
-                FillEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, sc.Color);
+                if (IsDpiOnlyTransform())
+                    FillEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, sc.Color);
+                else
+                    RasterizeTransformedEllipse(eg.Center, eg.RadiusX, eg.RadiusY, 0, sc.Color);
                 break;
         }
     }
@@ -214,7 +217,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 DrawRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, pen);
                 break;
             case EllipseGeometry eg:
-                DrawEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, pen);
+                if (IsDpiOnlyTransform())
+                    DrawEllipse(TransformPoint(eg.Center), eg.RadiusX * _dpiScale, eg.RadiusY * _dpiScale, pen);
+                else
+                    RasterizeTransformedEllipse(
+                        eg.Center, eg.RadiusX, eg.RadiusY, pen.Width, (pen.Brush as SolidColorBrush)?.Color ?? Color.Black);
                 break;
         }
     }
@@ -646,6 +653,17 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         return new Rect(left, top, right - left, bottom - top);
     }
 
+    private bool IsDpiOnlyTransform()
+    {
+        const float tolerance = 0.0001f;
+        return MathF.Abs(_currentTransform.M11 - _dpiScale) < tolerance &&
+               MathF.Abs(_currentTransform.M22 - _dpiScale) < tolerance &&
+               MathF.Abs(_currentTransform.M12) < tolerance &&
+               MathF.Abs(_currentTransform.M21) < tolerance &&
+               MathF.Abs(_currentTransform.M31) < tolerance &&
+               MathF.Abs(_currentTransform.M32) < tolerance;
+    }
+
     // ── 圆角矩形 ──
 
     private void FillRoundedRect(Rect rect, float rx, float ry, Color color)
@@ -937,84 +955,151 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         var outerRy = ry + halfStroke;
         var innerRx = Math.Max(0, rx - halfStroke);
         var innerRy = Math.Max(0, ry - halfStroke);
+        var x0 = Math.Max(0, (int)Math.Floor(center.X - outerRx - 1));
+        var x1 = Math.Min(_bitmapWidth - 1, (int)Math.Ceiling(center.X + outerRx + 1));
         var y0 = Math.Max(0, (int)Math.Floor(center.Y - outerRy - 1));
-        var y1 = Math.Min(_bitmap.Height - 1, (int)Math.Ceiling(center.Y + outerRy + 1));
-        var invOuterRy2 = 1f / (outerRy * outerRy);
-        var invInnerRy2 = innerRy > 0 ? 1f / (innerRy * innerRy) : 0f;
+        var y1 = Math.Min(_bitmapHeight - 1, (int)Math.Ceiling(center.Y + outerRy + 1));
         var hasInner = innerRx > 0 && innerRy > 0;
-
-        for (var y = y0; y <= y1; y++)
-        {
-            var dy = y + 0.5f - center.Y;
-            var outerY = dy * dy * invOuterRy2;
-            if (outerY >= 1f)
-            {
-                BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, (int)MathF.Floor(center.X), y);
-                continue;
-            }
-
-            var outerExtent = outerRx * MathF.Sqrt(1f - outerY);
-            var outerLeft = center.X - outerExtent;
-            var outerRight = center.X + outerExtent;
-
-            if (!hasInner || dy * dy * invInnerRy2 >= 1f)
-            {
-                FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, outerLeft, outerRight, y);
-                continue;
-            }
-
-            var innerExtent = innerRx * MathF.Sqrt(1f - dy * dy * invInnerRy2);
-            var innerLeft = center.X - innerExtent;
-            var innerRight = center.X + innerExtent;
-
-            FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, outerLeft, innerLeft, y);
-            FillEllipseSpanWithEdges(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, innerRight, outerRight, y);
-        }
-    }
-
-    private void FillEllipseSpanWithEdges(
-        Point center, float outerRx, float outerRy, float innerRx, float innerRy, bool hasInner,
-        Color color, float left, float right, int y)
-    {
-        var fillStart = Math.Max(0, (int)MathF.Ceiling(left));
-        var fillEnd = Math.Min(_bitmap.Width, (int)MathF.Floor(right));
-
-        if (fillStart < fillEnd)
-            BlendRect(new Rect(fillStart, y, fillEnd - fillStart, 1), color);
-
-        var edgeLeft = fillStart - 1;
-        var edgeRight = fillEnd;
-        BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, edgeLeft, y);
-        if (edgeRight != edgeLeft)
-            BlendEllipseStrokeEdgePixel(center, outerRx, outerRy, innerRx, innerRy, hasInner, color, edgeRight, y);
-    }
-
-    private void BlendEllipseStrokeEdgePixel(
-        Point center, float outerRx, float outerRy, float innerRx, float innerRy, bool hasInner,
-        Color color, int x, int y)
-    {
-        if (x < 0 || x >= _bitmap.Width || y < 0 || y >= _bitmap.Height) return;
         var invOuterRx2 = 1f / (outerRx * outerRx);
         var invOuterRy2 = 1f / (outerRy * outerRy);
         var invInnerRx2 = hasInner ? 1f / (innerRx * innerRx) : 0f;
         var invInnerRy2 = hasInner ? 1f / (innerRy * innerRy) : 0f;
 
-        var covered = 0;
-        for (var sy = 0; sy < CoverageSampleGrid; sy++)
+        for (var y = y0; y <= y1; y++)
         {
-            var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
-            var outerY = py * py * invOuterRy2;
-            if (outerY > 1f) continue;
-            var innerY = hasInner ? py * py * invInnerRy2 : 0f;
-            for (var sx = 0; sx < CoverageSampleGrid; sx++)
+            var py0 = y + 0.125f - center.Y;
+            var py1 = y + 0.375f - center.Y;
+            var py2 = y + 0.625f - center.Y;
+            var py3 = y + 0.875f - center.Y;
+            var outerY0 = py0 * py0 * invOuterRy2;
+            var outerY1 = py1 * py1 * invOuterRy2;
+            var outerY2 = py2 * py2 * invOuterRy2;
+            var outerY3 = py3 * py3 * invOuterRy2;
+            if (outerY0 > 1f && outerY1 > 1f && outerY2 > 1f && outerY3 > 1f) continue;
+            var rowExtent = 0f;
+            if (outerY0 <= 1f) rowExtent = Math.Max(rowExtent, outerRx * MathF.Sqrt(1f - outerY0));
+            if (outerY1 <= 1f) rowExtent = Math.Max(rowExtent, outerRx * MathF.Sqrt(1f - outerY1));
+            if (outerY2 <= 1f) rowExtent = Math.Max(rowExtent, outerRx * MathF.Sqrt(1f - outerY2));
+            if (outerY3 <= 1f) rowExtent = Math.Max(rowExtent, outerRx * MathF.Sqrt(1f - outerY3));
+            var rowX0 = Math.Max(x0, (int)MathF.Floor(center.X - rowExtent - 1));
+            var rowX1 = Math.Min(x1, (int)MathF.Ceiling(center.X + rowExtent + 1));
+            var innerY0 = hasInner ? py0 * py0 * invInnerRy2 : 0f;
+            var innerY1 = hasInner ? py1 * py1 * invInnerRy2 : 0f;
+            var innerY2 = hasInner ? py2 * py2 * invInnerRy2 : 0f;
+            var innerY3 = hasInner ? py3 * py3 * invInnerRy2 : 0f;
+
+            for (var x = rowX0; x <= rowX1; x++)
             {
-                var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
-                var insideOuter = px * px * invOuterRx2 + outerY <= 1f;
-                var insideInner = hasInner && px * px * invInnerRx2 + innerY < 1f;
-                if (insideOuter && !insideInner) covered++;
+                var px0 = x + 0.125f - center.X;
+                var px1 = x + 0.375f - center.X;
+                var px2 = x + 0.625f - center.X;
+                var px3 = x + 0.875f - center.X;
+                var covered = 0;
+                CountEllipseStrokeSample(px0, outerY0, innerY0);
+                CountEllipseStrokeSample(px1, outerY0, innerY0);
+                CountEllipseStrokeSample(px2, outerY0, innerY0);
+                CountEllipseStrokeSample(px3, outerY0, innerY0);
+                CountEllipseStrokeSample(px0, outerY1, innerY1);
+                CountEllipseStrokeSample(px1, outerY1, innerY1);
+                CountEllipseStrokeSample(px2, outerY1, innerY1);
+                CountEllipseStrokeSample(px3, outerY1, innerY1);
+                CountEllipseStrokeSample(px0, outerY2, innerY2);
+                CountEllipseStrokeSample(px1, outerY2, innerY2);
+                CountEllipseStrokeSample(px2, outerY2, innerY2);
+                CountEllipseStrokeSample(px3, outerY2, innerY2);
+                CountEllipseStrokeSample(px0, outerY3, innerY3);
+                CountEllipseStrokeSample(px1, outerY3, innerY3);
+                CountEllipseStrokeSample(px2, outerY3, innerY3);
+                CountEllipseStrokeSample(px3, outerY3, innerY3);
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+
+                void CountEllipseStrokeSample(float px, float outerY, float innerY)
+                {
+                    if (outerY > 1f) return;
+                    var px2 = px * px;
+                    var insideOuter = px2 * invOuterRx2 + outerY <= 1f;
+                    var insideInner = hasInner && px2 * invInnerRx2 + innerY < 1f;
+                    if (insideOuter && !insideInner) covered++;
+                }
             }
         }
-        BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+    }
+
+    private void RasterizeTransformedEllipse(Point center, float rx, float ry, float strokeWidth, Color color)
+    {
+        if (rx <= 0 || ry <= 0) return;
+        if (!Matrix3x2.Invert(_currentTransform, out var inverse)) return;
+
+        var halfStroke = strokeWidth / 2f;
+        var bounds = TransformRect(new Rect(
+            center.X - rx - halfStroke,
+            center.Y - ry - halfStroke,
+            (rx + halfStroke) * 2,
+            (ry + halfStroke) * 2));
+        if (bounds.IsEmpty) return;
+
+        var x0 = Math.Max(0, (int)MathF.Floor(bounds.Left - 1));
+        var x1 = Math.Min(_bitmap.Width - 1, (int)MathF.Ceiling(bounds.Right + 1));
+        var y0 = Math.Max(0, (int)MathF.Floor(bounds.Top - 1));
+        var y1 = Math.Min(_bitmap.Height - 1, (int)MathF.Ceiling(bounds.Bottom + 1));
+
+        var outerRx = rx + halfStroke;
+        var outerRy = ry + halfStroke;
+        var innerRx = rx - halfStroke;
+        var innerRy = ry - halfStroke;
+        var hasInner = strokeWidth > 0 && innerRx > 0 && innerRy > 0;
+        var invOuterRx2 = 1f / (outerRx * outerRx);
+        var invOuterRy2 = 1f / (outerRy * outerRy);
+        var invInnerRx2 = hasInner ? 1f / (innerRx * innerRx) : 0f;
+        var invInnerRy2 = hasInner ? 1f / (innerRy * innerRy) : 0f;
+        var sampleInset = 0.5f / CoverageSampleGrid;
+
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                if (strokeWidth <= 0 && IsTransformedEllipsePixelFullyCovered(
+                        x, y, sampleInset, inverse, center, invOuterRx2, invOuterRy2))
+                {
+                    BlendPixelCoverage(x, y, color, CoverageSampleCount, CoverageSampleCount);
+                    continue;
+                }
+
+                var covered = 0;
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
+                {
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / CoverageSampleGrid;
+                        var py = y + (sy + 0.5f) / CoverageSampleGrid;
+                        var dx = px * inverse.M11 + py * inverse.M21 + inverse.M31 - center.X;
+                        var dy = px * inverse.M12 + py * inverse.M22 + inverse.M32 - center.Y;
+                        var insideOuter = dx * dx * invOuterRx2 + dy * dy * invOuterRy2 <= 1f;
+                        var insideInner = hasInner && dx * dx * invInnerRx2 + dy * dy * invInnerRy2 < 1f;
+                        if (insideOuter && !insideInner) covered++;
+                    }
+                }
+
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+            }
+        }
+    }
+
+    private static bool IsTransformedEllipsePixelFullyCovered(
+        int x, int y, float sampleInset, Matrix3x2 inverse, Point center, float invRx2, float invRy2)
+    {
+        return IsTransformedEllipseSampleInside(x + sampleInset, y + sampleInset, inverse, center, invRx2, invRy2) &&
+               IsTransformedEllipseSampleInside(x + 1f - sampleInset, y + sampleInset, inverse, center, invRx2, invRy2) &&
+               IsTransformedEllipseSampleInside(x + sampleInset, y + 1f - sampleInset, inverse, center, invRx2, invRy2) &&
+               IsTransformedEllipseSampleInside(x + 1f - sampleInset, y + 1f - sampleInset, inverse, center, invRx2, invRy2);
+    }
+
+    private static bool IsTransformedEllipseSampleInside(
+        float x, float y, Matrix3x2 inverse, Point center, float invRx2, float invRy2)
+    {
+        var dx = x * inverse.M11 + y * inverse.M21 + inverse.M31 - center.X;
+        var dy = x * inverse.M12 + y * inverse.M22 + inverse.M32 - center.Y;
+        return dx * dx * invRx2 + dy * dy * invRy2 <= 1f;
     }
 
     private void FillEllipseScanline(Point center, float rx, float ry, Color color)
@@ -1023,31 +1108,38 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         var y1 = Math.Min(_bitmap.Height - 1, (int)Math.Ceiling(center.Y + ry + 1));
         var invRy2 = 1f / (ry * ry);
         if (float.IsInfinity(invRy2) || float.IsNaN(invRy2)) return;
+        var sampleInset = 0.5f / CoverageSampleGrid;
 
         for (var y = y0; y <= y1; y++)
         {
-            var dy = y + 0.5f - center.Y;
-            var normalizedY = dy * dy * invRy2;
-            if (normalizedY >= 1f)
+            var maxExtent = 0f;
+            var minExtent = float.MaxValue;
+            for (var sy = 0; sy < CoverageSampleGrid; sy++)
             {
-                BlendEllipseEdgePixel(center, rx, ry, color, (int)MathF.Floor(center.X), y);
-                continue;
+                var dy = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
+                var normalizedY = dy * dy * invRy2;
+                var extent = normalizedY <= 1f ? rx * MathF.Sqrt(1f - normalizedY) : 0f;
+                maxExtent = Math.Max(maxExtent, extent);
+                minExtent = Math.Min(minExtent, extent);
             }
 
-            var extent = rx * MathF.Sqrt(1f - normalizedY);
-            var left = center.X - extent;
-            var right = center.X + extent;
-            var fillStart = Math.Max(0, (int)MathF.Ceiling(left));
-            var fillEnd = Math.Min(_bitmap.Width, (int)MathF.Floor(right));
+            if (maxExtent <= 0) continue;
+
+            var edgeStart = Math.Max(0, (int)MathF.Floor(center.X - maxExtent - 1));
+            var edgeEnd = Math.Min(_bitmap.Width, (int)MathF.Ceiling(center.X + maxExtent + 1));
+            var fillStart = Math.Clamp(
+                (int)MathF.Ceiling(center.X - minExtent - sampleInset), edgeStart, edgeEnd);
+            var fillEnd = Math.Clamp(
+                (int)MathF.Floor(center.X + minExtent - (1f - sampleInset)) + 1, fillStart, edgeEnd);
+
+            for (var x = edgeStart; x < fillStart; x++)
+                BlendEllipseEdgePixel(center, rx, ry, color, x, y);
 
             if (fillStart < fillEnd)
                 BlendRect(new Rect(fillStart, y, fillEnd - fillStart, 1), color);
 
-            var edgeLeft = fillStart - 1;
-            var edgeRight = fillEnd;
-            BlendEllipseEdgePixel(center, rx, ry, color, edgeLeft, y);
-            if (edgeRight != edgeLeft)
-                BlendEllipseEdgePixel(center, rx, ry, color, edgeRight, y);
+            for (var x = fillEnd; x < edgeEnd; x++)
+                BlendEllipseEdgePixel(center, rx, ry, color, x, y);
         }
     }
 

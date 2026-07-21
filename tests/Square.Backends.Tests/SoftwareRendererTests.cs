@@ -1293,6 +1293,38 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void FilledEllipseSupersamplesHighCurvatureRows()
+    {
+        var context = CreateContext(24, 24);
+        context.Clear(Color.Transparent);
+        context.FillGeometry(
+            new EllipseGeometry(new Point(12, 12), 8, 8),
+            new SolidColorBrush(Color.White));
+
+        var bitmap = context.GetBitmap();
+        Assert.InRange(AlphaAt(bitmap, 10, 4), 1, 254);
+        Assert.Equal(AlphaAt(bitmap, 10, 4), AlphaAt(bitmap, 13, 4));
+    }
+
+    [Fact]
+    public void TransformedEllipseUsesRotatedCoverage()
+    {
+        var context = CreateContext(48, 48);
+        context.Clear(Color.Transparent);
+
+        context.PushTransform(Matrix3x2.CreateRotation(MathF.PI / 4f, new Vector2(24, 24)));
+        context.FillGeometry(
+            new EllipseGeometry(new Point(24, 24), 16, 5),
+            new SolidColorBrush(Color.White));
+        context.PopTransform();
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, AlphaAt(bitmap, 24, 24));
+        Assert.True(AlphaAt(bitmap, 16, 16) > 0);
+        Assert.Equal(0, AlphaAt(bitmap, 8, 24));
+    }
+
+    [Fact]
     public void EllipseStrokeHasAntialiasedEdgesAndOpenCenter()
     {
         var context = CreateContext(32, 32);
@@ -1306,6 +1338,28 @@ public class SoftwareRendererTests
         var center = 16 * bitmap.Stride + 16 * 4;
         Assert.Equal(0, bitmap.Pixels[center + 3]);
         Assert.Contains(AlphaValues(bitmap), alpha => alpha is > 0 and < 255);
+    }
+
+    [Fact]
+    public void EllipseStrokeSupersamplesHighCurvatureRows()
+    {
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+
+        context.DrawGeometry(
+            new EllipseGeometry(new Point(16, 16), 10, 8),
+            Pen.FromColor(Color.White, 2));
+
+        var bitmap = context.GetBitmap();
+        var partialTopPixels = 0;
+        for (var y = 5; y <= 8; y++)
+        for (var x = 8; x <= 24; x++)
+        {
+            if (AlphaAt(bitmap, x, y) is > 0 and < 255)
+                partialTopPixels++;
+        }
+
+        Assert.True(partialTopPixels >= 4, $"Expected antialiased stroke pixels near the ellipse top, found {partialTopPixels}.");
     }
 
     [Fact]
