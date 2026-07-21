@@ -9,6 +9,7 @@ public abstract class Application
 
     public Dispatcher Dispatcher { get; } = new();
     public bool IsRunning { get; private set; }
+    public event Action? Exited;
 
     protected Application()
     {
@@ -19,10 +20,23 @@ public abstract class Application
     {
         if (IsRunning) throw new InvalidOperationException("Application already running");
         IsRunning = true;
-        OnStart();
-        RunCore();
-        OnExit();
-        IsRunning = false;
+        try
+        {
+            OnStart();
+            RunCore();
+        }
+        finally
+        {
+            try
+            {
+                OnExit();
+            }
+            finally
+            {
+                IsRunning = false;
+                Exited?.Invoke();
+            }
+        }
     }
 
     public void Shutdown()

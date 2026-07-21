@@ -12,7 +12,7 @@ using Reconciler = Square.UI.Reconciler;
 
 namespace Square.Hosting;
 
-public sealed class DesktopApplication : Application
+public sealed class DesktopApplication : Application, IRenderBackendApplication
 {
     private static readonly Color DefaultSelectionBackground = Color.FromRgb(51, 144, 255);
     private static readonly Color DefaultSelectionForeground = Color.White;
@@ -59,6 +59,16 @@ public sealed class DesktopApplication : Application
     }
 
     public UIDocument Document => _document;
+    public string RenderBackend
+    {
+        get => _hostCreateInfo.RenderBackend;
+        set
+        {
+            if (IsRunning) throw new InvalidOperationException("The render backend cannot be changed while the application is running.");
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            _hostCreateInfo.RenderBackend = value;
+        }
+    }
     public Color Background { get; set; } = Color.White;
     public RenderMode RenderingMode { get; set; } = RenderMode.FullFrame;
     public int MaxDirtyRectCount { get; set; } = 16;

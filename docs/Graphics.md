@@ -191,7 +191,7 @@ public sealed class TextLayout
     RenderBackendRegistry.Register(new SkiaBackendFactory());
 #endif
 
-VulkanRegistration.Register();
+app.UseVulkanBackend();
 ```
 
 ### 4.2 RenderBackendRegistry

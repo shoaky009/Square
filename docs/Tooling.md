@@ -9,7 +9,7 @@
 
 ## 1. 启动服务
 
-应用需要引用 `Square.Tooling`，然后在 `DesktopApplication.Run()` 前启动服务。`ToolingServer` 实现 `IDisposable` / `IAsyncDisposable`，通常用 `using` 保证应用退出时关闭 HTTP 服务。
+应用需要引用 `Square.Tooling`，然后在 `DesktopApplication.Run()` 前调用 `UseToolingServer()`。服务会随应用退出自动释放。
 
 ```csharp
 using Square.Hosting;
@@ -23,7 +23,7 @@ var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
     Height = 600
 });
 
-using var tooling = ToolingServer.Start(app, new ToolingOptions
+var tooling = app.UseToolingServer(new ToolingOptions
 {
     Port = 0,
     AccessToken = "dev-token",
@@ -92,11 +92,13 @@ X-Square-Tooling-Token: square-richtext-demo
 自动端口是常规开发、并行测试和多实例运行的默认选择：
 
 ```csharp
-using var tooling = ToolingServer.Start(app);
+var tooling = app.UseToolingServer();
 
 Console.WriteLine($"Tooling endpoint: {tooling.BaseAddress}/api/v1");
 Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
 ```
+
+`UseToolingServer()` 会在应用退出时自动释放服务。需要自行控制生命周期时仍可直接调用 `ToolingServer.Start()` 并手工释放。
 
 `ToolingServer.Start` 返回前，`HttpListener` 已完成监听。此时：
 
@@ -109,7 +111,7 @@ Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
 只有外部工具无法接收动态地址，或防火墙/容器映射要求固定端口时才使用固定端口：
 
 ```csharp
-using var tooling = ToolingServer.Start(app, new ToolingOptions
+var tooling = app.UseToolingServer(new ToolingOptions
 {
     Port = 5128
 });
@@ -343,10 +345,14 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj `
   -c Release `
   -r win-x64 `
   -p:SquareSamplePublishAot=true `
+  -p:SquareSampleUseVulkan=true `
+  -p:SquareSampleUseTooling=true `
   -o artifacts/aot-vulkan-win-x64
 
 artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan --tooling
 ```
+
+`Square.Sample` 的 AOT 发布默认不引用 `Square.Tooling`。只有 `SquareSampleUseTooling=true` 时才添加项目引用和 `app.UseToolingServer()` 调用路径；普通应用不引用 `Square.Tooling` 即可从发布产物中完全移除 Tooling 服务。
 
 截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
 

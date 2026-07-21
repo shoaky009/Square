@@ -1,10 +1,14 @@
 using System.Diagnostics;
+#if SQUARE_SAMPLE_VULKAN
 using Square.Backends.Vulkan;
+#endif
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
+#if SQUARE_SAMPLE_TOOLING
 using Square.Tooling;
+#endif
 using Square.UI;
 
 namespace Square.Sample;
@@ -28,17 +32,19 @@ public static class Program
         };
         document.Body.Children.Add(CreatePage(args));
 
-        var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND") ?? "Software";
-        if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
-            VulkanRegistration.Register();
-
         var app = new DesktopApplication(document, new PlatformHostCreateInfo
         {
             Title = document.Title,
             Width = 900,
-            Height = 980,
-            RenderBackend = backend
+            Height = 980
         });
+        var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND");
+        if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+#if SQUARE_SAMPLE_VULKAN
+            app.UseVulkanBackend();
+#else
+            throw new NotSupportedException("This build does not include Vulkan. Build with -p:SquareSampleUseVulkan=true to enable it.");
+#endif
         ConfigureRendering(app, args);
         ConfigureDebugOverlayToggle(app, document);
         SampleSignals.Initialize(app.Dispatcher);
@@ -46,36 +52,26 @@ public static class Program
         if (!string.IsNullOrWhiteSpace(screenshot))
             ScheduleScreenshot(app, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
 
-        ToolingServer? tooling = null;
         if (HasOption(args, "--tooling"))
-            tooling = StartTooling(app, args);
+        {
+#if SQUARE_SAMPLE_TOOLING
+            var tooling = app.UseToolingServer(new ToolingOptions
+            {
+                Port = int.TryParse(GetOption(args, "--tooling-port"), out var port) ? port : 0,
+                AccessToken = GetOption(args, "--tooling-token"),
+                AllowInputInjection = true,
+                AllowInspector = true
+            });
+            System.Console.WriteLine($"Square Tooling: {tooling.BaseAddress}/api/v1/health");
+            System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
+#else
+            throw new NotSupportedException("This build does not include Tooling. Build with -p:SquareSampleUseTooling=true to enable it.");
+#endif
+        }
 
-        try
-        {
-            app.Run();
-        }
-        finally
-        {
-            tooling?.Dispose();
-        }
+        app.Run();
 
         System.Console.WriteLine("Window closed. Demo complete.");
-    }
-
-    private static ToolingServer StartTooling(DesktopApplication app, string[] args)
-    {
-        var port = int.TryParse(GetOption(args, "--tooling-port"), out var parsedPort) ? parsedPort : 0;
-        var token = GetOption(args, "--tooling-token");
-        var tooling = ToolingServer.Start(app, new ToolingOptions
-        {
-            Port = port,
-            AccessToken = token,
-            AllowInputInjection = true,
-            AllowInspector = true
-        });
-        System.Console.WriteLine($"Square Tooling: {tooling.BaseAddress}/api/v1/health");
-        System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
-        return tooling;
     }
 
     private static void RunCircleRegressionDiff(string outputDirectory)

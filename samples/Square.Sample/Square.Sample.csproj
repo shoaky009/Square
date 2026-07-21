@@ -6,8 +6,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Description>Square Sample Application</Description>
     <PublishAot Condition="'$(SquareSamplePublishAot)' == 'true'">true</PublishAot>
+    <SquareSampleUseVulkan Condition="'$(SquareSampleUseVulkan)' == '' and '$(SquareSamplePublishAot)' != 'true'">true</SquareSampleUseVulkan>
+    <SquareSampleUseVulkan Condition="'$(SquareSampleUseVulkan)' == ''">false</SquareSampleUseVulkan>
+    <SquareSampleUseTooling Condition="'$(SquareSampleUseTooling)' == '' and '$(SquareSamplePublishAot)' != 'true'">true</SquareSampleUseTooling>
+    <SquareSampleUseTooling Condition="'$(SquareSampleUseTooling)' == ''">false</SquareSampleUseTooling>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <OptimizationPreference>Size</OptimizationPreference>
+    <DefineConstants Condition="'$(SquareSampleUseVulkan)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_VULKAN</DefineConstants>
+    <DefineConstants Condition="'$(SquareSampleUseTooling)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_TOOLING</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,9 +27,9 @@
     <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
     <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
-    <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" />
+    <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" Condition="'$(SquareSampleUseVulkan)' == 'true'" />
     <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
-    <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" />
+    <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" Condition="'$(SquareSampleUseTooling)' == 'true'" />
     <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

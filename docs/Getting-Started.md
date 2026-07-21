@@ -634,6 +634,8 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj \
 
 Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dynamic`、运行时程序集加载。P/Invoke 使用 `LibraryImport` 源生成器。Software、Vulkan 与 Tooling 均支持 NativeAOT；Vulkan 后端通过显式系统库加载器加载 `vulkan-1.dll` 或 `libvulkan.so`，shader 使用构建期生成的内嵌 SPIR-V；Tooling 使用 `HttpListener`、显式路由和手写 JSON 输出。
 
+主示例的 AOT 发布默认不引用 Vulkan 和 Tooling。需要 Vulkan AOT 时增加 `-p:SquareSampleUseVulkan=true`，需要 Tooling 时增加 `-p:SquareSampleUseTooling=true`；不传对应属性时，相关项目及其依赖不会进入发布产物。
+
 ---
 
 ## 15. 调试技巧
@@ -672,7 +674,7 @@ Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dyna
 ```csharp
 using Square.Tooling;
 
-using var tooling = ToolingServer.Start(app, new ToolingOptions
+var tooling = app.UseToolingServer(new ToolingOptions
 {
   Port = 0
 });

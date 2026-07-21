@@ -28,7 +28,7 @@ public static class Program
             RenderingMode = RenderMode.DirtyRegion
         };
 
-        using var tooling = ToolingServer.Start(app, new ToolingOptions
+        var tooling = app.UseToolingServer(new ToolingOptions
         {
             Port = 0,
             AccessToken = "square-richtext-demo",

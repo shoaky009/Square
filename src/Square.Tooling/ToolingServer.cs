@@ -18,6 +18,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
     private readonly HttpListener _listener;
     private readonly CancellationTokenSource _shutdown = new();
     private Task _acceptLoop;
+    private int _disposed;
 
     private ToolingServer(HttpListener listener, Task acceptLoop, string accessToken, int port)
     {
@@ -195,6 +196,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _shutdown.Cancel();
         if (_listener.IsListening) _listener.Stop();
         _listener.Close();

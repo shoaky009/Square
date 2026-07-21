@@ -96,6 +96,14 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 
 Endpoint 以 `/api/v1` 为前缀，提供 `/health`、`/screenshot`、`/input/pointer`、`/input/key`、`/input/text` 和 `/input/wheel`。请求/响应格式见 [`Tooling.md`](Tooling.md)。
 
+推荐通过应用扩展启动服务：
+
+```csharp
+var tooling = app.UseToolingServer(options);
+```
+
+服务会在 `DesktopApplication` 退出时自动释放。直接调用 `ToolingServer.Start()` 仍可用于需要自行控制生命周期的场景。
+
 ### ToolingOptions
 
 ```csharp

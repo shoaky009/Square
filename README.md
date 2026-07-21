@@ -371,7 +371,19 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj \
 samples/Square.Sample/bin/Release/net10.0/linux-x64/publish/
 ```
 
-Software、Vulkan 与可选 Tooling 服务都可用于 NativeAOT 发布。Vulkan 使用系统 loader 和构建期内嵌的 SPIR-V，Tooling 使用显式 `HttpListener` 路由和 JSON 读写，均不依赖运行时代码生成。发布后可直接选择 Vulkan 并启用 Tooling：
+NativeAOT 默认只包含 Software 后端，Vulkan 和 Tooling 项目都不会进入引用图。需要时分别显式传入 `SquareSampleUseVulkan=true` 和 `SquareSampleUseTooling=true`：
+
+```bash
+dotnet publish samples/Square.Sample/Square.Sample.csproj \
+  -c Release \
+  -r win-x64 \
+  -p:SquareSamplePublishAot=true \
+  -p:SquareSampleUseVulkan=true \
+  -p:SquareSampleUseTooling=true \
+  --self-contained true
+```
+
+Software、Vulkan 与可选 Tooling 服务都可用于 NativeAOT 发布。Vulkan 使用系统 loader 和构建期内嵌的 SPIR-V，Tooling 使用显式 `HttpListener` 路由和 JSON 读写，均不依赖运行时代码生成。启用 Vulkan 后可直接选择 Vulkan 并启动 Tooling：
 
 ```powershell
 samples/Square.Sample/bin/Release/net10.0/win-x64/publish/Square.Sample.exe --backend Vulkan --tooling
