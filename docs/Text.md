@@ -1,6 +1,6 @@
 # 字体与排版
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Graphics.md`
 
 ---
@@ -63,9 +63,10 @@ public sealed class FontManager
 
 ### 4.1 Glyph 缓存
 
-- 按字体 + 字符码点缓存
-- 缓存字形位图（Software Backend）或路径（向量 Backend）
-- LRU 淘汰
+- 按 family、物理字号、weight、style 和字符码点建立键
+- Software Backend 缓存 glyph coverage，DPI 变化或 RenderContext 释放时清理上下文缓存
+- Vulkan Backend 使用独立 atlas 元数据缓存；coverage 上传 GPU 后不在 `SystemGlyphRasterizer` 中长期缓存
+- 缓存边界和跨子系统共享仍在演进，当前不是全局 LRU
 
 ### 4.2 Glyph 信息
 
@@ -177,5 +178,22 @@ public sealed class TextLayout
 ## 11. 与渲染集成
 
 - `IRenderContext.DrawText(TextLayout, Point, Brush)`
-- Software Backend：从 Glyph 缓存取位图混合
-- 向量 Backend：从 Glyph 缓存取路径填充
+- Software Backend：读取灰度 coverage，并直接混合到整数物理像素
+- Vulkan Backend：将 coverage 上传为白色 RGB、coverage alpha 的 atlas 区域；glyph 周围使用透明白 padding，避免线性过滤产生暗边
+- Vulkan 普通 DPI 文本使用整数物理像素原点、offset 和 advance，使 atlas texel 与 framebuffer pixel 保持一对一映射
+- Vulkan 旋转、斜切或额外缩放文本保留浮点 quad 与线性过滤，以支持任意变换
+- Impeller Backend：由 Impeller typography 路径负责 glyph shaping 与绘制
+
+---
+
+## 12. 字体清晰度约束
+
+系统 glyph rasterizer 在 Windows 使用 GDI `GGO_GRAY8_BITMAP` 生成 0 到 64 的灰度 coverage，并归一化到 0 到 255。Software 与 Square Vulkan 后端共享这份物理字号栅格化结果。
+
+已经抗锯齿的 coverage 不应在一对一显示时再次落在半像素位置，否则线性采样会把相邻 coverage 再平均一次，使笔画变软。为保持 Software/Vulkan 一致：
+
+- 布局继续使用逻辑像素，glyph 按 `font.Size * DpiScale` 栅格化
+- 普通 DPI 文本在 framebuffer 空间舍入基线原点一次
+- 后续 glyph 使用栅格器返回的整数 advance 和 bearing
+- atlas UV 使用 allocation 边界，不额外添加全局半 texel 偏移
+- 不对整个共享 atlas 强制使用 nearest filter，以免降低 Bitmap 缩放质量

@@ -1,7 +1,9 @@
 using Square.Backends.Impeller;
+using Square.Backends.Vulkan;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
+using Square.Tooling;
 using Square.UI;
 
 namespace Square.Sample;
@@ -22,6 +24,8 @@ public static class Program
         var library = GetOption(args, "--impeller-library") ?? Environment.GetEnvironmentVariable("SQUARE_IMPELLER_LIBRARY");
         if (string.Equals(backend, "Impeller", StringComparison.OrdinalIgnoreCase))
             ImpellerRegistration.Register(library);
+        else if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+            VulkanRegistration.Register();
 
         var app = new DesktopApplication(document, new PlatformHostCreateInfo
         {
@@ -35,9 +39,37 @@ public static class Program
         SampleSignals.Initialize(app.Dispatcher);
         var screenshot = GetOption(args, "--screenshot");
         if (!string.IsNullOrWhiteSpace(screenshot)) ScheduleScreenshot(app, screenshot);
-        app.Run();
+
+        ToolingServer? tooling = null;
+        if (HasOption(args, "--tooling"))
+            tooling = StartTooling(app, args);
+
+        try
+        {
+            app.Run();
+        }
+        finally
+        {
+            tooling?.Dispose();
+        }
 
         System.Console.WriteLine("Window closed. Demo complete.");
+    }
+
+    private static ToolingServer StartTooling(DesktopApplication app, string[] args)
+    {
+        var port = int.TryParse(GetOption(args, "--tooling-port"), out var parsedPort) ? parsedPort : 0;
+        var token = GetOption(args, "--tooling-token");
+        var tooling = ToolingServer.Start(app, new ToolingOptions
+        {
+            Port = port,
+            AccessToken = token,
+            AllowInputInjection = true,
+            AllowInspector = true
+        });
+        System.Console.WriteLine($"Square Tooling: {tooling.BaseAddress}/api/v1/health");
+        System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
+        return tooling;
     }
 
     private static void ScheduleScreenshot(DesktopApplication app, string path)
@@ -109,6 +141,17 @@ public static class Program
             document.Title = $"{baseTitle} - Overlay: {(overlayVisible ? "On" : "Off")}";
         }
 #endif
+    }
+
+    private static bool HasOption(string[] args, string name)
+    {
+        foreach (var arg in args)
+        {
+            if (string.Equals(arg, name, StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static string? GetOption(string[] args, string name)

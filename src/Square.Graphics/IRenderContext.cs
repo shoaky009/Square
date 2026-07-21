@@ -71,5 +71,6 @@ public interface IDpiResizableRenderContext : IResizableRenderContext
 
 public interface IRenderBitmapSource
 {
+    bool IsCaptureAvailable => true;
     Bitmap CaptureBitmap();
 }

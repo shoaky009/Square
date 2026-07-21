@@ -170,6 +170,18 @@ public sealed class DesktopApplication : Application
             {
                 if (_host == null || _renderContext == null)
                     throw new InvalidOperationException("The application must be running before renderer capture is available.");
+
+                // Prefer the live frame from the active render context. For GPU backends
+                // (e.g. Vulkan) this reads back the actual presented frame, so the capture
+                // reflects real GPU output instead of a software re-render — which is what
+                // makes GPU-side rendering bugs visible in tooling screenshots.
+                if (_renderContext is IRenderBitmapSource { IsCaptureAvailable: true } liveSource)
+                {
+                    completion.SetResult(liveSource.CaptureBitmap());
+                    return;
+                }
+
+                // Fallback: re-render the display tree into a software capture context.
                 using var captureContext = new RenderBackendFactory().CreateContext(new RenderContextCreateInfo
                 {
                     CanvasSize = _host.ClientSize,

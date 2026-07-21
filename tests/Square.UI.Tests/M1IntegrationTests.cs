@@ -82,7 +82,7 @@ public class M1IntegrationTests
         var input = Assert.Single(textPage.QueryAll<Input>(), editor => editor.ClassList.Contains("editor-default"));
 
         input.SelectAll();
-        input.HandleKey('A');
+        input.HandleTextInput("A");
         Assert.Equal("A", textPage.Name.Value);
 
         button.DispatchEvent(StandardEvents.CreateClick());
@@ -147,6 +147,18 @@ public class M1IntegrationTests
         input.HandleKey(0x6F); // VK_DIVIDE was previously inserted as 'o'.
 
         Assert.Equal("", input.Value);
+    }
+
+    [Fact]
+    public void PrintableKeyIsInsertedOnlyByTextInput()
+    {
+        var input = new Input();
+
+        input.HandleKey('A');
+        Assert.Equal("", input.Value);
+
+        input.HandleTextInput("a");
+        Assert.Equal("a", input.Value);
     }
 
     [Fact]
@@ -284,9 +296,9 @@ public class M1IntegrationTests
         var canvas = Assert.Single(component.QueryAll<Canvas>());
 
         textArea.SelectAll();
-        textArea.HandleKey('N');
+        textArea.HandleTextInput("N");
         textArea.HandleKey(13);
-        textArea.HandleKey('X');
+        textArea.HandleTextInput("X");
         checkBox.DispatchEvent(StandardEvents.CreateClick());
         radios[1].DispatchEvent(StandardEvents.CreateClick());
         select.Geometry = new Rect(10, 10, 200, 36);

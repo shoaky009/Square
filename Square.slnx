@@ -15,6 +15,7 @@
   <Project Path="src/Square.Platform/Square.Platform.csproj" />
   <Project Path="src/Square.Backends/Square.Backends.csproj" />
   <Project Path="src/Square.Backends.Impeller/Square.Backends.Impeller.csproj" />
+  <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
   <Folder Name="/Samples/">
     <Project Path="samples/Square.Sample.Impeller/Square.Sample.Impeller.csproj" />
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />

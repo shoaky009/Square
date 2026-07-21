@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <Description>Square Vulkan GPU render backend (Silk.NET)</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+    <ProjectReference Include="..\Square.Text\Square.Text.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Vulkan" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" />
+    <PackageReference Include="LibTessDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Square.Backends.Vulkan.Tests" />
+  </ItemGroup>
+
+</Project>

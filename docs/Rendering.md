@@ -1,6 +1,6 @@
 # 渲染架构
 
-> Version: 0.3  
+> Version: 0.4  
 > 配套：`Architecture.md`、`Graphics.md`、`Layout.md`
 
 ---
@@ -28,7 +28,7 @@ Display Tree (DrawCommand 列表)
   ↓ (Square.Graphics)
 IRenderContext
   ↓ (Square.Backends)
-Backend (Software / Skia / ...)
+Backend (Software / Vulkan / Impeller / ...)
 ```
 
 ---
@@ -191,15 +191,49 @@ Square Framework - Overlay: Off
 
 ```
 IRenderContext (抽象)
-  ├── SoftwareBackend   (纯 C# CPU 渲染, M1)
-  ├── SkiaBackend       (M4)
-  ├── Blend2DBackend    (M4)
-  └── CairoBackend      (M4)
+  ├── SoftwareBackend   (纯 C# CPU 渲染)
+  ├── VulkanBackend     (Silk.NET 原生 Vulkan)
+  ├── ImpellerBackend   (Flutter Impeller Vulkan)
+  └── Future Backends   (Skia / Blend2D / Cairo / ...)
 ```
 
 - 同一 `IRenderContext` 接口
 - 构建层裁剪决定装配哪个后端
 - 切换后端不影响 Display Tree 逻辑
+
+### 7.1 原生 Vulkan 后端
+
+`Square.Backends.Vulkan` 直接基于 Silk.NET Vulkan API，实现 swapchain、render pass、pipeline、批处理、纹理 atlas、MSAA resolve 和可选 GPU readback。Win32 与 X11 宿主通过 `NativeTarget` 提供平台 surface 信息。
+
+在主示例中启用：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vulkan
+```
+
+应用自行注册时调用：
+
+```csharp
+VulkanRegistration.Register();
+```
+
+Vulkan 配置均在创建 RenderContext 前通过环境变量读取：
+
+| 环境变量 | 值 | 默认行为 |
+|---|---|---|
+| `SQUARE_VULKAN_VALIDATION` | `1` / `true` | 关闭；开启时需要可用的 Vulkan validation layer |
+| `SQUARE_VULKAN_READBACK` | `1` / `true` | 关闭；开启后 `CaptureRendererBitmapAsync()` 可读取真实 GPU 帧 |
+| `SQUARE_VULKAN_MSAA` | `1` / `2` / `4` | 小于等于约 300 万物理像素时 2x，更大窗口 1x，并受设备能力限制 |
+| `SQUARE_VULKAN_ATLAS_SIZE` | `512` / `1024` / `2048` | `1024` |
+| `SQUARE_VULKAN_EXTRA_SWAPCHAIN_IMAGE` | `1` / `true` | 关闭；默认请求 surface 最小图像数 |
+
+GPU readback 默认关闭，因为它需要额外的 host-visible buffer 和 GPU 到 CPU 拷贝。关闭时截图 API自动回退为 Software RenderContext 重放；开启时截图反映真实 Vulkan framebuffer。
+
+Shader 源码位于 `src/Square.Backends.Vulkan/Shaders/`，修改后运行以下命令重新生成内嵌 SPIR-V：
+
+```bash
+dotnet run --project tools/ShaderGen
+```
 
 ---
 
@@ -208,6 +242,8 @@ IRenderContext (抽象)
 - 布局按逻辑像素，光栅按物理像素
 - 物理像素对齐避免模糊
 - 支持多显示器不同 DPI
+- Vulkan 在普通轴对齐 DPI 变换下，将文本原点、glyph offset 和 advance 映射到整数物理像素，避免已经抗锯齿的 coverage atlas 再被线性过滤一次
+- 旋转、斜切或额外缩放的文本保留浮点几何和过滤路径
 
 ---
 
@@ -217,3 +253,11 @@ IRenderContext (抽象)
 - DrawCommand 列表复用
 - 减少全量 Layout
 - 高刷新率支持（60/120/144Hz）
+
+### 9.1 内存生命周期
+
+- Software framebuffer 使用托管 BGRA 数组；`Bitmap.Dispose()` 会立即断开像素数组引用，使 LOH framebuffer 在无其他引用时可回收
+- Software RenderContext 在 DPI 变化时清理旧物理字号的 glyph coverage cache，并复用 dirty rect 与 polygon scanline 临时缓冲
+- Win32 host 关闭时解除 RenderContext、最后一帧、事件委托和静态当前宿主引用，避免窗口关闭后继续根引用 framebuffer 与 glyph cache
+- Vulkan atlas 仅保留 GPU 图像和紧凑 staging uploads，不保留完整 CPU atlas 镜像
+- Vulkan readback、额外 swapchain image 和更高 MSAA 均为显式或受控配置，避免默认资源占用过高

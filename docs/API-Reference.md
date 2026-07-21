@@ -140,7 +140,7 @@ public sealed record ToolingKeyInput(int KeyCode, KeyAction Action, KeyModifiers
 public sealed record ToolingWheelInput(Point Position, int Delta, KeyModifiers Modifiers = KeyModifiers.None);
 ```
 
-`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。`CaptureRendererBitmapAsync()` 在 UI 线程将当前 DisplayTree 重放到离屏 Software bitmap，不依赖活动后端提供 GPU readback，也不捕获平台窗口边框。
+`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。`CaptureRendererBitmapAsync()` 优先读取活动渲染上下文的实时帧：若 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`（Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`）则直接读回真实 GPU 输出；否则在 UI 线程将当前 DisplayTree 重放到离屏 Software bitmap。两种路径都不捕获平台窗口边框。
 
 ---
 

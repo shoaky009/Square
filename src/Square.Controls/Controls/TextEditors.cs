@@ -196,15 +196,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
                 DeleteSelection();
                 return;
         }
-
-        if (CanEditText && !control && IsPrintableKeyCode(keyCode))
-            HandleTextInput(((char)keyCode).ToString());
     }
-
-    private static bool IsPrintableKeyCode(int keyCode) => keyCode is
-        32 or
-        >= 48 and <= 57 or
-        >= 65 and <= 90;
 
     public void HandlePointerDown(Point point, bool extendSelection = false)
     {

@@ -31,6 +31,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - CSS 选择器、级联、变量、伪类、属性选择器及基础样式
 - Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
+- Square 原生 Vulkan GPU Renderer：Windows / Linux(X11)，支持形状、Path、Bitmap、文本、渐变、透明层、Geometry clip、MSAA 和可选 GPU readback
 - Flutter Impeller GPU Renderer：Windows / Linux(X11) Vulkan，支持形状、Path、Bitmap、Typography、渐变、透明层和 Geometry clip
 - Win32 窗口宿主、键盘、鼠标、文本输入、IME 和剪贴板
 - X11 窗口宿主（Linux）、键盘、鼠标、滚轮、剪贴板（CLIPBOARD + PRIMARY）和 Software Renderer 上屏
@@ -54,6 +55,8 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
 - Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）
+- Software Renderer 内存生命周期优化（DPI glyph cache 清理、临时缓冲复用、关闭时及时释放 framebuffer）
+- Vulkan 文本按物理像素对齐，避免对灰度 glyph coverage 进行二次线性重采样
 
 完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
 多目标渲染、原生 UI 输出、SVG 导出和 Godot 嵌入路线见 [`docs/Rendering-Targets.md`](docs/Rendering-Targets.md)。
@@ -200,6 +203,7 @@ Square.SourceGenerator ──► C# Component
 | `Square.Text` | 字形、测量和文本布局 |
 | `Square.Platform` | 平台宿主与输入采集 |
 | `Square.Backends` | Software Renderer |
+| `Square.Backends.Vulkan` | 基于 Silk.NET 的 Square 原生 Vulkan GPU Renderer |
 | `Square.Backends.Impeller` | Flutter Impeller Standalone SDK Vulkan GPU 后端 |
 | `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
 | `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`、`RichTextEditor` 等，按需引用 |
@@ -264,6 +268,21 @@ dotnet build Square.slnx
 ```bash
 dotnet run --project samples/Square.Sample/Square.Sample.csproj
 ```
+
+使用 Square 原生 Vulkan 后端：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vulkan
+```
+
+Vulkan 默认关闭 GPU readback，以减少 host-visible buffer 和每帧拷贝。需要捕获真实 GPU 帧时可显式开启：
+
+```powershell
+$env:SQUARE_VULKAN_READBACK = "1"
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Vulkan --screenshot artifacts/vulkan.png
+```
+
+更多 Vulkan 资源和诊断选项见 [`docs/Rendering.md`](docs/Rendering.md)。
 
 使用 Impeller 运行常规示例：
 

@@ -20,8 +20,16 @@ public sealed partial class SystemGlyphRasterizer
 {
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
     private readonly StbGlyphRasterizer _stbRasterizer = new();
+    private readonly bool _cacheGlyphs;
+
+    public SystemGlyphRasterizer(bool cacheGlyphs = true)
+    {
+        _cacheGlyphs = cacheGlyphs;
+    }
 
     public bool IsAvailable => OperatingSystem.IsWindows() || _stbRasterizer.IsAvailable;
+
+    public void Clear() => _cache.Clear();
 
     public RasterizedGlyph? Rasterize(Font font, char character)
     {
@@ -31,12 +39,12 @@ public sealed partial class SystemGlyphRasterizer
             ? font
             : new Font(family, font.Size, font.Weight, font.Style);
         var key = new GlyphKey(effectiveFont.Family, effectiveFont.Size, effectiveFont.Weight, effectiveFont.Style, character);
-        if (_cache.TryGetValue(key, out var cached)) return cached;
+        if (_cacheGlyphs && _cache.TryGetValue(key, out var cached)) return cached;
 
         var glyph = OperatingSystem.IsWindows()
             ? RasterizeWin32(effectiveFont, character)
             : _stbRasterizer.Rasterize(effectiveFont, character);
-        _cache[key] = glyph;
+        if (_cacheGlyphs) _cache[key] = glyph;
         return glyph;
     }
 

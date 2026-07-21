@@ -1,6 +1,6 @@
 # Tooling
 
-> Version: 0.4  
+> Version: 0.5  
 > 配套：`Getting-Started.md`、`API-Reference.md`、`Rendering.md`
 
 `Square.Tooling` 提供一个只监听 `127.0.0.1` 的 HTTP 调试服务，用于在运行中的 Square 桌面应用上做截图采集和输入自动化。它面向本地开发、示例演示、端到端测试和外部调试工具，不参与应用的正常 UI 渲染管线。
@@ -52,6 +52,25 @@ RichText 示例已经集成 Tooling：
 ```bash
 dotnet run --project samples/Square.Sample.RichText/Square.Sample.RichText.csproj
 ```
+
+主示例 `Square.Sample` 通过命令行选项按需启用 Tooling，可与任意后端组合。Vulkan 默认关闭 GPU readback；设置 `SQUARE_VULKAN_READBACK=1` 后，截图才会读取真实 GPU 帧（见 [3. API 概览](#3-api-概览) 的 screenshot 说明）：
+
+```bash
+# Software 后端（默认）
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --tooling
+
+# Vulkan 后端 + Tooling + GPU readback (PowerShell)
+$env:SQUARE_VULKAN_READBACK = "1"
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend=Vulkan --tooling
+```
+
+`Square.Sample` 支持的 Tooling 相关选项：
+
+| 选项 | 说明 |
+|---|---|
+| `--tooling` | 启动 ToolingServer（缺省不启动） |
+| `--tooling-port=<port>` | 指定端口；省略时使用自动端口（`Port = 0`） |
+| `--tooling-token=<token>` | 指定访问令牌；省略时自动生成随机 token |
 
 启动后控制台会输出实际 base address 和 token header，例如：
 
@@ -193,7 +212,10 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 
 截图不是平台窗口截图：它不按 PID 枚举窗口、不依赖桌面合成器，也不包含标题栏或窗口边框。该路径适合 UI 回归、自动化和采集控件状态。
 
-离屏截图使用 Software RenderContext 重放与活动后端相同的 DisplayTree 命令。它支持当前 Software/Impeller 共享的形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip，但不是 Impeller GPU framebuffer readback；不同文字栅格器的抗锯齿和 shaping 仍可能产生像素差异。
+截图来源取决于活动渲染后端的能力：
+
+- **GPU 实时帧回读（优先）**：当活动 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true` 时，`CaptureRendererBitmapAsync()` 直接读回最近一帧真实呈现的 GPU 图像。这使截图反映真实 GPU 输出，GPU 侧的渲染 bug（例如 render pass 被丢弃导致的白屏）会直接暴露在截图中，而不会被软件重渲染掩盖。Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`；启用后在帧内把 swapchain 颜色附件 copy 到 host-visible buffer，swapchain 格式 B8G8R8A8 与 `Bitmap` 的 BGRA 布局一致，无需通道交换。
+- **软件重渲染（回退）**：当活动后端不提供实时帧（如 Software、Impeller）时，在 UI 线程创建离屏 Software RenderContext，重放与活动后端相同的 DisplayTree 命令、文本选择和诊断覆盖层。它支持当前 Software/Impeller 共享的形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip；不同文字栅格器的抗锯齿和 shaping 仍可能产生像素差异。
 
 ### POST /api/v1/input/pointer
 
@@ -312,7 +334,7 @@ Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时
 
 Tooling HTTP 请求运行在 ASP.NET Core 轻量 WebApplication 中。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
 
-截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程创建离屏 Software RenderContext，并重放当前 DisplayTree、文本选择和诊断覆盖层。活动后端不需要实现 `IRenderBitmapSource`，因此 Software 与 Impeller 都能使用同一截图 API。
+截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software、Impeller 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
 
 输入注入后的行为与平台输入路径一致：鼠标命中测试、焦点、文本编辑器、键盘快捷键、滚轮路由和必要的重绘都会由 `DesktopApplication` 统一处理。
 

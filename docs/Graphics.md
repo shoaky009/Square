@@ -1,6 +1,6 @@
 # IRenderContext API
 
-> Version: 0.2  
+> Version: 0.3  
 > 配套：`Architecture.md`、`Rendering.md`
 
 ---
@@ -60,6 +60,18 @@ public interface IRenderBackendFactory
     IRenderContext CreateContext(RenderContextCreateInfo info);
 }
 ```
+
+### 2.3 IRenderBitmapSource
+
+```csharp
+public interface IRenderBitmapSource
+{
+    bool IsCaptureAvailable => true;
+    Bitmap CaptureBitmap();
+}
+```
+
+渲染上下文可通过该接口提供活动帧截图。GPU 后端可以根据运行配置返回 `IsCaptureAvailable == false`；此时 `DesktopApplication.CaptureRendererBitmapAsync()` 使用 Software RenderContext 重放 Display Tree，而不是强制分配 GPU readback buffer。
 
 ---
 
@@ -178,6 +190,8 @@ public sealed class TextLayout
 #if BACKEND_SKIA
     RenderBackendRegistry.Register(new SkiaBackendFactory());
 #endif
+
+VulkanRegistration.Register();
 ```
 
 ### 4.2 RenderBackendRegistry

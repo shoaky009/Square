@@ -13,16 +13,14 @@ public abstract class Image : IDisposable
             DisposeCore();
             IsDisposed = true;
         }
-        GC.SuppressFinalize(this);
     }
 
     protected abstract void DisposeCore();
-    ~Image() => Dispose();
 }
 
 public sealed class Bitmap : Image
 {
-    public readonly byte[] Pixels;
+    public byte[] Pixels { get; private set; }
     public readonly int Stride;
 
     public Bitmap(int width, int height)
@@ -35,5 +33,5 @@ public sealed class Bitmap : Image
     public Span<byte> GetRow(int y) => Pixels.AsSpan(y * Stride, Stride);
     public Span<byte> GetPixel(int x, int y) => Pixels.AsSpan((y * Stride) + (x * 4), 4);
 
-    protected override void DisposeCore() { }
+    protected override void DisposeCore() => Pixels = [];
 }

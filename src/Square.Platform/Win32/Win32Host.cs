@@ -340,13 +340,6 @@ internal sealed class Win32Host : IPlatformHost
             case Win32Api.WM_TIMER:
                 host.Tick?.Invoke();
                 return IntPtr.Zero;
-            case Win32Api.WM_IME_COMPOSITION:
-                if ((lParam.ToInt64() & Win32Api.GCS_RESULTSTR) != 0)
-                {
-                    host.DispatchImeResult(hWnd);
-                    return IntPtr.Zero;
-                }
-                break;
             case Win32Api.WM_SETCURSOR:
                 if ((lParam.ToInt64() & 0xffff) == Win32Api.HTCLIENT)
                 {
@@ -517,39 +510,6 @@ internal sealed class Win32Host : IPlatformHost
     private Point ToLogicalPoint(float x, float y)
         => new(x / _dpiScale, y / _dpiScale);
 
-    private void DispatchImeResult(IntPtr hWnd)
-    {
-        var inputContext = Win32Api.ImmGetContext(hWnd);
-        if (inputContext == IntPtr.Zero) return;
-
-        try
-        {
-            var byteCount = Win32Api.ImmGetCompositionString(
-                inputContext, Win32Api.GCS_RESULTSTR, IntPtr.Zero, 0);
-            if (byteCount <= 0) return;
-
-            var buffer = Marshal.AllocHGlobal(byteCount);
-            try
-            {
-                var written = Win32Api.ImmGetCompositionString(
-                    inputContext, Win32Api.GCS_RESULTSTR, buffer, byteCount);
-                if (written > 0)
-                {
-                    var text = Marshal.PtrToStringUni(buffer, written / sizeof(char));
-                    if (!string.IsNullOrEmpty(text)) TextInput?.Invoke(text);
-                }
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
-        }
-        finally
-        {
-            Win32Api.ImmReleaseContext(hWnd, inputContext);
-        }
-    }
-
     // Reused across presents to avoid per-frame struct setup cost
     private Win32Api.BITMAPINFO _presentInfo;
     private bool _presentInfoReady;
@@ -559,11 +519,20 @@ internal sealed class Win32Host : IPlatformHost
     public void Dispose()
     {
         ReleasePresentResources();
+        _lastFrame = null;
+        _renderContext = null;
+        SizeChanged = null;
+        MouseEvent = null;
+        WheelEvent = null;
+        KeyEvent = null;
+        TextInput = null;
+        Tick = null;
         if (_hwnd != IntPtr.Zero)
         {
             Win32Api.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
         }
         _running = false;
+        if (ReferenceEquals(s_current, this)) s_current = null;
     }
 }

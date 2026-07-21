@@ -26,7 +26,6 @@ internal static partial class Win32Api
     public const int WM_UNICHAR = 0x0109;
     public const int WM_TIMER = 0x0113;
     public const int WM_IME_STARTCOMPOSITION = 0x010D;
-    public const int WM_IME_COMPOSITION = 0x010F;
     public const int WM_QUIT = 0x0012;
     public const int CS_HREDRAW = 0x0002;
     public const int CS_VREDRAW = 0x0001;
@@ -36,7 +35,6 @@ internal static partial class Win32Api
     public const uint PW_RENDERFULLCONTENT = 0x00000002;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
-    public const int GCS_RESULTSTR = 0x0800;
     public const int UNICODE_NOCHAR = 0xFFFF;
     public const int HTCLIENT = 1;
     public const int IDC_ARROW = 32512;
@@ -232,10 +230,6 @@ internal static partial class Win32Api
     [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("imm32.dll", EntryPoint = "ImmReleaseContext")]
     public static partial bool ImmReleaseContext(IntPtr hWnd, IntPtr inputContext);
-
-    [LibraryImport("imm32.dll", EntryPoint = "ImmGetCompositionStringW")]
-    public static partial int ImmGetCompositionString(
-        IntPtr inputContext, int index, IntPtr buffer, int bufferLength);
 
     [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("imm32.dll", EntryPoint = "ImmSetCompositionWindow")]

@@ -22,6 +22,8 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private readonly PresentFrameHandler? _presentFrame;
     private readonly Stack<ClipRegion> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
+    private readonly List<double> _polygonIntersections = new(64);
+    private Rect[] _scaledDirtyRects = [];
     private Matrix3x2 _currentTransform;
     private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
@@ -275,11 +277,13 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     public void Resize(Size canvasSize, float dpiScale)
     {
         dpiScale = NormalizeDpiScale(dpiScale);
+        var dpiChanged = MathF.Abs(_dpiScale - dpiScale) > float.Epsilon;
         var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * dpiScale));
         var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * dpiScale));
 
         _canvasSize = canvasSize;
         _dpiScale = dpiScale;
+        if (dpiChanged) _glyphRasterizer.Clear();
         _transformStack.Clear();
         _clipStack.Clear();
         UpdateClipCache();
@@ -315,20 +319,33 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private IReadOnlyList<Rect>? ScaleDirtyRects(IReadOnlyList<Rect>? dirtyRects)
     {
         if (dirtyRects == null || _dpiScale == 1f) return dirtyRects;
-        var scaled = new Rect[dirtyRects.Count];
+        if (_scaledDirtyRects.Length < dirtyRects.Count)
+            _scaledDirtyRects = new Rect[Math.Max(dirtyRects.Count, _scaledDirtyRects.Length * 2)];
         for (var i = 0; i < dirtyRects.Count; i++)
         {
             var rect = dirtyRects[i];
-            scaled[i] = new Rect(
+            _scaledDirtyRects[i] = new Rect(
                 MathF.Floor(rect.X * _dpiScale),
                 MathF.Floor(rect.Y * _dpiScale),
                 MathF.Ceiling(rect.Right * _dpiScale) - MathF.Floor(rect.X * _dpiScale),
                 MathF.Ceiling(rect.Bottom * _dpiScale) - MathF.Floor(rect.Y * _dpiScale));
         }
-        return scaled;
+        return new ArraySegment<Rect>(_scaledDirtyRects, 0, dirtyRects.Count);
     }
 
-    public void Dispose() => _bitmap.Dispose();
+    public void Dispose()
+    {
+        _glyphRasterizer.Clear();
+        _clipStack.Clear();
+        _transformStack.Clear();
+        _polygonIntersections.Clear();
+        _scaledDirtyRects = [];
+        _bitmap.Dispose();
+        _bitmapPixels = [];
+        _bitmapWidth = 0;
+        _bitmapHeight = 0;
+        _bitmapStride = 0;
+    }
 
     internal Bitmap GetBitmap() => _bitmap;
 
@@ -504,18 +521,24 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         }
         if (stops.Length == 0) return Color.Transparent;
         offset = ApplySpread(offset, spread);
-        var ordered = stops.OrderBy(stop => stop.Offset).ToArray();
-        if (offset <= ordered[0].Offset) return ordered[0].Color;
-        if (offset >= ordered[^1].Offset) return ordered[^1].Color;
-        for (var i = 1; i < ordered.Length; i++)
+        GradientStop? minimum = null;
+        GradientStop? maximum = null;
+        GradientStop? lower = null;
+        GradientStop? upper = null;
+        foreach (var stop in stops)
         {
-            if (offset > ordered[i].Offset) continue;
-            var previous = ordered[i - 1];
-            var range = ordered[i].Offset - previous.Offset;
-            var amount = range <= float.Epsilon ? 0 : (offset - previous.Offset) / range;
-            return Lerp(previous.Color, ordered[i].Color, amount);
+            if (minimum == null || stop.Offset < minimum.Offset) minimum = stop;
+            if (maximum == null || stop.Offset >= maximum.Offset) maximum = stop;
+            if (stop.Offset < offset && (lower == null || stop.Offset >= lower.Offset)) lower = stop;
+            if (stop.Offset >= offset && (upper == null || stop.Offset < upper.Offset)) upper = stop;
         }
-        return ordered[^1].Color;
+        if (offset <= minimum!.Offset) return minimum.Color;
+        if (offset >= maximum!.Offset) return maximum.Color;
+        lower ??= minimum;
+        upper ??= maximum;
+        var range = upper.Offset - lower.Offset;
+        var amount = range <= float.Epsilon ? 0 : (offset - lower.Offset) / range;
+        return Lerp(lower.Color, upper.Color, amount);
     }
 
     private static float ApplySpread(float offset, GradientSpreadMethod spread)
@@ -1017,7 +1040,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         for (int y = minY; y <= maxY; y++)
         {
             var yc = y + 0.5;
-            var intersections = new List<double>();
+            _polygonIntersections.Clear();
             for (int i = 0; i < points.Count; i++)
             {
                 var (x0, y0) = points[i];
@@ -1025,14 +1048,14 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 if ((y0 <= yc && y1 > yc) || (y1 <= yc && y0 > yc))
                 {
                     var t = (yc - y0) / (y1 - y0);
-                    intersections.Add(x0 + t * (x1 - x0));
+                    _polygonIntersections.Add(x0 + t * (x1 - x0));
                 }
             }
-            intersections.Sort();
-            for (int i = 0; i < intersections.Count - 1; i += 2)
+            _polygonIntersections.Sort();
+            for (int i = 0; i < _polygonIntersections.Count - 1; i += 2)
             {
-                var xa = (int)Math.Round(intersections[i]);
-                var xb = (int)Math.Round(intersections[i + 1]);
+                var xa = (int)Math.Round(_polygonIntersections[i]);
+                var xb = (int)Math.Round(_polygonIntersections[i + 1]);
                 for (int x = xa; x <= xb; x++)
                     BlendPixel(x, y, color);
             }
