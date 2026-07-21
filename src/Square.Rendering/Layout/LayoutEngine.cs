@@ -434,7 +434,8 @@ public sealed class LayoutEngine
 
     private static void ApplyFlexItem(Element element, YogaNode node, float parentW, float parentH, float em, float rem)
     {
-        ApplyFlexShorthand(element.Style.Get("flex"), node, parentW, parentH, em, rem);
+        var flex = element.Style.Get("flex");
+        ApplyFlexShorthand(flex, node, parentW, parentH, em, rem);
 
         var grow = element.Style.Get("flex-grow");
         if (grow != null && float.TryParse(grow, NumberStyles.Float, CultureInfo.InvariantCulture, out var g))
@@ -442,6 +443,8 @@ public sealed class LayoutEngine
         var shrink = element.Style.Get("flex-shrink");
         if (shrink != null && float.TryParse(shrink, NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
             YGNodeStyleSetFlexShrink(node, s);
+        else if (flex == null && HasExplicitMainAxisSize(element))
+            YGNodeStyleSetFlexShrink(node, 0);
         var basis = element.Style.Get("flex-basis");
         if (basis != null)
         {
@@ -466,6 +469,14 @@ public sealed class LayoutEngine
                 _ => YGAlign.Auto
             });
         }
+    }
+
+    private static bool HasExplicitMainAxisSize(Element element)
+    {
+        var parentDirection = element.Parent?.Style.Get("flex-direction")?.Trim();
+        var mainAxisSize = parentDirection is "row" or "row-reverse" ? "width" : "height";
+        var value = element.Style.Get(mainAxisSize)?.Trim();
+        return !string.IsNullOrEmpty(value) && !string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ApplyFlexShorthand(string? value, YogaNode node, float parentW, float parentH, float em, float rem)

@@ -131,17 +131,21 @@ public sealed class TextLayout
 
 ## 7. Caret 与 Selection
 
-### 7.1 M3
+### 7.1 当前实现
 
 - Caret 位置计算
 - Caret 绘制
-- 单行选择
+- 单行和多行编辑器选择
+- DOM `Range` 文本选择
+- CSS `selection-background` / `selection-background-color` / `selection-color`
+- 选择背景使用逻辑 advance，并扩展到首尾 glyph 的实际墨迹边界
+- Caret、命中测试、水平滚动和选择区共享同一套 glyph advance
 
-### 7.2 M7 完整
+### 7.2 后续完整排版
 
-- 多行选择
-- 选择高亮绘制
-- 剪贴板联动
+- 复杂脚本整形后的 cluster 级选择
+- BiDi 视觉顺序选择
+- 跨 fallback font run 的统一 cluster 边界
 
 ---
 
@@ -180,7 +184,8 @@ public sealed class TextLayout
 - `IRenderContext.DrawText(TextLayout, Point, Brush)`
 - Software Backend：读取灰度 coverage，并直接混合到整数物理像素
 - Vulkan Backend：将 coverage 上传为白色 RGB、coverage alpha 的 atlas 区域；glyph 周围使用透明白 padding，避免线性过滤产生暗边
-- Vulkan 普通 DPI 文本使用整数物理像素原点、offset 和 advance，使 atlas texel 与 framebuffer pixel 保持一对一映射
+- Software 与 Vulkan 都按逻辑 glyph advance 累计字符位置，再将每个 glyph 落点映射到物理像素；避免高 DPI 下逐字符整数 advance 的累计漂移
+- Vulkan 普通 DPI 文本保持物理像素对齐的 glyph 原点和 bearing，使 atlas texel 与 framebuffer pixel 保持一对一映射
 - Vulkan 旋转、斜切或额外缩放文本保留浮点 quad 与线性过滤，以支持任意变换
 
 ---
@@ -192,7 +197,7 @@ public sealed class TextLayout
 已经抗锯齿的 coverage 不应在一对一显示时再次落在半像素位置，否则线性采样会把相邻 coverage 再平均一次，使笔画变软。为保持 Software/Vulkan 一致：
 
 - 布局继续使用逻辑像素，glyph 按 `font.Size * DpiScale` 栅格化
-- 普通 DPI 文本在 framebuffer 空间舍入基线原点一次
-- 后续 glyph 使用栅格器返回的整数 advance 和 bearing
+- 普通 DPI 文本使用逻辑 advance 累计位置，并在每个 glyph 落点映射到 framebuffer 时舍入
+- glyph bearing 和 coverage 使用物理字号栅格器结果，advance 不直接使用逐字符物理整数值
 - atlas UV 使用 allocation 边界，不额外添加全局半 texel 偏移
 - 不对整个共享 atlas 强制使用 nearest filter，以免降低 Bitmap 缩放质量

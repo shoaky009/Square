@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Square.Graphics;
 using Square.Text.Glyph;
 
@@ -238,7 +239,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     {
         if (brush is not SolidColorBrush sc) return;
         if (string.IsNullOrEmpty(text.Text)) return;
-        RenderText(ScaleTextLayout(text), TransformPoint(origin), sc.Color);
+        RenderText(text, TransformPoint(origin), sc.Color);
     }
 
     public void DrawImage(Image image, Rect dest, Rect? source = null)
@@ -682,10 +683,68 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     private void FillRoundedRectFast(Rect rect, float rx, float ry, Color color)
     {
-        BlendRect(new Rect(rect.X + rx, rect.Y, Math.Max(0, rect.Width - rx * 2), rect.Height), color);
-        BlendRect(new Rect(rect.X, rect.Y + ry, rx, Math.Max(0, rect.Height - ry * 2)), color);
-        BlendRect(new Rect(rect.Right - rx, rect.Y + ry, rx, Math.Max(0, rect.Height - ry * 2)), color);
-        RasterizeRoundedRectCorners(rect, rx, ry, Rect.Empty, 0, 0, hasInner: false, color);
+        var left = rect.X;
+        var top = rect.Y;
+        var right = left + rect.Width;
+        var bottom = top + rect.Height;
+        var innerLeft = left + rx;
+        var innerTop = top + ry;
+        var innerRight = right - rx;
+        var innerBottom = bottom - ry;
+        var invRx2 = 1f / (rx * rx);
+        var invRy2 = 1f / (ry * ry);
+        var sampleInset = 0.5f / CoverageSampleGrid;
+        var sampleMaxInset = 1f - sampleInset;
+
+        var x0 = Math.Max(0, (int)MathF.Floor(left));
+        var y0 = Math.Max(0, (int)MathF.Floor(top));
+        var x1 = Math.Min(_bitmapWidth, (int)MathF.Ceiling(right));
+        var y1 = Math.Min(_bitmapHeight, (int)MathF.Ceiling(bottom));
+        if (_hasClip)
+        {
+            x0 = Math.Max(x0, (int)MathF.Floor(_clipLeft));
+            y0 = Math.Max(y0, (int)MathF.Floor(_clipTop));
+            x1 = Math.Min(x1, (int)MathF.Ceiling(_clipRight));
+            y1 = Math.Min(y1, (int)MathF.Ceiling(_clipBottom));
+        }
+
+        for (var y = y0; y < y1; y++)
+        {
+            for (var x = x0; x < x1; x++)
+            {
+                var sampleLeft = x + sampleInset;
+                var sampleTop = y + sampleInset;
+                var sampleRight = x + sampleMaxInset;
+                var sampleBottom = y + sampleMaxInset;
+                var fullyInsideBounds = sampleLeft >= left && sampleRight <= right &&
+                    sampleTop >= top && sampleBottom <= bottom;
+                if (fullyInsideBounds &&
+                    (sampleLeft >= innerLeft && sampleRight <= innerRight ||
+                     sampleTop >= innerTop && sampleBottom <= innerBottom))
+                {
+                    BlendPixelCoverage(x, y, color, CoverageSampleCount, CoverageSampleCount);
+                    continue;
+                }
+
+                var covered = 0;
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
+                {
+                    var py = y + (sy + 0.5f) / CoverageSampleGrid;
+                    if (py < top || py > bottom) continue;
+                    var dy = py < innerTop ? py - innerTop : py > innerBottom ? py - innerBottom : 0;
+                    var normalizedY = dy * dy * invRy2;
+                    if (normalizedY > 1f) continue;
+                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / CoverageSampleGrid;
+                        if (px < left || px > right) continue;
+                        var dx = px < innerLeft ? px - innerLeft : px > innerRight ? px - innerRight : 0;
+                        if (dx * dx * invRx2 + normalizedY <= 1f) covered++;
+                    }
+                }
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+            }
+        }
     }
 
     private void DrawRoundedRectFast(Rect rect, float rx, float ry, float strokeWidth, Color color)
@@ -718,6 +777,8 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         var y1 = Math.Min(_bitmap.Height - 1, (int)MathF.Ceiling(cornerBounds.Bottom));
         var outerCx = cornerBounds.X < rect.X + rx ? rect.X + rx : rect.Right - rx;
         var outerCy = cornerBounds.Y < rect.Y + ry ? rect.Y + ry : rect.Bottom - ry;
+        var isLeft = cornerBounds.X < rect.X + rx;
+        var isTop = cornerBounds.Y < rect.Y + ry;
         var outerInvRx2 = 1f / (rx * rx);
         var outerInvRy2 = 1f / (ry * ry);
 
@@ -744,6 +805,8 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                     {
                         var px = x + (sx + 0.5f) / CoverageSampleGrid;
                         var py = y + (sy + 0.5f) / CoverageSampleGrid;
+                        if (isLeft ? px >= outerCx : px < outerCx) continue;
+                        if (isTop ? py >= outerCy : py < outerCy) continue;
                         if (!IsInsideEllipse(px, py, outerCx, outerCy, outerInvRx2, outerInvRy2)) continue;
                         if (hasInner && IsInsideInnerRoundedRectCorner(px, py, inner, innerRx, innerRy, innerCx, innerCy, innerInvRx2, innerInvRy2)) continue;
                         covered++;
@@ -1236,6 +1299,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             return;
         }
 
+        textLayout = ScaleTextLayout(textLayout);
         var text = textLayout.Text;
         var fontSize = textLayout.Font.Size;
         var lineHeight = fontSize * textLayout.LineHeight;
@@ -1264,12 +1328,13 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     private void RenderSystemText(TextLayout textLayout, Point origin, Color color)
     {
-        var x = (int)MathF.Round(origin.X);
-        var y = (int)MathF.Round(origin.Y);
+        var x = origin.X;
+        var y = origin.Y;
         var lineStart = x;
-        var lineHeight = Math.Max(1, (int)MathF.Round(textLayout.Font.Size * textLayout.LineHeight));
-        var maxWidth = textLayout.MaxSize.Width;
+        var lineHeight = Math.Max(1, textLayout.Font.Size * textLayout.LineHeight * _dpiScale);
+        var maxWidth = textLayout.MaxSize.Width * _dpiScale;
         var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
+        var physicalFont = textLayout.Font.WithSize(textLayout.Font.Size * _dpiScale);
 
         foreach (var character in textLayout.Text)
         {
@@ -1280,8 +1345,10 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 continue;
             }
 
-            var glyph = _glyphRasterizer.Rasterize(textLayout.Font, character);
-            var advance = glyph?.AdvanceX ?? Math.Max(1, (int)MathF.Round(textLayout.Font.Size * 0.5f));
+            var glyph = _glyphRasterizer.Rasterize(physicalFont, character);
+            var advance = Rune.TryCreate(character, out var rune)
+                ? TextLayout.MeasureRuneAdvance(rune, textLayout.Font) * _dpiScale
+                : glyph?.AdvanceX ?? Math.Max(1, textLayout.Font.Size * 0.5f * _dpiScale);
             if (constrainWidth && x > lineStart && x - lineStart + advance > maxWidth)
             {
                 x = lineStart;
@@ -1292,6 +1359,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 x += advance;
                 continue;
             }
+
+            var glyphX = (int)MathF.Round(x);
+            var glyphY = (int)MathF.Round(y);
 
             for (var row = 0; row < glyph.Height; row++)
             {
@@ -1304,8 +1374,8 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                     // Coverage is normalized to 0..255 (Win32 Gray8 converted at rasterize time; STB is already 0..255).
                     var alpha = (byte)(color.A * coverage / 255);
                     BlendPixel(
-                        x + glyph.OffsetX + column,
-                        y + glyph.OffsetY + row,
+                        glyphX + glyph.OffsetX + column,
+                        glyphY + glyph.OffsetY + row,
                         new Color(color.R, color.G, color.B, alpha));
                 }
             }

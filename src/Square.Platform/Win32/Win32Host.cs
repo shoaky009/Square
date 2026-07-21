@@ -111,7 +111,7 @@ internal sealed class Win32Host : IPlatformHost
 
         _hwnd = Win32Api.CreateWindowEx(
             0, "SquareWindow", _title,
-            Win32Api.WS_OVERLAPPEDWINDOW | Win32Api.WS_VISIBLE,
+            Win32Api.WS_OVERLAPPEDWINDOW,
             100, 100, _width, _height,
             IntPtr.Zero, IntPtr.Zero, Win32Api.GetModuleHandle(null), IntPtr.Zero);
 
@@ -121,14 +121,29 @@ internal sealed class Win32Host : IPlatformHost
             throw new InvalidOperationException($"CreateWindowEx failed: {err}");
         }
 
-        Win32Api.GetClientRect(_hwnd, out var rect);
         _dpiScale = DpiToScale(Win32Api.GetDpiForWindow(_hwnd));
+        if (_dpiScale != 1f)
+        {
+            Win32Api.GetWindowRect(_hwnd, out var windowRect);
+            Win32Api.SetWindowPos(
+                _hwnd, IntPtr.Zero,
+                windowRect.Left, windowRect.Top,
+                ToPhysical(_width, _dpiScale), ToPhysical(_height, _dpiScale),
+                Win32Api.SWP_NOZORDER | Win32Api.SWP_NOACTIVATE);
+        }
+
+        Win32Api.GetClientRect(_hwnd, out var rect);
         UpdateClientSize(rect);
 
-        Win32Api.ShowWindow(_hwnd, Win32Api.SW_SHOW);
-        Win32Api.UpdateWindow(_hwnd);
         Win32Api.SetTimer(_hwnd, new UIntPtr(1), FrameTimerIntervalMs, IntPtr.Zero);
         _running = true;
+    }
+
+    public void ShowAfterFirstFrame()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        Win32Api.ShowWindow(_hwnd, Win32Api.SW_SHOW);
+        Win32Api.UpdateWindow(_hwnd);
     }
 
     public void Close()
@@ -497,6 +512,9 @@ internal sealed class Win32Host : IPlatformHost
     }
 
     private static float DpiToScale(uint dpi) => dpi > 0 ? dpi / 96f : 1f;
+
+    private static int ToPhysical(int logicalValue, float dpiScale)
+        => Math.Max(1, (int)MathF.Round(logicalValue * dpiScale));
 
     private void UpdateClientSize(Win32Api.RECT rect)
     {

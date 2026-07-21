@@ -442,10 +442,11 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
                 y += lineHeight;
                 continue;
             }
-            if (!rune.IsBmp) { x += text.Font.Size * 0.5f; continue; }
+            var advance = TextLayout.MeasureRuneAdvance(rune, text.Font);
+            if (!rune.IsBmp) { x += advance; continue; }
 
             var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
-            if (glyph is not { } resolvedGlyph) { x += text.Font.Size * 0.5f; continue; }
+            if (glyph is not { } resolvedGlyph) { x += advance; continue; }
 
             if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
             {
@@ -468,7 +469,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
                 ReadOnlySpan<uint> idx = [0, 1, 2, 0, 2, 3];
                 AddBatch(verts, idx);
             }
-            x += resolvedGlyph.Advance;
+            x += advance;
         }
     }
 
@@ -600,10 +601,10 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private void DrawPixelAlignedText(TextLayout text, Point origin, uint packed)
     {
         var physicalOrigin = TransformPoint(origin);
-        var lineStart = (int)MathF.Round(physicalOrigin.X);
+        var lineStart = physicalOrigin.X;
         var x = lineStart;
-        var y = (int)MathF.Round(physicalOrigin.Y);
-        var lineHeight = Math.Max(1, (int)MathF.Round(text.Font.Size * text.LineHeight * DpiScale));
+        var y = physicalOrigin.Y;
+        var lineHeight = Math.Max(1, text.Font.Size * text.LineHeight * DpiScale);
 
         foreach (var rune in text.Text.EnumerateRunes())
         {
@@ -613,19 +614,22 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
                 y += lineHeight;
                 continue;
             }
-            if (!rune.IsBmp) { x += Math.Max(1, (int)MathF.Round(text.Font.Size * DpiScale * 0.5f)); continue; }
+            var advance = TextLayout.MeasureRuneAdvance(rune, text.Font) * DpiScale;
+            if (!rune.IsBmp) { x += advance; continue; }
 
             var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
             if (glyph is not { } resolvedGlyph)
             {
-                x += Math.Max(1, (int)MathF.Round(text.Font.Size * DpiScale * 0.5f));
+                x += advance;
                 continue;
             }
 
             if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
             {
-                var left = x + resolvedGlyph.PhysicalOffsetX - resolvedGlyph.FilterBorder;
-                var top = y + resolvedGlyph.PhysicalOffsetY - resolvedGlyph.FilterBorder;
+                var glyphX = MathF.Round(x);
+                var glyphY = MathF.Round(y);
+                var left = glyphX + resolvedGlyph.PhysicalOffsetX - resolvedGlyph.FilterBorder;
+                var top = glyphY + resolvedGlyph.PhysicalOffsetY - resolvedGlyph.FilterBorder;
                 var right = left + resolvedGlyph.AtlasW;
                 var bottom = top + resolvedGlyph.AtlasH;
                 var (u0, v0, u1, v1) = _atlas.GetUV(
@@ -641,7 +645,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
                 ReadOnlySpan<uint> indices = [0, 1, 2, 0, 2, 3];
                 AddBatch(vertices, indices);
             }
-            x += resolvedGlyph.PhysicalAdvance;
+            x += advance;
         }
     }
 
@@ -965,8 +969,8 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private struct CachedGlyph
     {
         public int AtlasX, AtlasY, AtlasW, AtlasH;
-        public int PhysicalOffsetX, PhysicalOffsetY, PhysicalAdvance, FilterBorder;
-        public float OffsetX, OffsetY, DrawWidth, DrawHeight, Advance;
+        public int PhysicalOffsetX, PhysicalOffsetY, FilterBorder;
+        public float OffsetX, OffsetY, DrawWidth, DrawHeight;
     }
 
     private sealed class CachedImage
@@ -987,10 +991,8 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
         {
             PhysicalOffsetX = rasterized.OffsetX,
             PhysicalOffsetY = rasterized.OffsetY,
-            PhysicalAdvance = rasterized.AdvanceX,
             OffsetX = rasterized.OffsetX / DpiScale,
-            OffsetY = rasterized.OffsetY / DpiScale,
-            Advance = rasterized.AdvanceX / DpiScale
+            OffsetY = rasterized.OffsetY / DpiScale
         };
 
         if (rasterized.Width > 0 && rasterized.Height > 0)

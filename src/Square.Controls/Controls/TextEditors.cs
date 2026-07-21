@@ -407,6 +407,16 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             if (end < start || end == start && !includesNewline) continue;
             var x = MeasureRange(displayValue, line.Start, start - line.Start);
             var width = MeasureRange(displayValue, start, end - start);
+            if (end > start)
+            {
+                var font = ControlDrawing.ResolveFont(this, fontSize);
+                var firstRune = DecodeRuneAt(displayValue, start);
+                var lastRune = DecodeRuneBefore(displayValue, end);
+                var firstInk = ControlDrawing.MeasureRenderedRuneInkBounds(firstRune, font);
+                var lastInk = ControlDrawing.MeasureRenderedRuneInkBounds(lastRune, font);
+                x += firstInk.Left;
+                width += lastInk.Right - MeasureCharacterAdvanceBefore(displayValue, end) - firstInk.Left;
+            }
             if (includesNewline) width += 6;
             var visualLineBox = GetVisualLineBox(fontSize, lineHeight, i);
             result.Add(new Rect(
@@ -537,7 +547,26 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     {
         var editorFont = ControlDrawing.ResolveFont(this, GetFontSize());
         Rune.DecodeFromUtf16(character, out var rune, out _);
-        return TextLayout.MeasureRuneAdvance(rune, editorFont);
+        return ControlDrawing.MeasureRenderedRuneAdvance(rune, editorFont);
+    }
+
+    private float MeasureCharacterAdvanceBefore(string text, int end)
+    {
+        var start = PreviousCodePointIndex(text, end);
+        return MeasureCharacterAdvance(text.AsSpan(start, end - start));
+    }
+
+    private static Rune DecodeRuneAt(string text, int start)
+    {
+        Rune.DecodeFromUtf16(text.AsSpan(start), out var rune, out _);
+        return rune;
+    }
+
+    private static Rune DecodeRuneBefore(string text, int end)
+    {
+        var start = PreviousCodePointIndex(text, end);
+        Rune.DecodeFromUtf16(text.AsSpan(start, end - start), out var rune, out _);
+        return rune;
     }
 
     private static int PreviousCodePointIndex(string text, int index)

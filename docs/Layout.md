@@ -94,6 +94,51 @@ Arrange（排列：确定最终位置与尺寸）
 4. justify-content 对齐主轴
 5. align-items 对齐交叉轴
 
+### 5.4 固定尺寸与滚动面板
+
+Square 使用 Yoga Web Defaults，但对显式主轴尺寸采用更适合桌面 UI 的默认收缩规则：
+
+- `flex-direction: column` / `column-reverse` 中，显式 `height` 的子项默认不收缩。
+- `flex-direction: row` / `row-reverse` 中，显式 `width` 的子项默认不收缩。
+- 显式设置 `flex-shrink` 或 `flex` 时，以应用声明为准。
+- 滚动容器的直接子项在未声明 `flex-shrink` 时保持内容尺寸，使内容能够超出视口并形成滚动范围。
+
+固定标签栏、内部面板滚动的推荐结构：
+
+```css
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabs-host {
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tab-list {
+  height: 42px;
+}
+
+.tab-panels {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+```
+
+组件宿主本身也是父级 Flex 容器的子项。需要占用剩余空间时，应把 `flex-grow` / `flex-shrink` / `flex-basis` 设置到组件标签或组件宿主 class 上，而不只是设置到组件内部的第一个 `View`。
+
 ---
 
 ## 6. position（M1 基础）
@@ -133,7 +178,8 @@ Arrange（排列：确定最终位置与尺寸）
 
 - 布局按逻辑像素
 - 光栅按物理像素
-- 物理像素对齐：`Math.Round(logical * dpiScale)` 取整
+- 文本、光标和选择区共享逻辑 glyph advance；累计逻辑位置映射到物理像素时再取整，避免逐字符物理取整累积误差
+- 字形 coverage 按物理字号生成，保持高 DPI 清晰度
 - 避免模糊
 
 ---

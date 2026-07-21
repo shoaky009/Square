@@ -18,6 +18,7 @@ public interface IPlatformHost : IDisposable
     event Action? Tick;
 
     void Show();
+    void ShowAfterFirstFrame() { }
     void Close();
     IRenderContext CreateRenderContext();
     void PumpEvents();

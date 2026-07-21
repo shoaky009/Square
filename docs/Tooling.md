@@ -217,6 +217,8 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 - **GPU 实时帧回读（优先）**：当活动 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true` 时，`CaptureRendererBitmapAsync()` 直接读回最近一帧真实呈现的 GPU 图像。这使截图反映真实 GPU 输出，GPU 侧的渲染 bug（例如 render pass 被丢弃导致的白屏）会直接暴露在截图中，而不会被软件重渲染掩盖。Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`；启用后在帧内把 swapchain 颜色附件 copy 到 host-visible buffer，swapchain 格式 B8G8R8A8 与 `Bitmap` 的 BGRA 布局一致，无需通道交换。
 - **软件重渲染（回退）**：当活动后端不提供实时帧时，在 UI 线程创建离屏 Software RenderContext，重放与活动后端相同的 DisplayTree 命令、文本选择和诊断覆盖层。它支持形状、Path、Bitmap、文本、渐变、透明层和 Geometry clip；不同渲染路径的抗锯齿仍可能产生像素差异。
 
+调试 DPI、文字选择或后端差异时，应优先采用同一组输入注入分别采集 Software 与 Vulkan GPU readback 帧。这样可以区分布局/选择区逻辑问题和具体后端的 glyph 定位、coverage 或混合问题。
+
 ### POST /api/v1/input/pointer
 
 请求体：

@@ -98,6 +98,7 @@ public sealed class DesktopApplication : Application
             _renderContext = _host.CreateRenderContext();
             lifecycle.OnLoaded();
             RenderFrame();
+            _host.ShowAfterFirstFrame();
             _host.PumpEvents();
         }
         finally
@@ -951,7 +952,7 @@ public sealed class DesktopApplication : Application
             foreach (var character in item.Fragment.Characters)
             {
                 if (character.EndOffset <= startOffset || character.StartOffset >= endOffset) continue;
-                context.FillRect(character.Bounds, backgroundBrush);
+                context.FillRect(character.SelectionBounds, backgroundBrush);
                 var selectedText = item.Text[character.StartOffset..character.EndOffset];
                 context.DrawText(
                     new TextLayout(selectedText, item.Fragment.Font),

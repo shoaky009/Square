@@ -33,4 +33,4 @@ public sealed record TextFragment(Element Element, string Text, Font Font, Rect 
     }
 }
 
-public readonly record struct TextCharacterFragment(int StartOffset, int EndOffset, Rect Bounds);
+public readonly record struct TextCharacterFragment(int StartOffset, int EndOffset, Rect Bounds, Rect SelectionBounds);

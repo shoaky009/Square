@@ -54,9 +54,11 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - PNG 编码（`BitmapPngEncoder`）与 BMP 解码（`BmpPngConverter`），纯 C# 无外部依赖
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
-- Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）
+- Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充、圆角主体快速路径与边缘子像素光栅化）
 - Software Renderer 内存生命周期优化（DPI glyph cache 清理、临时缓冲复用、关闭时及时释放 framebuffer）
+- Software/Vulkan 高 DPI 文本共享逻辑 glyph advance，选择区、光标与实际字形位置保持一致
 - Vulkan 文本按物理像素对齐，避免对灰度 glyph coverage 进行二次线性重采样
+- Win32 在首次 Present 后显示窗口，避免启动瞬间出现未初始化黑色客户区
 
 完整状态和后续计划见 [`docs/Roadmap.md`](docs/Roadmap.md)。
 多目标渲染、原生 UI 输出、SVG 导出和 Godot 嵌入路线见 [`docs/Rendering-Targets.md`](docs/Rendering-Targets.md)。

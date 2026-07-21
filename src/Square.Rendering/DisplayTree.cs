@@ -326,9 +326,12 @@ public sealed class DisplayTree
                 x = command.Origin.X;
                 y += lineHeight;
             }
-            var glyphBottom = MeasureRenderedBottom(command.Text.Font, rune);
-            var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBottom));
-            characters.Add(new TextCharacterFragment(startOffset, offset, bounds));
+            var glyphBounds = MeasureRenderedGlyphBounds(command.Text.Font, rune);
+            var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBounds.Bottom));
+            var selectionLeft = Math.Min(x, x + glyphBounds.Left);
+            var selectionRight = Math.Max(x + advance, x + glyphBounds.Right);
+            var selectionBounds = new Rect(selectionLeft, y, selectionRight - selectionLeft, bounds.Height);
+            characters.Add(new TextCharacterFragment(startOffset, offset, bounds, selectionBounds));
             x += advance;
             maxRight = Math.Max(maxRight, x);
         }
@@ -350,15 +353,15 @@ public sealed class DisplayTree
         return TextLayout.MeasureRuneAdvance(rune, font);
     }
 
-    private static float MeasureRenderedBottom(Font font, Rune rune)
+    private static Rect MeasureRenderedGlyphBounds(Font font, Rune rune)
     {
         if (TextFragmentGlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
         {
             var glyph = TextFragmentGlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null) return glyph.OffsetY + glyph.Height;
+            if (glyph != null) return new Rect(glyph.OffsetX, glyph.OffsetY, glyph.Width, glyph.Height);
         }
 
-        return font.Size * TextLayout.DefaultLineHeight;
+        return new Rect(0, 0, TextLayout.MeasureRuneAdvance(rune, font), font.Size * TextLayout.DefaultLineHeight);
     }
 
     private static bool IsDescendantOrSelf(Element element, Element root)

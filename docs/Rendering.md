@@ -254,7 +254,9 @@ dotnet run --project tools/ShaderGen
 - 布局按逻辑像素，光栅按物理像素
 - 物理像素对齐避免模糊
 - 支持多显示器不同 DPI
-- Vulkan 在普通轴对齐 DPI 变换下，将文本原点、glyph offset 和 advance 映射到整数物理像素，避免已经抗锯齿的 coverage atlas 再被线性过滤一次
+- Win32 在创建窗口后读取所在显示器 DPI，并将配置的逻辑窗口尺寸转换为物理尺寸；布局继续使用逻辑客户区尺寸
+- Software 和 Vulkan 文本按逻辑 advance 累计位置，只在 glyph 落点映射到物理像素时取整，避免 125% / 150% / 200% DPI 下的累计宽度漂移
+- Vulkan 在普通轴对齐 DPI 变换下，将文本原点和 glyph offset 对齐到整数物理像素，避免已经抗锯齿的 coverage atlas 再被线性过滤一次
 - 旋转、斜切或额外缩放的文本保留浮点几何和过滤路径
 - Vulkan 曲线按变换后的物理半径自适应细分，避免大圆和圆角使用固定段数产生折角
 - Vulkan 填充/描边椭圆和 path stroke 在边缘生成约 1 个物理像素的 alpha feather，细斜线不只依赖有限的 MSAA coverage level
@@ -276,3 +278,14 @@ dotnet run --project tools/ShaderGen
 - Win32 host 关闭时解除 RenderContext、最后一帧、事件委托和静态当前宿主引用，避免窗口关闭后继续根引用 framebuffer 与 glyph cache
 - Vulkan atlas 仅保留 GPU 图像和紧凑 staging uploads，不保留完整 CPU atlas 镜像
 - Vulkan readback、额外 swapchain image 和更高 MSAA 均为显式或受控配置，避免默认资源占用过高
+
+### 9.2 Software 圆角与阴影
+
+- 半透明圆角填充按完整圆角矩形一次光栅化，不再拆分为直边和四个圆角分别混合，避免阴影接缝处重复 alpha 或透明缺口。
+- 完全位于圆角矩形主体横带或竖带内的像素走全覆盖快速路径。
+- 只有外边缘和四个圆角执行 4x4 子像素采样；圆角边界、半径平方倒数和内侧切线在循环外预计算。
+- 边缘热路径直接计算椭圆方程，不构造 `Point`，也不调用通用 `ContainsRoundedRect`、`Rect.Contains` 或重复 `Math.Clamp`。
+
+### 9.3 Win32 首帧显示
+
+Win32 窗口先以隐藏状态创建并完成 DPI 调整。`DesktopApplication` 创建 RenderContext、执行首次布局和 `Present()` 后，再调用平台宿主显示窗口。Software 和 Vulkan 因此都在窗口可见前准备好首帧，避免 DWM 短暂显示未初始化的黑色客户区。

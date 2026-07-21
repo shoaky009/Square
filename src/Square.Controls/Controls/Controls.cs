@@ -1,6 +1,8 @@
 using System.Numerics;
+using System.Text;
 using Square.Events;
 using Square.Graphics;
+using Square.Text.Glyph;
 using Square.Text.FontManager;
 using Square.UI;
 
@@ -861,6 +863,8 @@ internal sealed class DomTextContent
 
 internal static class ControlDrawing
 {
+    private static readonly SystemGlyphRasterizer GlyphRasterizer = new();
+
     /// <summary>从元素 CSS 字体相关属性解析 <see cref="Font"/>（font-family/size/weight/style）。</summary>
     internal static Font ResolveFont(Element element, float defaultSize)
     {
@@ -909,9 +913,33 @@ internal static class ControlDrawing
                 lineWidth = 0;
                 continue;
             }
-            lineWidth += TextLayout.MeasureRuneAdvance(rune, font);
+            lineWidth += MeasureRenderedRuneAdvance(rune, font);
         }
         return Math.Max(maxWidth, lineWidth);
+    }
+
+    internal static float MeasureRenderedRuneAdvance(Rune rune, Font font)
+    {
+        if (GlyphRasterizer.IsAvailable && rune.IsBmp)
+        {
+            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
+            if (glyph != null) return glyph.AdvanceX;
+        }
+
+        return TextLayout.MeasureRuneAdvance(rune, font);
+    }
+
+    internal static (float Left, float Right) MeasureRenderedRuneInkBounds(Rune rune, Font font)
+    {
+        var advance = MeasureRenderedRuneAdvance(rune, font);
+        if (GlyphRasterizer.IsAvailable && rune.IsBmp)
+        {
+            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
+            if (glyph != null)
+                return (Math.Min(0, glyph.OffsetX), Math.Max(advance, glyph.OffsetX + glyph.Width));
+        }
+
+        return (0, advance);
     }
 
     internal static void DrawText(

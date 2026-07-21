@@ -32,7 +32,7 @@
     </MenuBar>
     <Text class="app-title" text="Square Framework Samples" />
     <Text ref={MenuStatus} class="menu-status" text="Choose a menu command" />
-    <Tabs>
+    <Tabs class="main-tabs">
       <Button slot="tabs" class="tab-button">Text</Button>
       <Button slot="tabs" class="tab-button">Controls</Button>
       <Button slot="tabs" class="tab-button">Media</Button>
@@ -69,7 +69,8 @@
   private void SetMenuStatus(string text) => MenuStatus.TextContent = text;
 </script>
 <style>
-  .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .app { display: flex; flex-direction: column; gap: 10px; padding: 16px; height: 100%; }
+  .main-tabs { flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-height: 0; }
   .main-menu-bar { display: flex; flex-direction: row; width: 100%; height: 32px; background-color: #dbeafe; }
   .main-menu { width: 240px; box-shadow: 0 0px 14px 4px rgba(255, 0, 0, 0.85); }
   .app-title { color: #202124; font-size: 22px; }
