@@ -1,13 +1,13 @@
 # Source Generator
 
-> Version: 0.3  
+> Version: 0.3
 > 配套：`Architecture.md`、`Sqx-Spec.md`
 
 ---
 
 ## 1. 定位
 
-`Square.SourceGenerator` 是框架核心。
+`Square.Compiler` 是框架核心。
 
 将 `.sqx` 在编译期转换为 C# 代码。
 

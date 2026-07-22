@@ -1,4 +1,4 @@
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Graphics;
 using Square.Rendering;
 using Xunit;
@@ -28,13 +28,13 @@ public class GridLayoutTests
         root.Style.Set("grid-template-rows", "50px 1fr");
         root.Style.Set("gap", "10px");
 
-        var header = new Square.Controls.Controls.Text("header");
+        var header = new Square.Controls.Text("header");
         header.Style.Set("grid-column", "1 / span 2");
         header.Style.Set("grid-row", "1");
-        var left = new Square.Controls.Controls.Text("left");
+        var left = new Square.Controls.Text("left");
         left.Style.Set("grid-column", "1");
         left.Style.Set("grid-row", "2");
-        var right = new Square.Controls.Controls.Text("right");
+        var right = new Square.Controls.Text("right");
         right.Style.Set("grid-column", "2");
         right.Style.Set("grid-row", "2");
 

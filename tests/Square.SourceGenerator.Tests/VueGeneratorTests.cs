@@ -4,10 +4,10 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using Square.SourceGenerator.Generator;
+using Square.Compiler;
 using Xunit;
 
-namespace Square.SourceGenerator.Tests;
+namespace Square.Compiler.Tests;
 
 public class VueGeneratorTests
 {
@@ -69,8 +69,8 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("LowercaseView.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("new Square.Controls.Controls.View()", generated);
-        Assert.Contains("new Square.Controls.Controls.Text(\"hello\")", generated);
+        Assert.Contains("new Square.Controls.View()", generated);
+        Assert.Contains("new Square.Controls.Text(\"hello\")", generated);
         Assert.Contains(".Children.Add", generated);
         Assert.DoesNotContain("new view", generated);
     }
@@ -89,7 +89,7 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("Scroller.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("new Square.Controls.Controls.ScrollViewer()", generated);
+        Assert.Contains("new Square.Controls.ScrollViewer()", generated);
         Assert.DoesNotContain("new ScrollViewer", generated);
     }
 
@@ -107,7 +107,7 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("PopupCard.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("new Square.Controls.Controls.Popup()", generated);
+        Assert.Contains("new Square.Controls.Popup()", generated);
         Assert.DoesNotContain("new Popup", generated);
     }
 
@@ -125,7 +125,7 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("DialogCard.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("new Square.Controls.Controls.Dialog()", generated);
+        Assert.Contains("new Square.Controls.Dialog()", generated);
         Assert.DoesNotContain("new Dialog", generated);
     }
 
@@ -149,10 +149,10 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("Menus.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("new Square.Controls.Controls.MenuBar()", generated);
-        Assert.Contains("new Square.Controls.Controls.MenuItem()", generated);
-        Assert.Contains("new Square.Controls.Controls.Menu()", generated);
-        Assert.Contains("new Square.Controls.Controls.MenuSeparator()", generated);
+        Assert.Contains("new Square.Controls.MenuBar()", generated);
+        Assert.Contains("new Square.Controls.MenuItem()", generated);
+        Assert.Contains("new Square.Controls.Menu()", generated);
+        Assert.Contains("new Square.Controls.MenuSeparator()", generated);
         Assert.Contains("SetProperty(\"IsCheckable\", true)", generated);
         Assert.Contains("SetProperty(\"ShortcutText\", \"Ctrl+G\")", generated);
         Assert.Contains("SetProperty(\"StaysOpenOnClick\", true)", generated);
@@ -218,7 +218,7 @@ public class VueGeneratorTests
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
         Assert.Contains(".BindProperty(\"Value\", Password);", generated);
-        Assert.Contains(".AddEventListener(\"input\", e => Password.Value = ((Square.Controls.Controls.Input)e.Target!).Value);", generated);
+        Assert.Contains(".AddEventListener(\"input\", e => Password.Value = ((Square.Controls.Input)e.Target!).Value);", generated);
     }
 
     [Fact]
@@ -240,8 +240,8 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("ModelModifiers.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains(".AddEventListener(\"change\", e => Name.Value = ((Square.Controls.Controls.Input)e.Target!).Value.Trim());", generated);
-        Assert.Contains(".AddEventListener(\"input\", e => Age.Value = double.Parse(((Square.Controls.Controls.Input)e.Target!).Value, System.Globalization.CultureInfo.InvariantCulture));", generated);
+        Assert.Contains(".AddEventListener(\"change\", e => Name.Value = ((Square.Controls.Input)e.Target!).Value.Trim());", generated);
+        Assert.Contains(".AddEventListener(\"input\", e => Age.Value = double.Parse(((Square.Controls.Input)e.Target!).Value, System.Globalization.CultureInfo.InvariantCulture));", generated);
     }
 
     [Fact]
@@ -264,9 +264,9 @@ public class VueGeneratorTests
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
         Assert.Contains(".BindProperty(\"IsChecked\", RememberMe);", generated);
-        Assert.Contains(".AddEventListener(\"change\", e => RememberMe.Value = ((Square.Controls.Controls.CheckBox)e.Target!).IsChecked);", generated);
+        Assert.Contains(".AddEventListener(\"change\", e => RememberMe.Value = ((Square.Controls.CheckBox)e.Target!).IsChecked);", generated);
         Assert.Contains(".BindProperty(\"Value\", Plan);", generated);
-        Assert.Contains(".AddEventListener(\"change\", e => Plan.Value = ((Square.Controls.Controls.Select)e.Target!).Value);", generated);
+        Assert.Contains(".AddEventListener(\"change\", e => Plan.Value = ((Square.Controls.Select)e.Target!).Value);", generated);
     }
 
     private static GeneratorDriverRunResult RunGenerator(params AdditionalText[] files)

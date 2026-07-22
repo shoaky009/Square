@@ -168,7 +168,7 @@ Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏�
 .sqx
   │
   ▼
-Square.SourceGenerator ──► C# Component
+Square.Compiler ────────► C# Component
                               │
                               ▼
                          Element Tree
@@ -189,24 +189,15 @@ Square.SourceGenerator ──► C# Component
                      Rendering Backend
 ```
 
-主要项目：
+主要程序集与逻辑模块：
 
 | 项目 | 职责 |
 |---|---|
-| `Square.Markup` | SQX 词法、语法和 AST |
-| `Square.SourceGenerator` | 将 SQX 编译为 C# 组件 |
-| `Square.Runtime` | 应用生命周期、绑定、调度、信号，以及 `Square.Events` 命名空间下的 DOM 风格事件协议（`EventTarget`/`Event`/`addEventListener`/`dispatchEvent`） |
-| `Square.UI` | Element Tree、属性系统和元素操作 API |
-| `Square.Controls` | 控件、结构原语和基础动画时钟 |
-| `Square.Router` | 内存路由、历史、Link 和 RouteContext |
-| `Square.CSS` | CSS 解析、选择器、级联和样式应用 |
-| `Square.Graphics` | 绘图接口和基础图形类型 |
-| `Square.Rendering` | Box / Flex / Grid 布局、Display Tree 和 DrawCommand |
-| `Square.Text` | 字形、测量和文本布局 |
-| `Square.Platform` | 平台宿主与输入采集 |
-| `Square.Backends` | Software Renderer |
+| `Square` | 聚合桌面运行时；内部按 `Runtime`、`UI`、`Controls`、`Router`、`CSS`、`Graphics`、`Rendering`、`Text`、`Hosting`、`Platform` 和 Software Backend 等命名空间组织 |
+| `Square.Compiler` | SQX/SQV 解析、语义检查和 Roslyn Source Generator，将模板编译为 C# 组件 |
+| `Square.Platform.Win32` | Win32 窗口、输入、IME、剪贴板和窗口截图 |
+| `Square.Platform.X11` | X11 窗口、输入、IME、剪贴板和窗口截图 |
 | `Square.Backends.Vulkan` | 基于 Silk.NET 的 Square 原生 Vulkan GPU Renderer |
-| `Square.Hosting` | 桌面应用宿主：窗口、输入、焦点、剪贴板、帧调度、布局渲染循环 |
 | `Square.Extensions` | 可选扩展组件与集成：`MarkdownViewer`、`RichTextEditor` 等，按需引用 |
 | `Square.Tooling` | 本地 HTTP 调试与自动化：截图、输入模拟，按需引用 |
 
@@ -236,6 +227,9 @@ dotnet --version
 ```csharp
 using Square.Hosting;
 using Square.Platform;
+using Square.Platform.Win32;
+
+PlatformRegistry.Register(new Win32PlatformFactory());
 
 var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 {
@@ -246,7 +240,7 @@ var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 app.Run();
 ```
 
-`Main` 是由 `.sqx` 文件在编译期生成的组件。`DesktopApplication` 自动处理窗口创建、鼠标命中测试、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环。
+`Main` 是由 `.sqx` 文件在编译期生成的组件。Linux/X11 应用改为引用 `Square.Platform.X11` 并注册 `X11PlatformFactory`。`DesktopApplication` 自动处理鼠标命中测试、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环。
 
 ### 从源码运行
 

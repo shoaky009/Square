@@ -14,7 +14,10 @@
 ```csharp
 using Square.Hosting;
 using Square.Platform;
+using Square.Platform.Win32;
 using Square.Tooling;
+
+PlatformRegistry.Register(new Win32PlatformFactory());
 
 var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 {
@@ -444,7 +447,7 @@ public readonly record struct SourceSpan(
     int EndColumn);
 ```
 
-`Square.SourceGenerator` 在生成元素创建代码时注入调试信息：
+`Square.Compiler` 在生成元素创建代码时注入调试信息：
 
 ```csharp
 var element = new Button();

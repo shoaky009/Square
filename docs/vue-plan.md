@@ -8,7 +8,7 @@
 - Keep `.sqx` unchanged as Square's native template language.
 - Add `.sqv` as a new file format that targets Vue 3 template syntax compatibility.
 - Add a dedicated Vue parser instead of mutating the existing SQX parser into a Vue parser.
-- Refactor `Square.SourceGenerator` so it can compile both `.sqx` and `.sqv` through a shared intermediate representation.
+- Refactor `Square.Compiler` so it can compile both `.sqx` and `.sqv` through a shared intermediate representation.
 - Preserve Square's compile-first model: no Vue runtime, no JavaScript runtime, no runtime template parsing.
 - Keep NativeAOT compatibility and strong C# diagnostics as first-class constraints.
 
@@ -73,7 +73,7 @@ This keeps the generator, metadata, style pipeline, and component naming model c
 Current issue:
 
 - `Square.Markup` contains SQX lexer/parser/AST.
-- `Square.SourceGenerator` also contains a copied SQX lexer/parser/AST.
+- `Square.Compiler` also contains a copied SQX lexer/parser/AST.
 - Documentation says SourceGenerator should use Markup, but the project currently does not reference it.
 
 Target pipeline:
@@ -92,9 +92,9 @@ Template IR -> semantic validation -> C# emitter -> generated component
 - `Square.Markup.Vue`: new Vue template frontend.
 - `Square.Markup.Compilation`: shared template IR and source span types.
 
-`Square.SourceGenerator` should consume the shared IR and should not own duplicated parsers.
+`Square.Compiler` should consume the shared IR and should not own duplicated parsers.
 
-Because `Square.SourceGenerator` targets `netstandard2.0`, `Square.Markup` should become `netstandard2.0` compatible or multi-target `netstandard2.0;net10.0`.
+Because `Square.Compiler` targets `netstandard2.0`, `Square.Markup` should become `netstandard2.0` compatible or multi-target `netstandard2.0;net10.0`.
 
 ### Shared IR
 
@@ -354,7 +354,7 @@ General section and component diagnostics can continue to use existing SQX diagn
 
 ### Milestone A: Shared IR And Parser Ownership
 
-- Make `Square.Markup` consumable by `Square.SourceGenerator`.
+- Make `Square.Markup` consumable by `Square.Compiler`.
 - Add shared template IR and source span model.
 - Add SQX-to-IR adapter.
 - Change SourceGenerator emitter and validators to consume IR.

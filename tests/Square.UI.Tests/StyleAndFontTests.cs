@@ -1,5 +1,5 @@
 using System;
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Graphics;
 using Square.UI;
 using Xunit;
@@ -25,7 +25,7 @@ public class StyleAndFontTests
     public void StyleClassAndContentChangesInvalidateLayoutToRoot()
     {
         var root = new View();
-        var text = new Square.Controls.Controls.Text("short");
+        var text = new Square.Controls.Text("short");
         root.Children.Add(text);
         root.ClearLayoutDirty();
         text.ClearLayoutDirty();
@@ -124,7 +124,7 @@ public class StyleAndFontTests
         Assert.Equal("Segoe UI", generic.Family);
 
         // FontManager：未知族后回退到列表中已知通用族
-        var viaManager = Square.Text.FontManager.FontManager.Instance.FromCss(
+        var viaManager = Square.Text.FontManager.Instance.FromCss(
             "\"My Missing\", sans-serif", "14px", "700");
         Assert.Equal("Segoe UI", viaManager.Family);
         Assert.Equal(14f, viaManager.Size);
@@ -134,7 +134,7 @@ public class StyleAndFontTests
     [Fact]
     public void ControlDrawingResolvesFontFromElementStyle()
     {
-        var text = new Square.Controls.Controls.Text("hi");
+        var text = new Square.Controls.Text("hi");
         text.Style.SetProperty("font-family", "monospace");
         text.Style.SetProperty("font-size", "12px");
         text.Style.SetProperty("font-weight", "700");
@@ -153,7 +153,7 @@ public class StyleAndFontTests
         var root = new View { Id = "root" };
         var child = new View();
         child.ClassList.Add("panel");
-        var deep = new Square.Controls.Controls.Text("x") { Id = "label" };
+        var deep = new Square.Controls.Text("x") { Id = "label" };
         root.AppendChild(child);
         child.AppendChild(deep);
 

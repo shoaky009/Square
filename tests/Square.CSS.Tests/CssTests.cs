@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Square.CSS.Tokenizer;
 using Square.CSS.Engine;
-using Square.Controls.Controls;
+using Square.Controls;
 using Xunit;
 
 namespace Square.CSS.Tests;
@@ -109,7 +109,7 @@ public class CssParserTests
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
         var root = new View();
-        var child = new Square.Controls.Controls.Text("child");
+        var child = new Square.Controls.Text("child");
         root.Children.Add(child);
 
         engine.ApplyStylesToTree(root);
@@ -125,7 +125,7 @@ public class CssParserTests
         var sheet = new CssParser(new CssTokenizer("Text { color: #111111; } Text { color: #222222; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
 
         engine.ApplyStyles(text);
 
@@ -156,7 +156,7 @@ public class CssParserTests
         var sheet = new CssParser(new CssTokenizer(".target { color: red; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         text.ClassList.Add("target");
         text.Style.Set("color", "green");
 
@@ -171,7 +171,7 @@ public class CssParserTests
         var sheet = new CssParser(new CssTokenizer(".target::selection { background: #123456; color: #ffffff; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text("item");
+        var text = new Square.Controls.Text("item");
         text.ClassList.Add("target");
 
         engine.ApplyStyles(text);
@@ -187,7 +187,7 @@ public class CssParserTests
         var sheet = new CssParser(new CssTokenizer(".active { color: red; width: 120px; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text("item");
+        var text = new Square.Controls.Text("item");
         engine.ApplyStylesToTree(text);
 
         text.ClassList.Add("active");
@@ -207,7 +207,7 @@ public class CssParserTests
         var sheet = new CssParser(new CssTokenizer("#target { color: blue; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text("item") { Id = "target" };
+        var text = new Square.Controls.Text("item") { Id = "target" };
 
         engine.ApplyStylesToTree(text);
 
@@ -223,9 +223,9 @@ public class CssParserTests
         engine.LoadStyleSheet(sheet);
 
         var root = new View();
-        var mid = new Square.Controls.Controls.Text("mid");
-        var directChild = new Square.Controls.Controls.Text("direct");
-        var grandChild = new Square.Controls.Controls.Text("grand");
+        var mid = new Square.Controls.Text("mid");
+        var directChild = new Square.Controls.Text("direct");
+        var grandChild = new Square.Controls.Text("grand");
         root.Children.Add(mid);
         root.Children.Add(directChild);
         mid.Children.Add(grandChild);
@@ -244,7 +244,7 @@ public class CssParserTests
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
 
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         text.ClassList.Add("high-specificity");
 
         engine.ApplyStyles(text);
@@ -261,9 +261,9 @@ public class CssParserTests
         engine.LoadStyleSheet(sheet);
 
         var root = new View();
-        var t1 = new Square.Controls.Controls.Text("1");
-        var t2 = new Square.Controls.Controls.Text("2");
-        var t3 = new Square.Controls.Controls.Text("3");
+        var t1 = new Square.Controls.Text("1");
+        var t2 = new Square.Controls.Text("2");
+        var t3 = new Square.Controls.Text("3");
         root.Children.Add(t1);
         root.Children.Add(t2);
         root.Children.Add(t3);
@@ -307,7 +307,7 @@ public class CssParserTests
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
         engine.RegisterTheme("dark", new Dictionary<string, string> { ["--primary"] = "#eeeeee" });
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
 
         engine.ApplyStyles(text);
         Assert.Equal("#111111", text.Style.Get("color"));
@@ -326,7 +326,7 @@ public class CssParserTests
         engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
         engine.RegisterTheme("dark", new Dictionary<string, string> { ["--primary"] = "#eeeeee" });
         var root = new View();
-        var text = new Square.Controls.Controls.Text("hello");
+        var text = new Square.Controls.Text("hello");
         root.Children.Add(text);
         var provider = new ThemeProvider(engine, root);
 

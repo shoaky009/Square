@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Controls.Primitives;
 using Square.Events;
 using Square.Graphics;
@@ -20,7 +20,7 @@ public class M1IntegrationTests
     [Fact]
     public void TextMeasuresWithinAvailableWidthAndWrapsHeight()
     {
-        var text = new Square.Controls.Controls.Text("abcdefgh") { FontSize = 20 };
+        var text = new Square.Controls.Text("abcdefgh") { FontSize = 20 };
 
         var unconstrained = text.Measure(new Size(float.MaxValue, float.MaxValue));
         var constrained = text.Measure(new Size(20, 200));
@@ -60,7 +60,7 @@ public class M1IntegrationTests
         Assert.Single(root.QueryAll<CheckBox>());
         Assert.Equal(2, root.QueryAll<Radio>().Count);
         var select = Assert.Single(root.QueryAll<Select>());
-        Assert.Single(root.QueryAll<Square.Controls.Controls.Image>());
+        Assert.Single(root.QueryAll<Square.Controls.Image>());
         Assert.Single(root.QueryAll<Canvas>());
         var router = Assert.Single(root.QueryAll<RouterControl>());
         Assert.Single(root.QueryAll<OverflowSamplesPage>());
@@ -166,8 +166,8 @@ public class M1IntegrationTests
         Assert.True(controlsPage.LastEventSourceWasButton.Value);
         Assert.True(controlsPage.ShowCount.Value);
         Assert.Equal(2, controlsPage.Items.Count);
-        Assert.Contains(root.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Show: button clicked");
-        Assert.Contains(root.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Click 1");
+        Assert.Contains(root.QueryAll<Square.Controls.Text>(), text => text.TextContent == "Show: button clicked");
+        Assert.Contains(root.QueryAll<Square.Controls.Text>(), text => text.TextContent == "Click 1");
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class M1IntegrationTests
     public void UserSelectTextEnablesSelectableTextAndInheritsToChildren()
     {
         var parent = new View();
-        var child = new Square.Controls.Controls.Text("copy me") { Geometry = new Rect(0, 0, 200, 24) };
+        var child = new Square.Controls.Text("copy me") { Geometry = new Rect(0, 0, 200, 24) };
         parent.Children.Add(child);
 
         Assert.False(child.IsUserSelectText());
@@ -376,7 +376,7 @@ public class M1IntegrationTests
         var checkBox = Assert.Single(component.QueryAll<CheckBox>());
         var radios = component.QueryAll<Radio>();
         var select = Assert.Single(component.QueryAll<Select>());
-        var image = Assert.Single(component.QueryAll<Square.Controls.Controls.Image>());
+        var image = Assert.Single(component.QueryAll<Square.Controls.Image>());
         var canvas = Assert.Single(component.QueryAll<Canvas>());
 
         textArea.SelectAll();
@@ -403,11 +403,11 @@ public class M1IntegrationTests
     public void GeneratedComponentsProjectDefaultNamedAndFallbackSlotsWithoutWrapperViews()
     {
         var card = new SlotCard();
-        card.Slots.Set("header", parent => parent.Children.Add(new Square.Controls.Controls.Text("Named header")));
+        card.Slots.Set("header", parent => parent.Children.Add(new Square.Controls.Text("Named header")));
         card.Slots.Set("", parent =>
         {
-            parent.Children.Add(new Square.Controls.Controls.Text("First body"));
-            parent.Children.Add(new Square.Controls.Controls.Text("Second body"));
+            parent.Children.Add(new Square.Controls.Text("First body"));
+            parent.Children.Add(new Square.Controls.Text("Second body"));
         });
 
         card.BuildElementTree();
@@ -416,14 +416,14 @@ public class M1IntegrationTests
         Assert.Equal(2, root.Children.Count);
         var header = Assert.IsType<View>(root.Children[0]);
         var content = Assert.IsType<View>(root.Children[1]);
-        Assert.Equal("Named header", Assert.IsType<Square.Controls.Controls.Text>(Assert.Single(header.Children)).TextContent);
+        Assert.Equal("Named header", Assert.IsType<Square.Controls.Text>(Assert.Single(header.Children)).TextContent);
         Assert.Equal(2, content.Children.Count);
-        Assert.All(content.Children, child => Assert.IsType<Square.Controls.Controls.Text>(child));
+        Assert.All(content.Children, child => Assert.IsType<Square.Controls.Text>(child));
 
         var fallbackCard = new SlotCard();
         fallbackCard.BuildElementTree();
-        Assert.Contains(fallbackCard.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Fallback header");
-        Assert.Contains(fallbackCard.QueryAll<Square.Controls.Controls.Text>(), text => text.TextContent == "Fallback content");
+        Assert.Contains(fallbackCard.QueryAll<Square.Controls.Text>(), text => text.TextContent == "Fallback header");
+        Assert.Contains(fallbackCard.QueryAll<Square.Controls.Text>(), text => text.TextContent == "Fallback content");
     }
 
     [Fact]
@@ -460,7 +460,7 @@ public class M1IntegrationTests
         Assert.Equal("profile", router.Current?.Query["tab"]);
         var userPage = Assert.Single(router.QueryAll<RouteUserPage>());
         Assert.Same(router.Current, RouteContext.Find(userPage));
-        Assert.Contains(userPage.QueryAll<Square.Controls.Controls.Text>(),
+        Assert.Contains(userPage.QueryAll<Square.Controls.Text>(),
             text => text.TextContent == "Current route: /users/42  tab=profile");
 
         Assert.True(router.Back());
@@ -852,6 +852,87 @@ public class M1IntegrationTests
         Assert.Equal("Green", select.Value);
         Assert.False(select.IsOpen);
         Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void SelectKeyboardOpensNavigatesAndChoosesOption()
+    {
+        var select = new Select
+        {
+            Options = ["Blue", "Green", "Orange"],
+            Value = "Green"
+        };
+        var changes = 0;
+        select.AddEventListener("change", () => changes++);
+
+        var open = StandardEvents.CreateKeyDown(32);
+        select.DispatchEvent(open);
+
+        Assert.True(select.IsOpen);
+        Assert.True(open.DefaultPrevented);
+        Assert.True(select.HandlePopupKey(40, false, false, false));
+        Assert.True(select.HandlePopupKey(13, false, false, false));
+        Assert.Equal("Orange", select.Value);
+        Assert.False(select.IsOpen);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void SelectKeyboardSupportsHomeEndAndEscapeWithoutChangingValue()
+    {
+        var select = new Select
+        {
+            Options = ["Blue", "Green", "Orange"],
+            Value = "Green"
+        };
+        var changes = 0;
+        select.AddEventListener("change", () => changes++);
+
+        Assert.True(select.HandleKey(40, alt: true));
+        Assert.True(select.HandlePopupKey(35, false, false, false));
+        Assert.True(select.HandlePopupKey(27, false, false, false));
+
+        Assert.Equal("Green", select.Value);
+        Assert.False(select.IsOpen);
+        Assert.Equal(0, changes);
+
+        Assert.True(select.HandleKey(13));
+        Assert.True(select.HandlePopupKey(36, false, false, false));
+        Assert.True(select.HandlePopupKey(32, false, false, false));
+
+        Assert.Equal("Blue", select.Value);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void SelectDoesNotHandleKeyboardWhenDisabledOrEmpty()
+    {
+        var disabled = new Select { Options = ["Blue"], IsDisabled = true };
+        var empty = new Select();
+
+        Assert.False(disabled.HandleKey(13));
+        Assert.False(disabled.IsOpen);
+        Assert.False(empty.HandleKey(32));
+        Assert.False(empty.IsOpen);
+    }
+
+    [Fact]
+    public void SelectDoesNotRaiseChangeWhenChoosingCurrentOption()
+    {
+        var select = new Select
+        {
+            Options = ["Blue", "Green"],
+            Value = "Blue"
+        };
+        var changes = 0;
+        select.AddEventListener("change", () => changes++);
+
+        Assert.True(select.HandleKey(13));
+        Assert.True(select.HandlePopupKey(13, false, false, false));
+
+        Assert.Equal("Blue", select.Value);
+        Assert.False(select.IsOpen);
+        Assert.Equal(0, changes);
     }
 
     [Fact]
@@ -1485,13 +1566,13 @@ public class M1IntegrationTests
     {
         var root = new View();
         var visible = new ObservableValue<bool>(false);
-        var shown = new Square.Controls.Controls.Text("shown");
+        var shown = new Square.Controls.Text("shown");
         var show = new ShowNode(visible, () => shown);
         show.AttachTo(root);
 
         var items = new ObservableCollection<string> { "a" };
-        var nodes = new Dictionary<string, Square.Controls.Controls.Text>();
-        var loop = ForNode.Create(items, item => nodes[item] = new Square.Controls.Controls.Text(item));
+        var nodes = new Dictionary<string, Square.Controls.Text>();
+        var loop = ForNode.Create(items, item => nodes[item] = new Square.Controls.Text(item));
         loop.AttachTo(root);
 
         ((IComponentLifecycle)root).OnAttached();
@@ -1500,7 +1581,7 @@ public class M1IntegrationTests
         Reconciler.Current.Flush();
 
         Assert.True(shown.IsAttached);
-        Assert.Equal(new[] { "a", "b" }, root.QueryAll<Square.Controls.Controls.Text>().Where(text => text != shown).Select(text => text.TextContent));
+        Assert.Equal(new[] { "a", "b" }, root.QueryAll<Square.Controls.Text>().Where(text => text != shown).Select(text => text.TextContent));
 
         items.Move(1, 0);
         Reconciler.Current.Flush();

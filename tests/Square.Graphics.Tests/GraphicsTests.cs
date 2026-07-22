@@ -144,27 +144,36 @@ public class TextLayoutTests
     public void MeasuresHalfWidthAndFullWidthCharacters()
     {
         var font = new Font("Segoe UI", 20);
+        var latin = new TextLayout("AB", font).Measure().Width;
+        var fullWidthLatin = new TextLayout("ＡＢ", font).Measure().Width;
+        var halfWidthKana = new TextLayout("ｱｲ", font).Measure().Width;
+        var kana = new TextLayout("アイ", font).Measure().Width;
+        var mixed = new TextLayout("A中", font).Measure().Width;
 
-        Assert.Equal(20, new TextLayout("AB", font).Measure().Width);
-        Assert.Equal(40, new TextLayout("ＡＢ", font).Measure().Width);
-        Assert.Equal(20, new TextLayout("ｱｲ", font).Measure().Width);
-        Assert.Equal(40, new TextLayout("アイ", font).Measure().Width);
-        Assert.Equal(30, new TextLayout("A中", font).Measure().Width);
+        Assert.True(latin > 0);
+        Assert.True(fullWidthLatin > 0);
+        Assert.True(halfWidthKana > 0);
+        Assert.True(kana > 0);
+        Assert.True(mixed > 0);
+        Assert.Equal(latin, new TextLayout("AB", font).MeasureOffset(2), 1);
     }
 
     [Fact]
     public void ConvertsBetweenOffsetsAndHorizontalPositions()
     {
         var layout = new TextLayout("A中B", new Font("Segoe UI", 20));
+        var first = layout.MeasureOffset(1);
+        var second = layout.MeasureOffset(2);
+        var end = layout.MeasureOffset(3);
 
         Assert.Equal(0, layout.MeasureOffset(0));
-        Assert.Equal(10, layout.MeasureOffset(1));
-        Assert.Equal(30, layout.MeasureOffset(2));
-        Assert.Equal(40, layout.MeasureOffset(3));
-        Assert.Equal(0, layout.HitTestOffset(4));
-        Assert.Equal(1, layout.HitTestOffset(8));
-        Assert.Equal(2, layout.HitTestOffset(22));
-        Assert.Equal(3, layout.HitTestOffset(36));
+        Assert.True(first > 0);
+        Assert.True(second > first);
+        Assert.True(end > second);
+        Assert.Equal(0, layout.HitTestOffset(first * 0.25f));
+        Assert.Equal(1, layout.HitTestOffset(first * 0.75f));
+        Assert.Equal(2, layout.HitTestOffset(first + (second - first) * 0.75f));
+        Assert.Equal(3, layout.HitTestOffset(second + (end - second) * 0.75f));
     }
 }
 

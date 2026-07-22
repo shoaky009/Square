@@ -42,7 +42,7 @@ public class FontFaceTests
         var set = new FontFaceSet();
         set.Add(face);
         Assert.True(set.Check("16px SquareTestFace"));
-        Assert.True(Square.Text.FontManager.FontManager.Instance.IsFamilyKnown("SquareTestFace"));
+        Assert.True(Square.Text.FontManager.Instance.IsFamilyKnown("SquareTestFace"));
     }
 
     [Fact]

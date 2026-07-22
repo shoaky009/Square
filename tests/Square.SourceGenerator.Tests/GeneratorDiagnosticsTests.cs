@@ -3,10 +3,10 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using Square.SourceGenerator.Generator;
+using Square.Compiler;
 using Xunit;
 
-namespace Square.SourceGenerator.Tests;
+namespace Square.Compiler.Tests;
 
 public class GeneratorDiagnosticsTests
 {

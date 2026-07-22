@@ -37,7 +37,7 @@ public class PseudoClassTests
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
 
-        var btn = new Square.Controls.Controls.Button();
+        var btn = new Square.Controls.Button();
         btn.SetState(ElementState.Hover, true);
         engine.ApplyStyles(btn);
         Assert.Equal("red", btn.Style.Get("color"));
@@ -51,7 +51,7 @@ public class PseudoClassTests
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
 
-        var btn = new Square.Controls.Controls.Button();
+        var btn = new Square.Controls.Button();
         engine.ApplyStyles(btn);
         Assert.Null(btn.Style.Get("color"));
     }
@@ -62,7 +62,7 @@ public class PseudoClassTests
         var sheet = new CssParser(new CssTokenizer("Button:focus { color: red; width: 180px; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var btn = new Square.Controls.Controls.Button();
+        var btn = new Square.Controls.Button();
         engine.ApplyStylesToTree(btn);
 
         btn.Focus();
@@ -82,7 +82,7 @@ public class PseudoClassTests
         var sheet = new CssParser(new CssTokenizer("Button:hover { color: red; } Button:active { background: blue; }").Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var btn = new Square.Controls.Controls.Button();
+        var btn = new Square.Controls.Button();
         engine.ApplyStylesToTree(btn);
 
         btn.SetState(ElementState.Hover, true);
@@ -118,7 +118,7 @@ public class PseudoClassTests
         var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
 
         engine.ApplyStyles(text);
 
@@ -138,7 +138,7 @@ public class PseudoClassTests
         var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
         var engine = new CssEngine();
         engine.LoadStyleSheet(sheet);
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         engine.ApplyStyles(text);
 
         var timeline = engine.CreateAnimationTimeline(text);
@@ -160,7 +160,7 @@ public class PseudoClassTests
         var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear 0.5s 2 reverse; }";
         var engine = new CssEngine();
         engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         engine.ApplyStyles(text);
         var timeline = engine.CreateAnimationTimeline(text);
 
@@ -188,8 +188,8 @@ public class PseudoClassTests
         var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear; }";
         var engine = new CssEngine();
         engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
-        var root = new Square.Controls.Controls.View();
-        var text = new Square.Controls.Controls.Text("animated");
+        var root = new Square.Controls.View();
+        var text = new Square.Controls.Text("animated");
         root.Children.Add(text);
         engine.ApplyStylesToTree(root);
         var manager = new CssAnimationManager(engine);

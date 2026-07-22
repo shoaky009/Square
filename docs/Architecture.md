@@ -1,6 +1,6 @@
 # Square Framework 总体架构
 
-> Version: 0.3  
+> Version: 0.3
 > 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`Rendering-Targets.md`（多目标渲染与宿主路线）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
 
 ---
@@ -26,7 +26,7 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
 .sqx (template + style + script)
       │
       ▼
-[Square.SourceGenerator] ──► C# 组件类型 (编译期)
+[Square.Compiler] ──► C# 组件类型 (编译期)
       │
       ▼
   Component (C#)
@@ -48,17 +48,19 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 ```
 
 - **非 Immediate Mode**：保留 Element Tree + Display Tree，支持脏区增量重绘。
-- **低耦合**：除 `Square.Backends` 与 `Square.Platform` 外，所有模块仅依赖抽象接口。
+- **低耦合**：具体 Backend 与 Platform 实现仅依赖 `Square` 中的抽象接口，核心不反向依赖实现程序集。
 - **NativeAOT 合规**：组件类型在编译期生成，运行时无反射解析；属性系统使用生成代码与强类型委托。
 
 ---
 
 ## 3. 模块划分与职责
 
+当前物理程序集为 `Square`、`Square.Compiler`、`Square.Platform.Win32`、`Square.Platform.X11`、`Square.Backends.Vulkan`、`Square.Extensions` 和 `Square.Tooling`。下表中的 Runtime/UI/Controls 等名称是 `Square` 聚合程序集内部保持稳定的逻辑模块与命名空间。
+
 | 模块 | 职责 | 关键设计 |
 |---|---|---|
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
-| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
+| `Square.Compiler` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
 | `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
 | `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`、属性 | Element Tree；Style/ClassList/Children；HTMLElement/SVGElement 占位；Reconciler 批量更新 |
 | `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
@@ -67,11 +69,13 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
 | `Square.Rendering` | Element→Layout→Display Tree→DrawCommand | Flex/Block 经 Yoga.Net（Meta Yoga C# 移植）；Grid 内置；保留模式、脏区/增量 |
 | `Square.Text` | 文本引擎 | Unicode/Glyph/Font/Layout/Caret/Selection/HitTest/BiDi；FontFace/FontFaceSet |
-| `Square.Platform` | 平台宿主抽象 | `IPlatformHost`：窗口/消息循环/输入泵；`LibraryImport` 源生成；现含 Win32 与 X11 两个实现，按构建层 `PLATFORM_*` 裁剪 |
+| `Square.Platform` | 平台宿主抽象 | `IPlatformHost`、`IPlatformFactory`、`PlatformRegistry` 与跨平台截图入口 |
+| `Square.Platform.Win32` | Windows 平台实现 | Win32 窗口、消息循环、输入、IME、剪贴板与窗口截图 |
+| `Square.Platform.X11` | Linux 平台实现 | X11 窗口、事件循环、输入、IME、剪贴板与窗口截图 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
 | `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |
 
-**依赖方向**：`SourceGenerator` → `Markup`；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（按实际需要引用）；`Backends`/`Platform` → 底层图形抽象。核心层禁止反向依赖 Backend/Platform。`Square.Hosting` 是聚合层，为应用提供开箱即用的桌面输入、调度、布局和渲染管线。
+**依赖方向**：`Square.Compiler` 在编译期生成组件；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（逻辑依赖）；具体 Platform/Backend 项目依赖核心抽象。核心层禁止反向依赖具体 Backend/Platform 实现。`Square.Hosting` 是聚合层，应用在启动前通过 `PlatformRegistry` 注册所引用的平台工厂。
 
 ---
 

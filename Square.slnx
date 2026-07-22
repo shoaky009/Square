@@ -1,19 +1,10 @@
 <Solution>
-  <Project Path="src/Square.Markup/Square.Markup.csproj" />
-  <Project Path="src/Square.SourceGenerator/Square.SourceGenerator.csproj" />
-  <Project Path="src/Square.Runtime/Square.Runtime.csproj" />
-  <Project Path="src/Square.Router/Square.Router.csproj" />
+  <Project Path="src/Square/Square.csproj" />
+  <Project Path="src/Square.Platform.Win32/Square.Platform.Win32.csproj" />
+  <Project Path="src/Square.Platform.X11/Square.Platform.X11.csproj" />
+  <Project Path="src/Square.Compiler/Square.Compiler.csproj" />
   <Project Path="src/Square.Extensions/Square.Extensions.csproj" />
-  <Project Path="src/Square.UI/Square.UI.csproj" />
-  <Project Path="src/Square.Controls/Square.Controls.csproj" />
-  <Project Path="src/Square.CSS/Square.CSS.csproj" />
-  <Project Path="src/Square.Graphics/Square.Graphics.csproj" />
-  <Project Path="src/Square.Hosting/Square.Hosting.csproj" />
-  <Project Path="src/Square.Rendering/Square.Rendering.csproj" />
-  <Project Path="src/Square.Text/Square.Text.csproj" />
   <Project Path="src/Square.Tooling/Square.Tooling.csproj" />
-  <Project Path="src/Square.Platform/Square.Platform.csproj" />
-  <Project Path="src/Square.Backends/Square.Backends.csproj" />
   <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
   <Folder Name="/Samples/">
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />

@@ -1,4 +1,4 @@
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Events;
 using Square.Graphics;
 using Square.UI;

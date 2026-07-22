@@ -11,12 +11,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Square.UI\Square.UI.csproj" />
-    <ProjectReference Include="..\Square.Runtime\Square.Runtime.csproj" />
-    <ProjectReference Include="..\Square.Controls\Square.Controls.csproj" />
-    <ProjectReference Include="..\Square.CSS\Square.CSS.csproj" />
-    <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
-    <ProjectReference Include="..\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Square\Square.csproj" />
+    <ProjectReference Include="..\Square.Compiler\Square.Compiler.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <ItemGroup>

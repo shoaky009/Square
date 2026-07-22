@@ -38,14 +38,15 @@ cd MyApp
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <PublishAot>true</PublishAot>
-    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="path\to\src\Square.Hosting\Square.Hosting.csproj" />
-    <ProjectReference Include="path\to\src\Square.CSS\Square.CSS.csproj" />
-    <ProjectReference Include="path\to\src\Square.SourceGenerator\Square.SourceGenerator.csproj"
-                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="path\to\src\Square\Square.csproj" />
+    <ProjectReference Include="path\to\src\Square.Platform.Win32\Square.Platform.Win32.csproj" />
+    <ProjectReference Include="path\to\src\Square.Compiler\Square.Compiler.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -63,11 +64,10 @@ cd MyApp
 |---|---|
 | `OutputType=WinExe` | Windows 桌面应用，不弹出控制台窗口 |
 | `PublishAot=true` | 启用 NativeAOT 发布 |
-| `EmitCompilerGeneratedFiles=true` | 输出生成的 C# 文件（便于调试） |
 | `OutputItemType="Analyzer"` | Source Generator 作为分析器引用，不输出程序集 |
 | `AdditionalFiles Include="**\*.sqx"` | 将 `.sqx` 文件注册为 Source Generator 输入 |
 
-`Square.Hosting` 提供桌面运行时及其传递依赖；组件使用 `<style>` 时仍需显式引用 `Square.CSS`。使用 `<Router>` / `<Link>` 时再添加 `Square.Router` 引用。
+`Square` 包含桌面运行时、控件、CSS、路由、布局和软件渲染。窗口宿主由 `Square.Platform.Win32` 或 `Square.Platform.X11` 提供；Vulkan、Extensions 与 Tooling 仍按需单独引用。
 
 ### 2.3 编写入口
 
@@ -76,6 +76,9 @@ cd MyApp
 ```csharp
 using Square.Hosting;
 using Square.Platform;
+using Square.Platform.Win32;
+
+PlatformRegistry.Register(new Win32PlatformFactory());
 
 var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 {
@@ -86,7 +89,9 @@ var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
 app.Run();
 ```
 
-`Main` 是由 `Main.sqx` 在编译期生成的组件类。`DesktopApplication` 负责窗口创建、消息循环、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染——你不需要手写任何基础设施代码。
+Linux/X11 项目将平台引用和注册类型替换为 `Square.Platform.X11` / `X11PlatformFactory`。
+
+`Main` 是由 `Main.sqx` 在编译期生成的组件类。`DesktopApplication` 负责窗口创建、消息循环、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染。
 
 ---
 
@@ -642,7 +647,13 @@ Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dyna
 
 ### 15.1 查看生成代码
 
-`EmitCompilerGeneratedFiles=true` 会将生成的 C# 输出到 `obj/Generated/`。可直接查看 `BuildElementTree()` 的生成结果。
+Source Generator 默认只将源码交给编译器，不写入磁盘。需要检查 `BuildElementTree()` 等生成结果时临时执行：
+
+```powershell
+dotnet build -p:SquareEmitCompilerGeneratedFiles=true
+```
+
+不要在日常 Windows/Linux 多目标构建中长期启用磁盘输出，否则 IDE 可能同时索引多个 RuntimeIdentifier 下的同名 partial 类型。
 
 ### 15.2 诊断代码
 
@@ -658,14 +669,15 @@ Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dyna
 
 ### 15.3 构建层裁剪
 
-平台和后端通过 MSBuild `DefineConstants` 在编译期选择：
+平台项目引用和后端通过 MSBuild 属性及 `DefineConstants` 在编译期选择：
 
 | 常量 | 启用 |
 |---|---|
 | `PLATFORM_WIN32` | Win32 窗口宿主 |
+| `PLATFORM_X11` | X11 窗口宿主 |
 | `BACKEND_SOFTWARE` | 纯 C# 软件渲染器 |
 
-`DesktopApplication` 在 `RunCore()` 内自动调用 `BackendRegistration.RegisterDefaults()` 和 `PlatformRegistration.RegisterDefaults()`，根据编译常量注册对应实现。
+`DesktopApplication` 在 `RunCore()` 内注册默认软件后端和控件。具体平台位于独立程序集，应用必须在 `app.Run()` 前通过 `PlatformRegistry.Register(...)` 注册 `Win32PlatformFactory` 或 `X11PlatformFactory`。
 
 ### 15.4 启用 Tooling
 

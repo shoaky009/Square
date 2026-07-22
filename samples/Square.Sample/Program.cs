@@ -6,6 +6,11 @@ using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
+#if PLATFORM_WIN32
+using Square.Platform.Win32;
+#elif PLATFORM_X11
+using Square.Platform.X11;
+#endif
 #if SQUARE_SAMPLE_TOOLING
 using Square.Tooling;
 #endif
@@ -18,6 +23,7 @@ public static class Program
     public static void Main(string[] args)
     {
         System.Console.WriteLine("Square Framework - M1 Window Demo");
+        RegisterPlatform();
 
         var circleDiffDirectory = GetOption(args, "--circle-regression-diff");
         if (!string.IsNullOrWhiteSpace(circleDiffDirectory))
@@ -288,6 +294,17 @@ public static class Program
             return true;
         }
         return false;
+    }
+
+    private static void RegisterPlatform()
+    {
+#if PLATFORM_WIN32
+        PlatformRegistry.Register(new Win32PlatformFactory());
+#elif PLATFORM_X11
+        PlatformRegistry.Register(new X11PlatformFactory());
+#else
+        throw new PlatformNotSupportedException("No Square platform package is configured for this build.");
+#endif
     }
 
 }

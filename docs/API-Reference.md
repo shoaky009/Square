@@ -1,6 +1,6 @@
 # API 参考
 
-> Version: 0.3  
+> Version: 0.3
 > 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`、`Tooling.md`、`Rendering-Targets.md`
 
 本文按模块列出 Square 框架的公共 API。所有类型签名基于源码，以 `命名空间.类型名` 组织。
@@ -31,12 +31,12 @@ public sealed class DesktopApplication : Application
 | `Background` | 窗口背景色，默认白色 |
 | `RenderingMode` | 每帧重绘策略，默认 `FullFrame`；可通过 `--render-mode` 参数或 `SQUARE_RENDER_MODE` 环境变量配置 |
 | `Dispatcher`（继承自 `Application`） | UI 线程调度器，用于 Signal 跨线程投递 |
-| `Run()`（继承自 `Application`） | 启动应用：注册默认后端/平台/控件 → 构建文档 → 创建窗口 → 消息循环 |
+| `Run()`（继承自 `Application`） | 启动应用：注册默认后端/控件 → 构建文档 → 使用已注册的平台工厂创建窗口 → 消息循环 |
 | `Shutdown()`（继承自 `Application`） | 请求关闭消息循环 |
 
 `Run()` 内部自动处理：
 
-1. `BackendRegistration` / `PlatformRegistration` / `ControlRegistration.RegisterDefaults()`
+1. `BackendRegistration` / `ControlRegistration.RegisterDefaults()`
 2. `document.Build()` → `documentElement` 上 `OnAttached()`
 3. 创建 `IPlatformHost` 并绑定所有输入事件
 4. `OnLoaded()` → 首帧渲染 → `PumpEvents()` 消息循环
@@ -348,7 +348,7 @@ public sealed class SignalHub
 
 ## 3. Square.Events — DOM 事件（Web API）
 
-对齐 MDN：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent`。  
+对齐 MDN：`EventTarget` / `Event` / `addEventListener` / `dispatchEvent`。
 **已删除** WPF 风格 `RoutedEvent` / `RaiseEvent` / `Handled` / `RoutingStrategy`（非改名，硬切）。
 
 ### EventPhase
@@ -899,7 +899,7 @@ MenuItem 角色由属性推导：
 ### Text
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Text : UIElement
 {
@@ -918,7 +918,7 @@ public class Text : UIElement
 ### Button
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Button : UIElement
 {
@@ -937,7 +937,7 @@ public class Button : UIElement
 ### CheckBox
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class CheckBox : UIElement
 {
@@ -951,7 +951,7 @@ public class CheckBox : UIElement
 ### Radio
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Radio : UIElement
 {
@@ -966,7 +966,7 @@ public class Radio : UIElement
 ### Select
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Select : UIElement
 {
@@ -986,7 +986,7 @@ public class Select : UIElement
 ### Image
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Image : UIElement
 {
@@ -998,7 +998,7 @@ public class Image : UIElement
 ### Canvas
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Canvas : UIElement
 {
@@ -1015,7 +1015,7 @@ public class Canvas : UIElement
 ### ITextEditor / TextEditorBase
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public interface ITextEditor
 {
@@ -1456,22 +1456,21 @@ public interface IPlatformFactory
 public static class PlatformRegistry
 {
     public static void Register(IPlatformFactory factory);
+    public static bool TryGet(out IPlatformFactory? factory);
     public static IPlatformFactory Get();
 }
 ```
 
-### PlatformRegistration
+### 平台实现注册
 
 ```csharp
-namespace Square.Platform;
+using Square.Platform;
+using Square.Platform.Win32;
 
-public static class PlatformRegistration
-{
-    public static void RegisterDefaults();
-}
+PlatformRegistry.Register(new Win32PlatformFactory());
 ```
 
-根据 `PLATFORM_WIN32` 等编译常量注册对应平台工厂。`DesktopApplication` 在启动时自动调用。
+Windows 引用 `Square.Platform.Win32` 并注册 `Win32PlatformFactory`；Linux/X11 引用 `Square.Platform.X11` 并注册 `X11PlatformFactory`。`DesktopApplication` 不依赖具体平台实现，因此必须在 `Run()` 前完成注册。
 
 ### PlatformScreenshot
 
@@ -1490,7 +1489,7 @@ public static class PlatformScreenshot
 | `CaptureByProcessId(pid)` | 按进程 ID 捕获其顶层窗口位图；找不到可捕获窗口时抛 `InvalidOperationException` |
 | `TryCaptureByProcessId(pid, out bitmap)` | 尝试捕获，返回是否成功 |
 
-实现按构建层裁剪：`PLATFORM_WIN32` 走 `Win32WindowScreenshot`，`PLATFORM_X11` 走 `X11WindowScreenshot`。配合 `BitmapPngEncoder` 可将截图保存为 PNG。
+截图由当前注册的平台工厂提供。配合 `BitmapPngEncoder` 可将截图保存为 PNG。
 
 `PlatformScreenshot` 用于捕获真实平台窗口，与 `DesktopApplication.CaptureRendererBitmapAsync()` 的进程内 renderer 截图区分。自动化和 Tooling 默认使用后者，以避免 PID 查找、遮挡、窗口边框和桌面合成器差异。
 
@@ -1686,7 +1685,7 @@ public interface INavigationHistory
 ### Link（控件，类似 `a`）
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class Link : UIElement
 {
@@ -1701,7 +1700,7 @@ public class Link : UIElement
 ### ListItem（类似 `li`）
 
 ```csharp
-namespace Square.Controls.Controls;
+namespace Square.Controls;
 
 public class ListItem : UIElement
 {
@@ -1717,14 +1716,14 @@ public class ListItem : UIElement
 ```csharp
 namespace Square.Router;
 
-public sealed class Link : Square.Controls.Controls.Link
+public sealed class Link : Square.Controls.Link
 {
     public string To { get; set; }      // 应用内路径；同步到 Href
     public bool Replace { get; set; }
 }
 ```
 
-`.sqx` 中的 `<Link>` 映射为 `Square.Router.Link`（需引用 Router）。纯样式超链接可直接 `new Square.Controls.Controls.Link(...)`。
+`.sqx` 中的 `<Link>` 映射为 `Square.Router.Link`（需引用 Router）。纯样式超链接可直接 `new Square.Controls.Link(...)`。
 
 ---
 
@@ -1790,7 +1789,7 @@ public sealed class Clock
 ### ExtensionRegistration
 
 ```csharp
-namespace Square.Extensions.Registration;
+namespace Square.Extensions;
 
 public static class ExtensionRegistration
 {
@@ -1846,15 +1845,15 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 
 ## 14. 注册与初始化
 
-应用启动时 `DesktopApplication` 自动调用以下注册：
+应用启动时的注册行为：
 
 | 注册器 | 方法 | 条件 |
 |---|---|---|
 | `BackendRegistration` | `RegisterDefaults()` | `BACKEND_SOFTWARE` 等编译常量 |
-| `PlatformRegistration` | `RegisterDefaults()` | `PLATFORM_WIN32` 等编译常量 |
+| `PlatformRegistry` | `Register(new Win32PlatformFactory())` 或 `Register(new X11PlatformFactory())` | 应用在 `Run()` 前显式调用 |
 | `ExtensionRegistration` | `RegisterDefaults()` | 手动调用（引用 `Square.Extensions` 后） |
 
-应用代码通常不需要手动调用 `BackendRegistration` / `PlatformRegistration`，仅在自定义后端或平台时才需额外注册。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展控件标签。
+应用代码通常不需要手动调用 `BackendRegistration`，但必须显式注册所引用的平台工厂。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展控件标签。
 
 ---
 
@@ -1884,13 +1883,15 @@ private void OnClick(Event e) { }
 | `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
-| `Square.Controls.Controls` | `View`, `ScrollViewer`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
+| `Square.Controls` | `View`, `ScrollViewer`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
 | `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `Bitmap`, `RenderBackendRegistry` |
 | `Square.Graphics.Codecs` | `BitmapPngEncoder`, `BmpPngConverter`, `Crc32` |
 | `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `DisplayTree`, `DisplayNode`, `TextFragment`, `TextCharacterFragment` |
-| `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformRegistration`, `PlatformScreenshot` |
+| `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `IPlatformScreenshotProvider`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformScreenshot` |
+| `Square.Platform.Win32` | `Win32PlatformFactory` |
+| `Square.Platform.X11` | `X11PlatformFactory` |
 | `Square.Router` | `Router`, `RouteContext`, `RouteDefinition`, `Link`, `INavigationHistory` |
 | `Square.Controls.Animation` | `Animation<T>`, `Clock`, `Easing` |
 | `Square.Extensions.Markdown` | `MarkdownViewer` |
-| `Square.Extensions.Registration` | `ExtensionRegistration` |
+| `Square.Extensions` | `ExtensionRegistration` |

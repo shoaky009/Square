@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <IsPackable>true</IsPackable>
-    <Description>Square Runtime: Application, lifecycle, scheduling</Description>
-  </PropertyGroup>
-
-</Project>

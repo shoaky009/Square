@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text;
 using Square.Backends;
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Graphics;
 using Square.Rendering;
 using Square.Text.Glyph;
@@ -104,7 +104,7 @@ public class TextSelectionMeasurementTests
     public void DocumentSelectionBoundsCoverGlyphInkPastAdvance()
     {
         var root = new View { Geometry = new Rect(0, 0, 300, 60) };
-        var text = new Square.Controls.Controls.Text("Different color and line-height")
+        var text = new Square.Controls.Text("Different color and line-height")
         {
             FontSize = 20,
             Geometry = new Rect(0, 0, 300, 30)

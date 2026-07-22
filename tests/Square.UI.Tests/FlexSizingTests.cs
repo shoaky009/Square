@@ -1,4 +1,4 @@
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Graphics;
 using Square.Rendering;
 using Xunit;

@@ -6,24 +6,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <Description>Square RichText Editor Demo</Description>
     <PublishAot>true</PublishAot>
-    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <EmitCompilerGeneratedFiles Condition="'$(SquareEmitCompilerGeneratedFiles)' == 'true'">true</EmitCompilerGeneratedFiles>
     <OptimizationPreference>Size</OptimizationPreference>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Square.Runtime\Square.Runtime.csproj" />
-    <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
-    <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
+    <ProjectReference Include="..\..\src\Square\Square.csproj" />
+    <ProjectReference Include="..\..\src\Square.Platform.Win32\Square.Platform.Win32.csproj" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
+    <ProjectReference Include="..\..\src\Square.Platform.X11\Square.Platform.X11.csproj" Condition="'$(SquareTargetPlatform)' == 'X11'" />
     <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
-    <ProjectReference Include="..\..\src\Square.CSS\Square.CSS.csproj" />
-    <ProjectReference Include="..\..\src\Square.Graphics\Square.Graphics.csproj" />
-    <ProjectReference Include="..\..\src\Square.Rendering\Square.Rendering.csproj" />
-    <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
-    <ProjectReference Include="..\..\src\Square.Platform\Square.Platform.csproj" />
-    <ProjectReference Include="..\..\src\Square.Backends\Square.Backends.csproj" />
-    <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" />
-    <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Square.Compiler\Square.Compiler.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <ItemGroup>

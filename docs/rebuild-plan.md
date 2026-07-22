@@ -746,7 +746,7 @@ if (element.Kind == SqxNodeKind.Directive)
 | `Square.Controls` | 注册表、Paint、InvalidatePaint、Show/For/Switch 指令元数据 |
 | `Square.Hosting` | UIDocument 主循环、Title 同步 |
 | `Square.Router` | Find(Element)、Link 事件、Router/Route 指令元数据 |
-| `Square.SourceGenerator` | BuildElementTree、事件签名、**DirectiveCatalog + Emit 管线** |
+| `Square.Compiler` | BuildElementTree、事件签名、**DirectiveCatalog + Emit 管线** |
 | `Square.Directives`（可选新建） | `SqxDirectiveAttribute`、Pattern/Spec 公共类型 |
 | tests / samples / docs | 同步 |
 

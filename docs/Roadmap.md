@@ -34,9 +34,9 @@
 
 ## 3. M1 任务清单
 
-[x] M0：创建 `Square.slnx` 与全部 `Square.*` 项目 + 发布/AOT 配置
+[x] M0：创建 `Square.slnx` 与发布/AOT 配置；运行时逻辑模块现聚合到 `Square`
 [x] `Square.Markup`：`.sqx` 解析器 + AST + 单测（严格顶级 section + script 元数据）
-[x] `Square.SourceGenerator`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
+[x] `Square.Compiler`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
 [~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
@@ -45,13 +45,13 @@
 [x] `Square.Hosting`：`DesktopApplication` 聚合层——提取窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环
 [x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画时钟/缓动
 [x] `Square.Text`：FontManager/测量/绘制（基础）
-[x] `Square.Platform`：Win32 宿主 + 输入泵（`LibraryImport`）+ Mouse/Key/Wheel/IME/Clipboard
+[x] `Square.Platform.Win32` / `Square.Platform.X11`：独立平台宿主、输入泵、IME、剪贴板与截图
 [x] 事件系统：Mouse/Keyboard/Focus/Wheel + `.sqx` 绑定 + Click 合成
 [x] 绑定：`ObservableValue<T>` + `ObservableCollection<T>` + 生成期绑定
 [x] Props：`[Prop]` 特性 + `ObservableValue<T>` 包装 + 编译期校验（必填 + 类型）+ `OnPropChanged`
 [x] ref：模板标记 + 强类型字段生成 + 挂载/卸载赋值 + 重复名称诊断
 [x] 示例 + NativeAOT 发布验证 + 基线指标（2.53 MiB EXE，512ms 启动，32 MB 内存）
-[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` ✓ / 条件 `ProjectReference` 待实现 / trim 注解待添加
+[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` + 条件 `ProjectReference` ✓ / trim 注解待添加
 [x] 流程控制结构原语：`<Show>`/`<For>`/`<Switch>`/`<Match>` + `ObservableCollection<T>`
 [x] 组件/应用生命周期钩子（OnAttached/OnDetached/OnLoaded/OnUnloaded + Application.OnStart/OnExit）
 

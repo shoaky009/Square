@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Square.SourceGenerator\Square.SourceGenerator.csproj" />
+    <ProjectReference Include="..\..\src\Square.Compiler\Square.Compiler.csproj" SetTargetFramework="TargetFramework=net10.0" />
   </ItemGroup>
 
 </Project>

@@ -3,10 +3,10 @@ using Markdig.Helpers;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Square.UI;
-using LinkControl = Square.Controls.Controls.Link;
-using ListItemControl = Square.Controls.Controls.ListItem;
-using TextControl = Square.Controls.Controls.Text;
-using ViewControl = Square.Controls.Controls.View;
+using LinkControl = Square.Controls.Link;
+using ListItemControl = Square.Controls.ListItem;
+using TextControl = Square.Controls.Text;
+using ViewControl = Square.Controls.View;
 
 namespace Square.Extensions.Markdown;
 

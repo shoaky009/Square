@@ -1,0 +1,281 @@
+using Square.CSS.Ast;
+using Square.CSS.Tokenizer;
+
+namespace Square.CSS.Engine;
+
+public sealed class CssParser
+{
+    private readonly List<CssToken> _tokens;
+    private int _i;
+    private Combinator _pendingCombinator = Combinator.Descendant;
+
+    public CssParser(List<CssToken> tokens) { _tokens = tokens; }
+
+    public CssStyleSheet Parse()
+    {
+        var rules = new List<CssRule>();
+        var atRules = new List<CssAtRule>();
+        var keyFrames = new List<KeyFramesRule>();
+        while (Peek().Type != CssTokenType.Eof)
+        {
+            if (Peek().Type == CssTokenType.AtKeyword)
+            {
+                var atName = Peek().Text;
+                if (string.Equals(atName, "keyframes", StringComparison.OrdinalIgnoreCase))
+                {
+                    var kf = ParseKeyFrames();
+                    if (kf != null) keyFrames.Add(kf);
+                }
+                else
+                {
+                    var atRule = ParseAtRule();
+                    if (atRule != null) atRules.Add(atRule);
+                }
+            }
+            else
+            {
+                var parsedRules = ParseRules();
+                if (parsedRules.Count > 0) rules.AddRange(parsedRules);
+            }
+        }
+        return new CssStyleSheet(rules, atRules) { KeyFrames = keyFrames };
+    }
+
+    private KeyFramesRule? ParseKeyFrames()
+    {
+        Advance(); // @keyframes
+        var name = "";
+        while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.Eof))
+        {
+            if (Peek().Type == CssTokenType.Identifier)
+                name = Advance().Text;
+            else
+                Advance();
+        }
+        if (Peek().Type != CssTokenType.OpenBrace) return null;
+        Advance();
+
+        var stops = new List<KeyFrameStop>();
+        while (Peek().Type is not (CssTokenType.CloseBrace or CssTokenType.Eof))
+        {
+            var selector = new System.Text.StringBuilder();
+            while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.CloseBrace or CssTokenType.Eof))
+            {
+                var t = Advance();
+                if (t.Type != CssTokenType.Whitespace)
+                    selector.Append(t.Text).Append(' ');
+            }
+            if (Peek().Type == CssTokenType.OpenBrace)
+            {
+                Advance();
+                var decls = ParseDeclarations();
+                stops.Add(new KeyFrameStop(selector.ToString().Trim(), decls));
+            }
+        }
+        if (Peek().Type == CssTokenType.CloseBrace) Advance();
+        return new KeyFramesRule(name, stops);
+    }
+
+    private CssAtRule? ParseAtRule()
+    {
+        var name = Advance().Text;
+        var sb = new System.Text.StringBuilder();
+        while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.Eof))
+            sb.Append(Advance().Text).Append(' ');
+        if (Peek().Type != CssTokenType.OpenBrace) return null;
+        Advance();
+        var decls = ParseDeclarations();
+        return new CssAtRule(name, sb.ToString().Trim(), decls);
+    }
+
+    private List<CssRule> ParseRules()
+    {
+        var selectors = ParseSelectors();
+        if (selectors.Count == 0) return [];
+        if (Peek().Type != CssTokenType.OpenBrace) return [];
+        Advance();
+        var decls = ParseDeclarations();
+        return selectors.Select(selector => new CssRule(selector, decls)).ToList();
+    }
+
+    private List<ComplexSelector> ParseSelectors()
+    {
+        var result = new List<ComplexSelector>();
+        var steps = new List<CompoundStep>();
+        var parts = new List<SimpleSelector>();
+
+        while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.Eof))
+        {
+            var token = Peek();
+            if (token.Type == CssTokenType.Whitespace)
+            {
+                FlushCompound(parts, steps);
+                Advance();
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                if (Peek().Type is CssTokenType.Greater or CssTokenType.Plus or CssTokenType.Tilde)
+                    continue;
+                _pendingCombinator = Combinator.Descendant;
+                continue;
+            }
+
+            if (token.Type == CssTokenType.Comma)
+            {
+                FlushCompound(parts, steps);
+                if (steps.Count > 0) result.Add(new ComplexSelector(new List<CompoundStep>(steps)));
+                steps.Clear();
+                _pendingCombinator = Combinator.Descendant;
+                Advance();
+                continue;
+            }
+
+            if (token.Type is CssTokenType.Greater or CssTokenType.Plus or CssTokenType.Tilde)
+            {
+                FlushCompound(parts, steps);
+                if (steps.Count > 0)
+                {
+                    var combinator = token.Type switch
+                    {
+                        CssTokenType.Greater => Combinator.Child,
+                        CssTokenType.Plus => Combinator.Adjacent,
+                        _ => Combinator.GeneralSibling
+                    };
+                    _pendingCombinator = combinator;
+                }
+                Advance();
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                continue;
+            }
+
+            if (token.Type == CssTokenType.OpenBracket)
+            {
+                Advance();
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                var name = Peek().Type == CssTokenType.Identifier ? Advance().Text : "";
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                if (Peek().Type == CssTokenType.Equals)
+                {
+                    Advance();
+                    while (Peek().Type == CssTokenType.Whitespace) Advance();
+                    var valueToken = Advance();
+                    parts.Add(new SimpleSelector(SimpleSelectorKind.Attribute, name + "=" + valueToken.Text));
+                }
+                else if (!string.IsNullOrWhiteSpace(name))
+                {
+                    parts.Add(new SimpleSelector(SimpleSelectorKind.Attribute, name));
+                }
+                while (Peek().Type is not (CssTokenType.CloseBracket or CssTokenType.Eof)) Advance();
+                if (Peek().Type == CssTokenType.CloseBracket) Advance();
+                continue;
+            }
+
+            if (token.Type == CssTokenType.Identifier)
+            {
+                parts.Add(new SimpleSelector(SimpleSelectorKind.Type, Advance().Text));
+            }
+            else if (token.Type == CssTokenType.Asterisk)
+            {
+                Advance();
+                parts.Add(new SimpleSelector(SimpleSelectorKind.Universal, "*"));
+            }
+            else if (token.Type == CssTokenType.Dot)
+            {
+                Advance();
+                parts.Add(new SimpleSelector(SimpleSelectorKind.Class, Advance().Text));
+            }
+            else if (token.Type == CssTokenType.Hash)
+            {
+                parts.Add(new SimpleSelector(SimpleSelectorKind.Id, Advance().Text));
+            }
+            else if (token.Type is CssTokenType.Colon or CssTokenType.DoubleColon)
+            {
+                Advance();
+                while (Peek().Type == CssTokenType.Whitespace) Advance();
+                var name = Advance().Text;
+                if (Peek().Type == CssTokenType.OpenParen)
+                {
+                    Advance();
+                    var argument = new System.Text.StringBuilder();
+                    while (Peek().Type is not (CssTokenType.CloseParen or CssTokenType.Eof))
+                        argument.Append(Advance().Text);
+                    if (Peek().Type == CssTokenType.CloseParen) Advance();
+                    name += "(" + argument + ")";
+                }
+                parts.Add(new SimpleSelector(SimpleSelectorKind.PseudoClass, name));
+            }
+            else
+            {
+                Advance();
+            }
+        }
+
+        FlushCompound(parts, steps);
+        if (steps.Count > 0) result.Add(new ComplexSelector(steps));
+        return result;
+    }
+
+    private void FlushCompound(List<SimpleSelector> parts, List<CompoundStep> steps)
+    {
+        if (parts.Count == 0) return;
+        steps.Add(new CompoundStep(new CompoundSelector(new List<SimpleSelector>(parts)), _pendingCombinator));
+        _pendingCombinator = Combinator.Descendant;
+        parts.Clear();
+    }
+
+    private List<Declaration> ParseDeclarations()
+    {
+        var decls = new List<Declaration>();
+        while (Peek().Type is not (CssTokenType.CloseBrace or CssTokenType.Eof))
+        {
+            var propToken = Peek();
+            if (propToken.Type != CssTokenType.Identifier) { Advance(); continue; }
+            Advance();
+            if (Peek().Type != CssTokenType.Colon) { while (Peek().Type is not (CssTokenType.Semicolon or CssTokenType.CloseBrace or CssTokenType.Eof)) Advance(); if (Peek().Type == CssTokenType.Semicolon) Advance(); continue; }
+            Advance();
+            var valueTokens = new List<CssToken>();
+            while (Peek().Type is not (CssTokenType.Semicolon or CssTokenType.CloseBrace or CssTokenType.Eof))
+                valueTokens.Add(Advance());
+            if (Peek().Type == CssTokenType.Semicolon) Advance();
+            var important = false;
+            for (var i = valueTokens.Count - 1; i >= 0 && valueTokens[i].Type == CssTokenType.Whitespace; i--)
+                valueTokens.RemoveAt(i);
+            if (valueTokens.Count >= 2 &&
+                valueTokens[^2].Type == CssTokenType.Bang &&
+                valueTokens[^1].Type == CssTokenType.Identifier &&
+                string.Equals(valueTokens[^1].Text, "important", StringComparison.OrdinalIgnoreCase))
+            {
+                important = true;
+                valueTokens.RemoveRange(valueTokens.Count - 2, 2);
+            }
+            decls.Add(new(propToken.Text, FormatValue(valueTokens), important));
+        }
+        if (Peek().Type == CssTokenType.CloseBrace) Advance();
+        return decls;
+    }
+
+    private static string FormatValue(List<CssToken> tokens)
+    {
+        var result = new System.Text.StringBuilder();
+        CssTokenType? previous = null;
+        foreach (var token in tokens)
+        {
+            if (token.Type == CssTokenType.Whitespace)
+            {
+                if (result.Length > 0 && result[result.Length - 1] != ' ') result.Append(' ');
+                previous = token.Type;
+                continue;
+            }
+
+            if (token.Type == CssTokenType.Hash) result.Append('#').Append(token.Text);
+            else if (token.Type == CssTokenType.OpenParen) result.Append('(');
+            else if (token.Type == CssTokenType.CloseParen) { while (result.Length > 0 && result[result.Length - 1] == ' ') result.Length--; result.Append(')'); }
+            else if (token.Type == CssTokenType.Comma) result.Append(',');
+            else if (token.Type is CssTokenType.Unit or CssTokenType.Percentage) result.Append(token.Text);
+            else result.Append(token.Text);
+            previous = token.Type;
+        }
+        return result.ToString().Trim();
+    }
+
+    private CssToken Peek() => _i < _tokens.Count ? _tokens[_i] : _tokens[^1];
+    private CssToken Advance() => _i < _tokens.Count ? _tokens[_i++] : _tokens[^1];
+}

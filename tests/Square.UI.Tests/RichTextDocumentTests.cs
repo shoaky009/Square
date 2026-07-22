@@ -1,7 +1,7 @@
 using System;
 using Square.Extensions.RichText;
-using Square.Extensions.Registration;
-using Square.Controls.Controls;
+using Square.Extensions;
+using Square.Controls;
 using Square.Rendering;
 using Square.UI;
 using Xunit;

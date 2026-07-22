@@ -1,6 +1,5 @@
 using System;
-using Square.Controls.Controls;
-using Square.Controls.Registration;
+using Square.Controls;
 using Square.UI;
 using Xunit;
 
@@ -44,7 +43,7 @@ public class DocumentTests
         var doc = new UIDocument();
         var text = doc.CreateElement("Text");
 
-        Assert.IsType<Square.Controls.Controls.Text>(text);
+        Assert.IsType<Square.Controls.Text>(text);
         Assert.Same(doc, text.OwnerDocument);
     }
 
@@ -140,8 +139,8 @@ public class DocumentTests
     public void AppendChildAndRemoveChildMatchDomSemantics()
     {
         var parent = new View();
-        var a = new Square.Controls.Controls.Text("a");
-        var b = new Square.Controls.Controls.Text("b");
+        var a = new Square.Controls.Text("a");
+        var b = new Square.Controls.Text("b");
 
         Assert.Same(a, parent.AppendChild(a));
         parent.AppendChild(b);
@@ -162,9 +161,9 @@ public class DocumentTests
     public void InsertBeforeAndReplaceChildrenWork()
     {
         var parent = new View();
-        var a = new Square.Controls.Controls.Text("a");
-        var b = new Square.Controls.Controls.Text("b");
-        var c = new Square.Controls.Controls.Text("c");
+        var a = new Square.Controls.Text("a");
+        var b = new Square.Controls.Text("b");
+        var c = new Square.Controls.Text("c");
         parent.AppendChild(b);
         parent.InsertBefore(a, b);
         Assert.Equal(2, parent.Children.Count);
@@ -215,7 +214,7 @@ public class DocumentTests
     public void DomTextNodeCoexistsWithTextControl()
     {
         var domText = new Square.UI.Text("hello");
-        var controlText = new Square.Controls.Controls.Text("hello");
+        var controlText = new Square.Controls.Text("hello");
 
         Assert.Equal(Node.NodeType.Text, domText.NodeTypeValue);
         Assert.Equal("#text", domText.NodeName);
@@ -316,7 +315,7 @@ public class DocumentTests
     public void TextControlMaintainsDomTextChildNode()
     {
         var doc = new UIDocument();
-        var text = new Square.Controls.Controls.Text("hello");
+        var text = new Square.Controls.Text("hello");
 
         doc.Body.AppendChild(text);
 

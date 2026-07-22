@@ -1,5 +1,10 @@
 using Square.Hosting;
 using Square.Platform;
+#if PLATFORM_WIN32
+using Square.Platform.Win32;
+#elif PLATFORM_X11
+using Square.Platform.X11;
+#endif
 using Square.UI;
 
 namespace Square.Sample.Vue;
@@ -9,6 +14,13 @@ public static class Program
     public static void Main(string[] args)
     {
         System.Console.WriteLine("Square Vue Template Sample");
+#if PLATFORM_WIN32
+        PlatformRegistry.Register(new Win32PlatformFactory());
+#elif PLATFORM_X11
+        PlatformRegistry.Register(new X11PlatformFactory());
+#else
+        throw new PlatformNotSupportedException("No Square platform package is configured for this build.");
+#endif
 
         var document = new UIDocument
         {

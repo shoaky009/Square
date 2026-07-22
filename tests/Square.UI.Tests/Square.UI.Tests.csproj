@@ -13,15 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Square.Graphics\Square.Graphics.csproj" />
-    <ProjectReference Include="..\..\src\Square.Runtime\Square.Runtime.csproj" />
-    <ProjectReference Include="..\..\src\Square.Text\Square.Text.csproj" />
-    <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
-    <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
-    <ProjectReference Include="..\..\src\Square.Rendering\Square.Rendering.csproj" />
-    <ProjectReference Include="..\..\src\Square.Router\Square.Router.csproj" />
+    <ProjectReference Include="..\..\src\Square\Square.csproj" />
     <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
-    <ProjectReference Include="..\..\src\Square.Hosting\Square.Hosting.csproj" />
     <ProjectReference Include="..\..\samples\Square.Sample\Square.Sample.csproj" />
   </ItemGroup>
 

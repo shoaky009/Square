@@ -8,9 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Square.Hosting\Square.Hosting.csproj" />
-    <ProjectReference Include="..\Square.Platform\Square.Platform.csproj" />
-    <ProjectReference Include="..\Square.Graphics\Square.Graphics.csproj" />
+    <ProjectReference Include="..\Square\Square.csproj" />
   </ItemGroup>
 
 </Project>

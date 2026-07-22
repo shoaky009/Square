@@ -37,7 +37,7 @@ Square 是 **纯 C# 实现、编译优先（Compile First）、NativeAOT 优先�
 .sqx / .sqv (template + script + style)
       |
       v
-[Square.SourceGenerator] -> C# partial component (compile time)
+[Square.Compiler] -> C# partial component (compile time)
       |
       v
 UIDocument
@@ -72,7 +72,7 @@ Backend + Platform host (Software/Win32/X11/...)
 | 模块 | 当前职责 | 关键设计 |
 |---|---|---|
 | `Square.Markup` | `.sqx` 词法/语法解析与 AST | 独立解析器，错误含行列信息 |
-| `Square.SourceGenerator` | Roslyn Incremental Generator，`.sqx`/`.sqv` -> C# | `AdditionalText` 输入；Props 校验；诊断映射；扫描 `SqxDirective` 元数据构建指令目录 |
+| `Square.Compiler` | Roslyn Incremental Generator，`.sqx`/`.sqv` -> C# | `AdditionalText` 输入；Props 校验；诊断映射；扫描 `SqxDirective` 元数据构建指令目录 |
 | `Square.Runtime` | 应用基类、Dispatcher、状态与绑定原语、指令元数据 | `ObservableValue<T>`、`ObservableCollection<T>`、`Signal<T>`、`SqxDirectiveAttribute` |
 | `Square.Events` | DOM 风格事件模型 | `EventTarget`、`Event`、`addEventListener`、`dispatchEvent`、捕获/冒泡路径 |
 | `Square.UI` | DOM 化文档树与 UI 元素基础 | `Node`、`Document`、`UIDocument`、`Element`、`UIElement`、Shell、Range/Selection、Reconciler、属性与样式访问器 |
@@ -199,7 +199,7 @@ Square 支持两类编译期模板输入：
 
 ### 5.2 生成器职责
 
-`Square.SourceGenerator` 是 Roslyn `IIncrementalGenerator`：
+`Square.Compiler` 是 Roslyn `IIncrementalGenerator`：
 
 1. 读取 `.sqx` / `.sqv` AdditionalText。
 2. 解析模板、脚本和样式。
@@ -325,7 +325,7 @@ Software Renderer 当前已经包含 BGRA 软件缓冲、预乘 Alpha、位图�
 - 文本输入区域同步
 - 平台截图
 
-当前已有 Win32 与 X11 宿主，以及 Win32/X11 截图实现。平台注册由 `PlatformRegistration.RegisterDefaults()` 完成。
+当前已有独立的 `Square.Platform.Win32` 与 `Square.Platform.X11` 实现程序集。应用引用目标平台后，在 `DesktopApplication.Run()` 前通过 `PlatformRegistry.Register(...)` 显式注册对应工厂；平台截图由已注册工厂实现的 `IPlatformScreenshotProvider` 提供。
 
 ### 8.3 Hosting 组合层
 

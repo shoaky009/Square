@@ -1,7 +1,7 @@
 # Square Framework 需求说明
 
-> Version: 0.3 Draft  
-> Status: Draft  
+> Version: 0.3 Draft
+> Status: Draft
 > 变更（v0.3）：架构重建完成，事件系统切换为 DOM 风格，新增 Document/UIDocument 文档模型
 
 ---
@@ -617,19 +617,16 @@ Backend 不影响框架核心。
 # 16. 项目模块
 
 ```
-Square.Markup
-Square.SourceGenerator
-Square.Runtime
-Square.UI
-Square.Controls
-Square.CSS
-Square.Rendering
-Square.Graphics
-Square.Text
-Square.Platform
-Square.Backends
-Square.Hosting
+Square
+Square.Compiler
+Square.Platform.Win32
+Square.Platform.X11
+Square.Backends.Vulkan
+Square.Extensions
+Square.Tooling
 ```
+
+`Square` 聚合 Runtime、Events、UI、Controls、Router、CSS、Graphics、Rendering、Text、Hosting、Platform 抽象和 Software Backend；这些逻辑模块继续使用各自的 `Square.*` 命名空间。
 
 ---
 

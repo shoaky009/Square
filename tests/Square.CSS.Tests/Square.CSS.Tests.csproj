@@ -13,9 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Square.CSS\Square.CSS.csproj" />
-    <ProjectReference Include="..\..\src\Square.Controls\Square.Controls.csproj" />
-    <ProjectReference Include="..\..\src\Square.UI\Square.UI.csproj" />
+    <ProjectReference Include="..\..\src\Square\Square.csproj" />
   </ItemGroup>
 
 </Project>

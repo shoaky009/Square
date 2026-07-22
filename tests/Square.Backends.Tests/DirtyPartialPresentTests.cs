@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Square.Backends;
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Graphics;
 using Square.Rendering;
 using Square.UI;
@@ -164,7 +164,7 @@ public class DirtyPartialPresentTests
     public void DisplayTreeDirtyRectsUseVisualBoundsWhenTextExceedsGeometry()
     {
         var root = new View { Geometry = new Rect(0, 0, 260, 80) };
-        var text = new Square.Controls.Controls.Text("This text is wider than geometry")
+        var text = new Square.Controls.Text("This text is wider than geometry")
         {
             Geometry = new Rect(10, 10, 20, 24)
         };

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Square.Backends;
-using Square.Controls.Controls;
+using Square.Controls;
 using Square.Extensions.RichText;
 using Square.Graphics;
 using Square.Rendering;
@@ -114,7 +114,7 @@ public class SoftwareRendererTests
     public void DisplayTreeCollectTextFragmentsUsesDrawTextCommands()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 40) };
-        var text = new Square.Controls.Controls.Text("AB")
+        var text = new Square.Controls.Text("AB")
         {
             FontSize = 20,
             Geometry = new Rect(10, 5, 40, 24)
@@ -142,7 +142,7 @@ public class SoftwareRendererTests
     public void DisplayTreeTextFragmentsUseRenderedGlyphAdvances()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 40) };
-        var text = new Square.Controls.Controls.Text("Ma")
+        var text = new Square.Controls.Text("Ma")
         {
             FontSize = 20,
             Geometry = new Rect(0, 0, 80, 24)
@@ -161,7 +161,7 @@ public class SoftwareRendererTests
     public void DisplayTreeTextFragmentsMatchWrappedRendering()
     {
         var root = new View { Geometry = new Rect(0, 0, 80, 80) };
-        var text = new Square.Controls.Controls.Text("AAAA")
+        var text = new Square.Controls.Text("AAAA")
         {
             FontSize = 20,
             Geometry = new Rect(2, 2, 22, 60)
@@ -301,14 +301,14 @@ public class SoftwareRendererTests
         var controls = new Element[]
         {
             view,
-            new Square.Controls.Controls.Text("Text"),
+            new Square.Controls.Text("Text"),
             new Button("Button"),
             new Input { Placeholder = "Input" },
             new TextArea { Placeholder = "TextArea" },
             new CheckBox { TextContent = "Check", IsChecked = true },
             new Radio { TextContent = "Radio", IsChecked = true },
             new Select { Value = "Blue", Options = ["Blue", "Green"] },
-            new Square.Controls.Controls.Image { ImageContent = preview },
+            new Square.Controls.Image { ImageContent = preview },
             new Canvas()
         };
 
@@ -784,7 +784,7 @@ public class SoftwareRendererTests
     public void TextSelectionBoundsCoverGlyphDescenders()
     {
         var root = new View { Geometry = new Rect(0, 0, 100, 50) };
-        var text = new Square.Controls.Controls.Text("pg")
+        var text = new Square.Controls.Text("pg")
         {
             FontSize = 20,
             Geometry = new Rect(4, 4, 80, 30)
@@ -945,7 +945,7 @@ public class SoftwareRendererTests
             Options = ["Blue", "Green", "Orange"],
             Value = "Blue"
         };
-        var laterText = new Square.Controls.Controls.Text("For: ready")
+        var laterText = new Square.Controls.Text("For: ready")
         {
             Geometry = new Rect(10, 52, 220, 24)
         };
@@ -991,7 +991,7 @@ public class SoftwareRendererTests
             Options = ["Blue", "Green", "Orange"],
             Value = "Blue"
         };
-        var laterText = new Square.Controls.Controls.Text("For: ready")
+        var laterText = new Square.Controls.Text("For: ready")
         {
             Geometry = new Rect(10, 52, 220, 24)
         };
@@ -1021,7 +1021,7 @@ public class SoftwareRendererTests
             Options = select.Options,
             Value = select.Value
         };
-        var expectedText = new Square.Controls.Controls.Text("For: ready") { Geometry = laterText.Geometry };
+        var expectedText = new Square.Controls.Text("For: ready") { Geometry = laterText.Geometry };
         expectedRoot.Children.Add(expectedSelect);
         expectedRoot.Children.Add(expectedText);
         var expectedContext = CreateContext(240, 170);

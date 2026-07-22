@@ -1,6 +1,6 @@
 using Square.Graphics;
 using Square.UI;
-using Square.Controls.Controls;
+using Square.Controls;
 using Xunit;
 
 namespace Square.UI.Tests;
@@ -12,7 +12,7 @@ public class QueryTests
     {
         var view = new View();
         var btn = new Button();
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         view.Children.Add(btn);
         view.Children.Add(text);
 
@@ -42,7 +42,7 @@ public class QueryTests
         var view = new View();
         var btn1 = new Button();
         var btn2 = new Button();
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         view.Children.Add(btn1);
         view.Children.Add(btn2);
         view.Children.Add(text);
@@ -69,7 +69,7 @@ public class QueryTests
     public void QueryNotFound()
     {
         var view = new View();
-        var text = new Square.Controls.Controls.Text();
+        var text = new Square.Controls.Text();
         view.Children.Add(text);
 
         var found = view.Query<Button>();
