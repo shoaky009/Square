@@ -135,7 +135,7 @@ internal sealed class Win32Host : IPlatformHost
             throw new InvalidOperationException($"CreateWindowEx failed: {err}");
         }
 
-        UpdateCornerPreference(AppWindowState.Normal);
+        UpdateWindowFrameAppearance(AppWindowState.Normal);
 
         _dpiScale = DpiToScale(Win32Api.GetDpiForWindow(_hwnd));
         if (_dpiScale != 1f)
@@ -348,9 +348,19 @@ internal sealed class Win32Host : IPlatformHost
 
                 break;
             case Win32Api.WM_NCCALCSIZE:
-                if (host._titleStyle == TitleStyle.Custom && host._borderStyle == BorderStyle.Resizable &&
-                    wParam != IntPtr.Zero)
+                if (host._titleStyle == TitleStyle.Custom)
                     return IntPtr.Zero;
+                break;
+            case Win32Api.WM_NCPAINT:
+                if (host._titleStyle == TitleStyle.Custom)
+                    return IntPtr.Zero;
+                break;
+            case Win32Api.WM_NCACTIVATE:
+                if (host._titleStyle == TitleStyle.Custom)
+                {
+                    host.HideSystemBorder();
+                    return new IntPtr(1);
+                }
                 break;
             case Win32Api.WM_NCHITTEST:
                 if (host._titleStyle == TitleStyle.Custom && host._borderStyle == BorderStyle.Resizable &&
@@ -365,7 +375,7 @@ internal sealed class Win32Host : IPlatformHost
                     _ => AppWindowState.Normal
                 };
                 host.UpdateState(state);
-                host.UpdateCornerPreference(state);
+                host.UpdateWindowFrameAppearance(state);
                 if (state == AppWindowState.Minimized) break;
                 Win32Api.GetClientRect(hWnd, out var rect);
                 var newPhysicalSize = new Size(rect.Width, rect.Height);
@@ -455,12 +465,6 @@ internal sealed class Win32Host : IPlatformHost
             case Win32Api.WM_SETCURSOR:
                 if ((lParam.ToInt64() & 0xffff) == Win32Api.HTCLIENT)
                 {
-                    if (Win32Api.GetCursorPos(out var cursorPoint))
-                    {
-                        Win32Api.ScreenToClient(hWnd, ref cursorPoint);
-                        host.MouseEvent?.Invoke(host.ToLogicalPoint(cursorPoint.X, cursorPoint.Y), MouseAction.Move);
-                    }
-
                     host.ApplyCursor();
                     return new IntPtr(1);
                 }
@@ -518,7 +522,7 @@ internal sealed class Win32Host : IPlatformHost
         return new IntPtr(Win32Api.HTCLIENT);
     }
 
-    private void UpdateCornerPreference(AppWindowState state)
+    private void UpdateWindowFrameAppearance(AppWindowState state)
     {
         if (_hwnd == IntPtr.Zero || _titleStyle == TitleStyle.System) return;
         var preference = state == AppWindowState.Maximized
@@ -528,6 +532,17 @@ internal sealed class Win32Host : IPlatformHost
             _hwnd,
             Win32Api.DWMWA_WINDOW_CORNER_PREFERENCE,
             ref preference,
+            sizeof(int));
+        HideSystemBorder();
+    }
+
+    private void HideSystemBorder()
+    {
+        var borderColor = Win32Api.DWMWA_COLOR_NONE;
+        Win32Api.DwmSetWindowAttribute(
+            _hwnd,
+            Win32Api.DWMWA_BORDER_COLOR,
+            ref borderColor,
             sizeof(int));
     }
 

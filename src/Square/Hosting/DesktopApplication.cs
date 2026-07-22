@@ -611,8 +611,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             }
             else
             {
-                foreach (var select in _root.QueryAll<Select>())
-                    needsRender |= select.HandlePointerMove(point);
+                needsRender |= _displayTree.HandlePointerMove(point);
             }
 
             if (needsRender) RequestRender();
@@ -770,6 +769,18 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
 
     private static bool UpdateStatePath(List<UIElement> currentPath, Element? hit, ElementState state)
     {
+        UIElement? pathStart = null;
+        for (var current = hit; current != null; current = current.Parent)
+        {
+            if (current is not UIElement uiElement) continue;
+            pathStart = uiElement;
+            break;
+        }
+
+        if ((currentPath.Count == 0 && pathStart == null) ||
+            (currentPath.Count > 0 && ReferenceEquals(currentPath[0], pathStart)))
+            return false;
+
         var nextPath = BuildElementPath(hit);
         if (PathsEqual(currentPath, nextPath)) return false;
 

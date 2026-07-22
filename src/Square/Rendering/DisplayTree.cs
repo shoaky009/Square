@@ -1,3 +1,4 @@
+using Square.Controls;
 using Square.Graphics;
 using Square.UI;
 using Square.Rendering.Tree;
@@ -230,6 +231,17 @@ public sealed class DisplayTree
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    public bool HandlePointerMove(Point point)
+    {
+        var changed = false;
+        for (var i = _popups.Count - 1; i >= 0; i--)
+        {
+            if (_popups[i] is Select select)
+                changed |= select.HandlePointerMove(point);
+        }
+        return changed;
     }
 
     public bool DismissPopupsOutside(Point point)

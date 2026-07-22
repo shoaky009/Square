@@ -24,10 +24,12 @@ internal static partial class Win32Api
     public const int WM_CLOSE = 0x0010;
     public const int WM_DESTROY = 0x0002;
     public const int WM_PAINT = 0x000F;
+    public const int WM_NCACTIVATE = 0x0086;
     public const int WM_SETCURSOR = 0x0020;
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int WM_NCCALCSIZE = 0x0083;
     public const int WM_NCHITTEST = 0x0084;
+    public const int WM_NCPAINT = 0x0085;
     public const int WM_SIZE = 0x0005;
     public const int WM_SYSCOMMAND = 0x0112;
     public const int WM_DPICHANGED = 0x02E0;
@@ -71,6 +73,8 @@ internal static partial class Win32Api
     public const int SM_CXSIZEFRAME = 32;
     public const int SM_CXPADDEDBORDER = 92;
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    public const int DWMWA_BORDER_COLOR = 34;
+    public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
     public const int DWMWCP_DONOTROUND = 1;
     public const int DWMWCP_ROUND = 2;
     public const int VK_SHIFT = 0x10;
