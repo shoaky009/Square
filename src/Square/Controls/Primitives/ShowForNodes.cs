@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using Square.Runtime.Binding;
+using Square.Runtime.State;
 using Square.UI;
 
 namespace Square.Controls.Primitives;
@@ -23,6 +24,12 @@ public sealed class ShowNode : IDisposable
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    public ShowNode(IReactiveValue<bool> source, Func<Element?> build)
+        : this(() => source.Value, build)
+    {
+        _subscription = source.Subscribe(_ => ScheduleUpdate());
+    }
+
     public ShowNode(Func<bool> condition, Func<Element?> build)
     {
         _condition = condition;
@@ -35,14 +42,18 @@ public sealed class ShowNode : IDisposable
     {
         _parent = parent;
         _index = parent.Children.Count;
-        if (_child != null) parent.Children.Insert(_index, _child);
+        if (_child != null)
+        {
+            parent.Children.Insert(_index, _child);
+            _child.BuildElementTree();
+        }
     }
 
     /// <summary>通过 Reconciler 批处理，而非即时修改树。</summary>
     private void ScheduleUpdate()
     {
         if (_disposed) return;
-        Reconciler.Current.ScheduleUpdate(Update);
+        (_parent?.Reconciler ?? Reconciler.Current).ScheduleUpdate(Update);
     }
 
     public void Update()
@@ -55,7 +66,10 @@ public sealed class ShowNode : IDisposable
         {
             _child ??= _build();
             if (_child != null && _parent != null)
+            {
                 _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), _child);
+                _child.BuildElementTree();
+            }
         }
         else
         {
@@ -88,6 +102,63 @@ public static class ForNode
 
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, Element?> build) =>
+        new ReactiveForNode<T>(source, build);
+}
+
+internal sealed class ReactiveForNode<T> : IForNode
+{
+    private readonly IReactiveValue<IReadOnlyList<T>> _source;
+    private readonly Func<T, Element?> _build;
+    private readonly List<Element> _children = [];
+    private IDisposable? _subscription;
+    private Element? _parent;
+    private int _index;
+
+    public ReactiveForNode(IReactiveValue<IReadOnlyList<T>> source, Func<T, Element?> build)
+    {
+        _source = source;
+        _build = build;
+    }
+
+    public void AttachTo(Element parent)
+    {
+        _parent = parent;
+        _index = parent.Children.Count;
+        Rebuild();
+        _subscription = _source.Subscribe(
+            _ => parent.Reconciler.ScheduleUpdate(Rebuild),
+            new ReactiveSubscriptionOptions { Dispatcher = parent.Dispatcher });
+    }
+
+    public void Update() => Rebuild();
+
+    private void Rebuild()
+    {
+        if (_parent == null) return;
+        foreach (var child in _children)
+            if (child.Parent == _parent) _parent.Children.Remove(child);
+        _children.Clear();
+        foreach (var item in _source.Value)
+        {
+            if (_build(item) is not { } child) continue;
+            _parent.Children.Insert(Math.Min(_index + _children.Count, _parent.Children.Count), child);
+            child.BuildElementTree();
+            _children.Add(child);
+        }
+    }
+
+    public void Dispose()
+    {
+        _subscription?.Dispose();
+        _subscription = null;
+        if (_parent != null)
+            foreach (var child in _children)
+                if (child.Parent == _parent) _parent.Children.Remove(child);
+        _children.Clear();
+        _parent = null;
+    }
 }
 
 public sealed class ForNode<T> : IForNode
@@ -140,14 +211,17 @@ public sealed class ForNode<T> : IForNode
             var node = _build(item);
             _nodes.Add((item, node));
             if (node != null && _parent != null)
+            {
                 _parent.Children.Insert(Math.Min(_index + _nodes.Count - 1, _parent.Children.Count), node);
+                node.BuildElementTree();
+            }
         }
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         // 通过 Reconciler 批处理集合变更，而非即时操作树
-        Square.UI.Reconciler.Current.ScheduleUpdate(() => ApplyCollectionChange(e));
+        (_parent?.Reconciler ?? Square.UI.Reconciler.Current).ScheduleUpdate(() => ApplyCollectionChange(e));
     }
 
     private void ApplyCollectionChange(NotifyCollectionChangedEventArgs e)
@@ -190,7 +264,10 @@ public sealed class ForNode<T> : IForNode
     {
         var node = _nodes[nodeIndex].node;
         if (node != null && _parent != null)
+        {
             _parent.Children.Insert(GetInsertionIndex(nodeIndex), node);
+            node.BuildElementTree();
+        }
     }
 
     private int GetInsertionIndex(int nodeIndex)
@@ -276,7 +353,7 @@ public sealed class SwitchNode : IDisposable
     {
         if (_disposed || _parent == null) return;
         // 通过 Reconciler 批处理分支切换
-        Square.UI.Reconciler.Current.ScheduleUpdate(UpdateCore);
+        (_parent?.Reconciler ?? Square.UI.Reconciler.Current).ScheduleUpdate(UpdateCore);
     }
 
     private void UpdateCore()
@@ -297,7 +374,10 @@ public sealed class SwitchNode : IDisposable
             var branch = _branches[match];
             branch.Child ??= branch.Build();
             if (branch.Child != null)
+            {
                 _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), branch.Child);
+                branch.Child.BuildElementTree();
+            }
         }
     }
 

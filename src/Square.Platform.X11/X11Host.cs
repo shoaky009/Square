@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Square.Graphics;
+using Square.Hosting;
 
 namespace Square.Platform.X11;
 
@@ -25,6 +26,11 @@ internal sealed unsafe class X11Host : IPlatformHost
     private readonly IntPtr _primaryAtom;
     private readonly IntPtr _textAtom;
     private readonly IntPtr _clipboardContentAtom;
+    private readonly IntPtr _wmState;
+    private readonly IntPtr _netWmState;
+    private readonly IntPtr _netWmStateMaximizedHorz;
+    private readonly IntPtr _netWmStateMaximizedVert;
+    private readonly IntPtr _netWmMoveresize;
     private readonly IntPtr _textCursor;
     private readonly IntPtr _arrowCursor;
     private readonly uint _frameIntervalMs = 16;
@@ -46,6 +52,8 @@ internal sealed unsafe class X11Host : IPlatformHost
     private IntPtr _xic;
     private Rect _textInputRect;
     private bool _disposed;
+    private bool _closed;
+    private AppWindowState _state = AppWindowState.Normal;
 
     private static X11Api.XErrorHandler? _errorHandler;
 
@@ -117,6 +125,9 @@ internal sealed unsafe class X11Host : IPlatformHost
         if (_window == IntPtr.Zero)
             throw new InvalidOperationException("XCreateWindow failed");
 
+        if (info.TitleStyle != TitleStyle.System)
+            SetWindowManagerDecorations(info.BorderStyle);
+
         X11Api.StoreName(_display, _window, _title);
         SetProcessIdProperty();
 
@@ -128,6 +139,11 @@ internal sealed unsafe class X11Host : IPlatformHost
         _primaryAtom = X11Api.InternAtom(_display, "PRIMARY", false);
         _textAtom = X11Api.InternAtom(_display, "TEXT", false);
         _clipboardContentAtom = X11Api.InternAtom(_display, "SQUARE_CLIPBOARD_CONTENT", false);
+        _wmState = X11Api.InternAtom(_display, "WM_STATE", false);
+        _netWmState = X11Api.InternAtom(_display, "_NET_WM_STATE", false);
+        _netWmStateMaximizedHorz = X11Api.InternAtom(_display, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
+        _netWmStateMaximizedVert = X11Api.InternAtom(_display, "_NET_WM_STATE_MAXIMIZED_VERT", false);
+        _netWmMoveresize = X11Api.InternAtom(_display, "_NET_WM_MOVERESIZE", false);
 
         var protocols = new[] { _wmDeleteWindow };
         X11Api.SetWMProtocols(_display, _window, protocols, protocols.Length);
@@ -180,9 +196,39 @@ internal sealed unsafe class X11Host : IPlatformHost
         X11Api.ChangeProperty(_display, _window, property, cardinal, 32, X11Api.PropModeReplace, pid, 1);
     }
 
+    private void SetWindowManagerDecorations(BorderStyle borderStyle)
+    {
+        var property = X11Api.InternAtom(_display, "_MOTIF_WM_HINTS", false);
+        var hints = new uint[]
+        {
+            X11Api.MotifWmHintsDecorations,
+            borderStyle switch
+            {
+                BorderStyle.Resizable => X11Api.MotifWmDecorBorder | X11Api.MotifWmDecorResizeH,
+                BorderStyle.Fixed => X11Api.MotifWmDecorBorder,
+                _ => 0
+            },
+            0,
+            0,
+            0
+        };
+        var bytes = new byte[hints.Length * sizeof(uint)];
+        Buffer.BlockCopy(hints, 0, bytes, 0, bytes.Length);
+        X11Api.ChangeProperty(
+            _display,
+            _window,
+            property,
+            property,
+            32,
+            X11Api.PropModeReplace,
+            bytes,
+            hints.Length);
+    }
+
     public Size ClientSize => _clientSize;
     public float DpiScale => _dpiScale;
     public bool IsRunning => _running;
+    public AppWindowState State => _state;
     public CursorKind Cursor
     {
         get => _cursor;
@@ -214,6 +260,8 @@ internal sealed unsafe class X11Host : IPlatformHost
     public event Action<int, KeyAction>? KeyEvent;
     public event Action<string>? TextInput;
     public event Action? Tick;
+    public event Action<AppWindowState>? StateChanged;
+    public event Action? Closed;
 
     public void Show()
     {
@@ -227,6 +275,53 @@ internal sealed unsafe class X11Host : IPlatformHost
     {
         _running = false;
         X11Api.UnmapWindow(_display, _window);
+        X11Api.Flush(_display);
+        SignalClosed();
+    }
+
+    public void Minimize()
+    {
+        if (_window == IntPtr.Zero) return;
+        X11Api.IconifyWindow(_display, _window, _screen);
+        X11Api.Flush(_display);
+    }
+
+    public void Maximize()
+    {
+        SendNetWmState(X11Api.NetWmStateAdd);
+    }
+
+    public void Restore()
+    {
+        if (_window == IntPtr.Zero) return;
+        SendNetWmState(X11Api.NetWmStateRemove);
+        X11Api.MapRaised(_display, _window);
+        X11Api.Flush(_display);
+    }
+
+    public void BeginMove()
+    {
+        if (_window == IntPtr.Zero) return;
+        if (!X11Api.QueryPointer(
+                _display, _root, out _, out _, out var rootX, out var rootY,
+                out _, out _, out _))
+            return;
+
+        X11Api.UngrabPointer(_display, X11Api.CurrentTime);
+        X11Api.XEvent e = default;
+        e.clientMessage.type = X11Api.ClientMessage;
+        e.clientMessage.display = _display;
+        e.clientMessage.window = _window;
+        e.clientMessage.messageType = _netWmMoveresize;
+        e.clientMessage.format = 32;
+        e.clientMessage.data.l[0] = rootX;
+        e.clientMessage.data.l[1] = rootY;
+        e.clientMessage.data.l[2] = X11Api.NetWmMoveresizeMove;
+        e.clientMessage.data.l[3] = X11Api.Button1;
+        e.clientMessage.data.l[4] = X11Api.NetWmSourceApplication;
+        X11Api.SendEvent(
+            _display, _root, false,
+            X11Api.SubstructureRedirectMask | X11Api.SubstructureNotifyMask, ref e);
         X11Api.Flush(_display);
     }
 
@@ -306,6 +401,16 @@ internal sealed unsafe class X11Host : IPlatformHost
                     }
                 }
                 break;
+            case X11Api.MapNotify:
+                RefreshWindowState(false);
+                break;
+            case X11Api.UnmapNotify:
+                if (_running) UpdateState(AppWindowState.Minimized);
+                break;
+            case X11Api.PropertyNotify:
+                if (e.property.atom == _wmState || e.property.atom == _netWmState)
+                    RefreshWindowState(true);
+                break;
             case X11Api.KeyPress:
                 {
                     var key = e.key;
@@ -378,12 +483,96 @@ internal sealed unsafe class X11Host : IPlatformHost
                     && e.clientMessage.data.l[0] == _wmDeleteWindow.ToInt64())
                 {
                     _running = false;
+                    SignalClosed();
                 }
                 break;
             case X11Api.SelectionRequest:
                 HandleSelectionRequest(e.selectionRequest);
                 break;
         }
+    }
+
+    private void SendNetWmState(int action)
+    {
+        if (_window == IntPtr.Zero) return;
+        X11Api.XEvent e = default;
+        e.clientMessage.type = X11Api.ClientMessage;
+        e.clientMessage.display = _display;
+        e.clientMessage.window = _window;
+        e.clientMessage.messageType = _netWmState;
+        e.clientMessage.format = 32;
+        e.clientMessage.data.l[0] = action;
+        e.clientMessage.data.l[1] = _netWmStateMaximizedHorz.ToInt64();
+        e.clientMessage.data.l[2] = _netWmStateMaximizedVert.ToInt64();
+        e.clientMessage.data.l[3] = X11Api.NetWmSourceApplication;
+        X11Api.SendEvent(
+            _display, _root, false,
+            X11Api.SubstructureRedirectMask | X11Api.SubstructureNotifyMask, ref e);
+        X11Api.Flush(_display);
+    }
+
+    private void RefreshWindowState(bool includeWmState)
+    {
+        if (includeWmState && HasWmState(X11Api.IconicState))
+        {
+            UpdateState(AppWindowState.Minimized);
+            return;
+        }
+
+        var maximizedHorz = false;
+        var maximizedVert = false;
+        if (TryGetPropertyValues(_netWmState, out var states))
+        {
+            foreach (var state in states)
+            {
+                maximizedHorz |= state == _netWmStateMaximizedHorz.ToInt64();
+                maximizedVert |= state == _netWmStateMaximizedVert.ToInt64();
+            }
+        }
+
+        UpdateState(maximizedHorz && maximizedVert
+            ? AppWindowState.Maximized
+            : AppWindowState.Normal);
+    }
+
+    private bool HasWmState(long expectedState)
+        => TryGetPropertyValues(_wmState, out var values)
+           && values.Length > 0
+           && values[0] == expectedState;
+
+    private bool TryGetPropertyValues(IntPtr property, out long[] values)
+    {
+        values = [];
+        var rc = X11Api.GetWindowProperty(
+            _display, _window, property, 0, 64, false, IntPtr.Zero,
+            out _, out var format, out var count, out _, out var data);
+        if (rc != X11Api.Success || data == IntPtr.Zero) return false;
+        try
+        {
+            if (format != 32 || count == 0) return false;
+            values = new long[(int)count];
+            for (var i = 0; i < values.Length; i++)
+                values[i] = Marshal.ReadIntPtr(data, i * IntPtr.Size).ToInt64();
+            return true;
+        }
+        finally
+        {
+            X11Api.Free(data);
+        }
+    }
+
+    private void UpdateState(AppWindowState state)
+    {
+        if (_state == state) return;
+        _state = state;
+        StateChanged?.Invoke(state);
+    }
+
+    private void SignalClosed()
+    {
+        if (_closed) return;
+        _closed = true;
+        Closed?.Invoke();
     }
 
     private void DispatchKeyPress(X11Api.XKeyEvent key)

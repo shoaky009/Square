@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <AdditionalFiles Include="**\*.sqx" />
+    <Compile Include="..\..\src\Square.Platform.Win32\buildTransitive\Square.Platform.Win32.Registration.cs" Link="Square.Generated\PlatformRegistration.g.cs" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
+    <Compile Include="..\..\src\Square.Platform.X11\buildTransitive\Square.Platform.X11.Registration.cs" Link="Square.Generated\PlatformRegistration.g.cs" Condition="'$(SquareTargetPlatform)' == 'X11'" />
   </ItemGroup>
 
 </Project>

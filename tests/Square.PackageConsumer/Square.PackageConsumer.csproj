@@ -6,5 +6,7 @@
   <ItemGroup>
     <PackageReference Include="Square" />
     <PackageReference Include="Square.Compiler" PrivateAssets="all" />
+    <PackageReference Include="Square.Platform.Win32" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
+    <PackageReference Include="Square.Platform.X11" Condition="'$(SquareTargetPlatform)' == 'X11'" />
   </ItemGroup>
 </Project>

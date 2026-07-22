@@ -1,4 +1,5 @@
 using Square.Graphics;
+using Square.Hosting;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -12,6 +13,8 @@ internal sealed class Win32Host : IPlatformHost
     private readonly int _width;
     private readonly int _height;
     private readonly string _renderBackend;
+    private readonly TitleStyle _titleStyle;
+    private readonly BorderStyle _borderStyle;
     private Size _clientSize;
     private Size _physicalClientSize;
     private float _dpiScale = 1f;
@@ -20,6 +23,9 @@ internal sealed class Win32Host : IPlatformHost
     private char? _pendingHighSurrogate;
     private CursorKind _cursor = CursorKind.Arrow;
     private Rect _textInputRect;
+    private AppWindowState _state = AppWindowState.Normal;
+    private bool _closed;
+    private bool _skipPointerCapture;
 
     private const uint FrameTimerIntervalMs = 16;
 
@@ -31,6 +37,8 @@ internal sealed class Win32Host : IPlatformHost
     public Size ClientSize => _clientSize;
     public float DpiScale => _dpiScale;
     public bool IsRunning => _running;
+    public AppWindowState State => _state;
+
     public string Title
     {
         get => _title;
@@ -42,6 +50,7 @@ internal sealed class Win32Host : IPlatformHost
                 Win32Api.SetWindowText(_hwnd, _title);
         }
     }
+
     public KeyModifiers Modifiers
     {
         get
@@ -53,6 +62,7 @@ internal sealed class Win32Host : IPlatformHost
             return modifiers;
         }
     }
+
     public CursorKind Cursor
     {
         get => _cursor;
@@ -70,6 +80,8 @@ internal sealed class Win32Host : IPlatformHost
     public event Action<int, KeyAction>? KeyEvent;
     public event Action<string>? TextInput;
     public event Action? Tick;
+    public event Action<AppWindowState>? StateChanged;
+    public event Action? Closed;
 
     public Win32Host(PlatformHostCreateInfo info)
     {
@@ -77,6 +89,8 @@ internal sealed class Win32Host : IPlatformHost
         _width = info.Width;
         _height = info.Height;
         _renderBackend = info.RenderBackend;
+        _titleStyle = info.TitleStyle;
+        _borderStyle = info.BorderStyle;
         s_current = this;
     }
 
@@ -111,7 +125,7 @@ internal sealed class Win32Host : IPlatformHost
 
         _hwnd = Win32Api.CreateWindowEx(
             0, "SquareWindow", _title,
-            Win32Api.WS_OVERLAPPEDWINDOW,
+            CreateWindowStyle(),
             100, 100, _width, _height,
             IntPtr.Zero, IntPtr.Zero, Win32Api.GetModuleHandle(null), IntPtr.Zero);
 
@@ -120,6 +134,8 @@ internal sealed class Win32Host : IPlatformHost
             var err = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
             throw new InvalidOperationException($"CreateWindowEx failed: {err}");
         }
+
+        UpdateCornerPreference(AppWindowState.Normal);
 
         _dpiScale = DpiToScale(Win32Api.GetDpiForWindow(_hwnd));
         if (_dpiScale != 1f)
@@ -139,6 +155,25 @@ internal sealed class Win32Host : IPlatformHost
         _running = true;
     }
 
+    private int CreateWindowStyle()
+    {
+        if (_titleStyle == TitleStyle.System)
+        {
+            var style = Win32Api.WS_CAPTION | Win32Api.WS_SYSMENU | Win32Api.WS_MINIMIZEBOX;
+            if (_borderStyle == BorderStyle.Resizable)
+                style |= Win32Api.WS_THICKFRAME | Win32Api.WS_MAXIMIZEBOX;
+            return style;
+        }
+
+        return _borderStyle switch
+        {
+            BorderStyle.Resizable => Win32Api.WS_POPUP | Win32Api.WS_THICKFRAME |
+                                     Win32Api.WS_MINIMIZEBOX | Win32Api.WS_MAXIMIZEBOX,
+            BorderStyle.Fixed => Win32Api.WS_POPUP | Win32Api.WS_BORDER,
+            _ => Win32Api.WS_POPUP
+        };
+    }
+
     public void ShowAfterFirstFrame()
     {
         if (_hwnd == IntPtr.Zero) return;
@@ -155,7 +190,34 @@ internal sealed class Win32Host : IPlatformHost
             Win32Api.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
         }
+
+        SignalClosed();
         Win32Api.PostQuitMessage(0);
+    }
+
+    public void Minimize()
+    {
+        if (_hwnd != IntPtr.Zero) Win32Api.ShowWindow(_hwnd, Win32Api.SW_MINIMIZE);
+    }
+
+    public void Maximize()
+    {
+        if (_hwnd != IntPtr.Zero) Win32Api.ShowWindow(_hwnd, Win32Api.SW_MAXIMIZE);
+    }
+
+    public void Restore()
+    {
+        if (_hwnd != IntPtr.Zero) Win32Api.ShowWindow(_hwnd, Win32Api.SW_RESTORE);
+    }
+
+    public void BeginMove()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        _skipPointerCapture = true;
+        Win32Api.ReleaseCapture();
+        Win32Api.SendMessage(
+            _hwnd, Win32Api.WM_SYSCOMMAND,
+            new IntPtr(Win32Api.SC_MOVE | Win32Api.HTCAPTION), IntPtr.Zero);
     }
 
     private void ReleasePresentResources()
@@ -259,7 +321,12 @@ internal sealed class Win32Host : IPlatformHost
         while (_running)
         {
             var result = Win32Api.GetMessage(out var msg, IntPtr.Zero, 0, 0);
-            if (result <= 0) { _running = false; break; }
+            if (result <= 0)
+            {
+                _running = false;
+                break;
+            }
+
             Win32Api.TranslateMessage(ref msg);
             Win32Api.DispatchMessage(ref msg);
         }
@@ -272,7 +339,34 @@ internal sealed class Win32Host : IPlatformHost
 
         switch (msg)
         {
+            case Win32Api.WM_MOUSEACTIVATE:
+                if (host._titleStyle == TitleStyle.Custom)
+                {
+                    Win32Api.SetActiveWindow(hWnd);
+                    return new IntPtr(Win32Api.MA_ACTIVATE);
+                }
+
+                break;
+            case Win32Api.WM_NCCALCSIZE:
+                if (host._titleStyle == TitleStyle.Custom && host._borderStyle == BorderStyle.Resizable &&
+                    wParam != IntPtr.Zero)
+                    return IntPtr.Zero;
+                break;
+            case Win32Api.WM_NCHITTEST:
+                if (host._titleStyle == TitleStyle.Custom && host._borderStyle == BorderStyle.Resizable &&
+                    host._state != AppWindowState.Maximized)
+                    return host.HitTestResizeBorder(hWnd, lParam);
+                break;
             case Win32Api.WM_SIZE:
+                var state = wParam.ToInt32() switch
+                {
+                    Win32Api.SIZE_MINIMIZED => AppWindowState.Minimized,
+                    Win32Api.SIZE_MAXIMIZED => AppWindowState.Maximized,
+                    _ => AppWindowState.Normal
+                };
+                host.UpdateState(state);
+                host.UpdateCornerPreference(state);
+                if (state == AppWindowState.Minimized) break;
                 Win32Api.GetClientRect(hWnd, out var rect);
                 var newPhysicalSize = new Size(rect.Width, rect.Height);
                 var newSize = host.ToLogicalSize(newPhysicalSize);
@@ -284,56 +378,59 @@ internal sealed class Win32Host : IPlatformHost
                 host.SizeChanged?.Invoke(host._clientSize);
                 break;
             case Win32Api.WM_DPICHANGED:
-                {
-                    var dpi = (uint)(wParam.ToInt64() & 0xffff);
-                    host._dpiScale = DpiToScale(dpi);
-                    var suggested = Marshal.PtrToStructure<Win32Api.RECT>(lParam);
-                    Win32Api.SetWindowPos(
-                        hWnd, IntPtr.Zero,
-                        suggested.Left, suggested.Top, suggested.Width, suggested.Height,
-                        Win32Api.SWP_NOZORDER | Win32Api.SWP_NOACTIVATE);
-                    Win32Api.GetClientRect(hWnd, out var clientRect);
-                    host.UpdateClientSize(clientRect);
-                    if (host._renderContext is IDpiResizableRenderContext dpiResizable)
-                        dpiResizable.Resize(host._clientSize, host._dpiScale);
-                    else if (host._renderContext is IResizableRenderContext dpiFallbackResizable)
-                        dpiFallbackResizable.Resize(host._clientSize);
-                    host.SizeChanged?.Invoke(host._clientSize);
-                }
+            {
+                var dpi = (uint)(wParam.ToInt64() & 0xffff);
+                host._dpiScale = DpiToScale(dpi);
+                var suggested = Marshal.PtrToStructure<Win32Api.RECT>(lParam);
+                Win32Api.SetWindowPos(
+                    hWnd, IntPtr.Zero,
+                    suggested.Left, suggested.Top, suggested.Width, suggested.Height,
+                    Win32Api.SWP_NOZORDER | Win32Api.SWP_NOACTIVATE);
+                Win32Api.GetClientRect(hWnd, out var clientRect);
+                host.UpdateClientSize(clientRect);
+                if (host._renderContext is IDpiResizableRenderContext dpiResizable)
+                    dpiResizable.Resize(host._clientSize, host._dpiScale);
+                else if (host._renderContext is IResizableRenderContext dpiFallbackResizable)
+                    dpiFallbackResizable.Resize(host._clientSize);
+                host.SizeChanged?.Invoke(host._clientSize);
+            }
                 return IntPtr.Zero;
             case Win32Api.WM_LBUTTONDOWN:
-                {
-                    var x = (short)(lParam.ToInt64() & 0xFFFF);
-                    var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-                    host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Down);
+            {
+                var x = (short)(lParam.ToInt64() & 0xFFFF);
+                var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Down);
+                if (host._skipPointerCapture)
+                    host._skipPointerCapture = false;
+                else
                     Win32Api.SetCapture(hWnd);
-                }
+            }
                 break;
             case Win32Api.WM_LBUTTONUP:
-                {
-                    var x = (short)(lParam.ToInt64() & 0xFFFF);
-                    var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-                    host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Up);
-                    Win32Api.ReleaseCapture();
-                }
+            {
+                var x = (short)(lParam.ToInt64() & 0xFFFF);
+                var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Up);
+                Win32Api.ReleaseCapture();
+            }
                 break;
             case Win32Api.WM_MOUSEMOVE:
-                {
-                    var x = (short)(lParam.ToInt64() & 0xFFFF);
-                    var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-                    host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Move);
-                }
+            {
+                var x = (short)(lParam.ToInt64() & 0xFFFF);
+                var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                host.MouseEvent?.Invoke(host.ToLogicalPoint(x, y), MouseAction.Move);
+            }
                 break;
             case Win32Api.WM_MOUSEWHEEL:
-                {
-                    var wheelDelta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
-                    var lParam64 = lParam.ToInt64();
-                    var x = (short)(lParam64 & 0xFFFF);
-                    var y = (short)((lParam64 >> 16) & 0xFFFF);
-                    var screenPoint = new Win32Api.POINT { X = x, Y = y };
-                    Win32Api.ScreenToClient(hWnd, ref screenPoint);
-                    host.WheelEvent?.Invoke(host.ToLogicalPoint(screenPoint.X, screenPoint.Y), wheelDelta);
-                }
+            {
+                var wheelDelta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+                var lParam64 = lParam.ToInt64();
+                var x = (short)(lParam64 & 0xFFFF);
+                var y = (short)((lParam64 >> 16) & 0xFFFF);
+                var screenPoint = new Win32Api.POINT { X = x, Y = y };
+                Win32Api.ScreenToClient(hWnd, ref screenPoint);
+                host.WheelEvent?.Invoke(host.ToLogicalPoint(screenPoint.X, screenPoint.Y), wheelDelta);
+            }
                 return IntPtr.Zero;
             case Win32Api.WM_KEYDOWN:
                 host.KeyEvent?.Invoke(wParam.ToInt32(), KeyAction.Down);
@@ -363,18 +460,20 @@ internal sealed class Win32Host : IPlatformHost
                         Win32Api.ScreenToClient(hWnd, ref cursorPoint);
                         host.MouseEvent?.Invoke(host.ToLogicalPoint(cursorPoint.X, cursorPoint.Y), MouseAction.Move);
                     }
+
                     host.ApplyCursor();
                     return new IntPtr(1);
                 }
+
                 break;
             case Win32Api.WM_PAINT:
-                {
-                    var paint = new Win32Api.PAINTSTRUCT();
-                    Win32Api.BeginPaint(hWnd, ref paint);
-                    // System repaint: full window
-                    if (host._lastFrame != null) host.PresentFrame(host._lastFrame, null);
-                    Win32Api.EndPaint(hWnd, ref paint);
-                }
+            {
+                var paint = new Win32Api.PAINTSTRUCT();
+                Win32Api.BeginPaint(hWnd, ref paint);
+                // System repaint: full window
+                if (host._lastFrame != null) host.PresentFrame(host._lastFrame, null);
+                Win32Api.EndPaint(hWnd, ref paint);
+            }
                 return IntPtr.Zero;
             case Win32Api.WM_CLOSE:
                 Win32Api.KillTimer(hWnd, new UIntPtr(1));
@@ -386,11 +485,50 @@ internal sealed class Win32Host : IPlatformHost
                 host.ReleasePresentResources();
                 host._hwnd = IntPtr.Zero;
                 host._running = false;
+                host.SignalClosed();
                 Win32Api.PostQuitMessage(0);
                 break;
         }
 
         return Win32Api.DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+
+    private IntPtr HitTestResizeBorder(IntPtr hWnd, IntPtr lParam)
+    {
+        if (!Win32Api.GetWindowRect(hWnd, out var bounds)) return new IntPtr(Win32Api.HTCLIENT);
+        var packed = lParam.ToInt64();
+        var x = (short)(packed & 0xffff);
+        var y = (short)((packed >> 16) & 0xffff);
+        var dpi = Win32Api.GetDpiForWindow(hWnd);
+        var frame = Win32Api.GetSystemMetricsForDpi(Win32Api.SM_CXSIZEFRAME, dpi) +
+                    Win32Api.GetSystemMetricsForDpi(Win32Api.SM_CXPADDEDBORDER, dpi);
+        var left = x < bounds.Left + frame;
+        var right = x >= bounds.Right - frame;
+        var top = y < bounds.Top + frame;
+        var bottom = y >= bounds.Bottom - frame;
+
+        if (top && left) return new IntPtr(Win32Api.HTTOPLEFT);
+        if (top && right) return new IntPtr(Win32Api.HTTOPRIGHT);
+        if (bottom && left) return new IntPtr(Win32Api.HTBOTTOMLEFT);
+        if (bottom && right) return new IntPtr(Win32Api.HTBOTTOMRIGHT);
+        if (left) return new IntPtr(Win32Api.HTLEFT);
+        if (right) return new IntPtr(Win32Api.HTRIGHT);
+        if (top) return new IntPtr(Win32Api.HTTOP);
+        if (bottom) return new IntPtr(Win32Api.HTBOTTOM);
+        return new IntPtr(Win32Api.HTCLIENT);
+    }
+
+    private void UpdateCornerPreference(AppWindowState state)
+    {
+        if (_hwnd == IntPtr.Zero || _titleStyle == TitleStyle.System) return;
+        var preference = state == AppWindowState.Maximized
+            ? Win32Api.DWMWCP_DONOTROUND
+            : Win32Api.DWMWCP_ROUND;
+        Win32Api.DwmSetWindowAttribute(
+            _hwnd,
+            Win32Api.DWMWA_WINDOW_CORNER_PREFERENCE,
+            ref preference,
+            sizeof(int));
     }
 
     public IntPtr Handle => _hwnd;
@@ -410,8 +548,14 @@ internal sealed class Win32Host : IPlatformHost
             if (memory == IntPtr.Zero) return "";
             var pointer = Win32Api.GlobalLock(memory);
             if (pointer == IntPtr.Zero) return "";
-            try { return Marshal.PtrToStringUni(pointer) ?? ""; }
-            finally { Win32Api.GlobalUnlock(memory); }
+            try
+            {
+                return Marshal.PtrToStringUni(pointer) ?? "";
+            }
+            finally
+            {
+                Win32Api.GlobalUnlock(memory);
+            }
         }
         finally
         {
@@ -528,6 +672,20 @@ internal sealed class Win32Host : IPlatformHost
     private Point ToLogicalPoint(float x, float y)
         => new(x / _dpiScale, y / _dpiScale);
 
+    private void UpdateState(AppWindowState state)
+    {
+        if (_state == state) return;
+        _state = state;
+        StateChanged?.Invoke(state);
+    }
+
+    private void SignalClosed()
+    {
+        if (_closed) return;
+        _closed = true;
+        Closed?.Invoke();
+    }
+
     // Reused across presents to avoid per-frame struct setup cost
     private Win32Api.BITMAPINFO _presentInfo;
     private bool _presentInfoReady;
@@ -545,11 +703,14 @@ internal sealed class Win32Host : IPlatformHost
         KeyEvent = null;
         TextInput = null;
         Tick = null;
+        StateChanged = null;
+        Closed = null;
         if (_hwnd != IntPtr.Zero)
         {
             Win32Api.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
         }
+
         _running = false;
         if (ReferenceEquals(s_current, this)) s_current = null;
     }

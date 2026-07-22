@@ -12,8 +12,9 @@ using Reconciler = Square.UI.Reconciler;
 
 namespace Square.Hosting;
 
-public sealed class DesktopApplication : Application, IRenderBackendApplication
+public sealed class DesktopApplication : Application, IAppWindowRuntime
 {
+    private const double TextSelectionFrameIntervalSeconds = 1d / 60d;
     private static readonly Color DefaultSelectionBackground = Color.FromRgb(51, 144, 255);
     private static readonly Color DefaultSelectionForeground = Color.White;
 
@@ -29,6 +30,10 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     private UIElement? _focusedInput;
     private ITextEditor? _focusedEditor;
     private TextSelectionState? _textSelection;
+    private Point? _pendingTextSelectionPoint;
+    private Element? _pendingTextSelectionHit;
+    private double _lastTextSelectionRenderSeconds = double.NegativeInfinity;
+    private Rect _textSelectionOverlayDirtyBounds = Rect.Empty;
     private bool _isSelectingText;
     private Element? _pointerDownTarget;
     private Element? _lastClickTarget;
@@ -39,52 +44,106 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     private bool _renderRequested;
     private KeyModifiers? _devToolsModifiers;
 
-    public DesktopApplication(UIDocument document, PlatformHostCreateInfo hostCreateInfo)
+    public AppWindow MainWindow { get; }
+
+    public DesktopApplication(AppWindow window)
     {
-        ArgumentNullException.ThrowIfNull(document);
-        ArgumentNullException.ThrowIfNull(hostCreateInfo);
-        _document = document;
-        _root = document.DocumentElement;
-        _hostCreateInfo = hostCreateInfo;
-        if (!string.IsNullOrEmpty(document.Title))
-            hostCreateInfo.Title = document.Title;
-        else if (!string.IsNullOrEmpty(hostCreateInfo.Title))
-            document.Title = hostCreateInfo.Title;
+        ArgumentNullException.ThrowIfNull(window);
+        MainWindow = window;
+        _document = window.WindowDocument;
+        _root = _document.DocumentElement;
+        _hostCreateInfo = window.CreateHostInfo();
+        window.BindApplication(Dispatcher, this);
     }
 
-    /// <summary>Compatibility: wrap a content root into a new <see cref="UIDocument"/> Body.</summary>
+    /// <summary>Compatibility constructor for a single content root.</summary>
+    [Obsolete("Create an AppWindow, call Load(content), then pass it to DesktopApplication.")]
     public DesktopApplication(Element contentRoot, PlatformHostCreateInfo hostCreateInfo)
-        : this(WrapContent(contentRoot), hostCreateInfo)
+        : this(CreateWindow(contentRoot, hostCreateInfo))
     {
     }
 
-    public UIDocument Document => _document;
+    public Document Document => _document;
+
+    [Obsolete("Use MainWindow.RenderBackend.")]
     public string RenderBackend
     {
-        get => _hostCreateInfo.RenderBackend;
+        get => MainWindow.RenderBackend;
         set
         {
-            if (IsRunning) throw new InvalidOperationException("The render backend cannot be changed while the application is running.");
+            if (IsRunning)
+                throw new InvalidOperationException(
+                    "The render backend cannot be changed while the application is running.");
             ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            MainWindow.RenderBackend = value;
             _hostCreateInfo.RenderBackend = value;
         }
     }
-    public Color Background { get; set; } = Color.White;
-    public RenderMode RenderingMode { get; set; } = RenderMode.FullFrame;
-    public int MaxDirtyRectCount { get; set; } = 16;
-    public float MaxDirtyAreaRatio { get; set; } = 0.35f;
-    public bool ShowRenderDiagnosticsOverlay { get; set; }
-    public bool ShowDirtyUnionOverlay { get; set; } = true;
-    public RenderDiagnostics LastRenderDiagnostics { get; private set; } =
-        new(RenderMode.FullFrame, true, "NotRendered", 0, 0, Rect.Empty);
-    public event Action<int, KeyAction>? GlobalKeyEvent;
 
-    private static UIDocument WrapContent(Element contentRoot)
+    [Obsolete("Use MainWindow.Background.")]
+    public Color Background
+    {
+        get => MainWindow.Background;
+        set => MainWindow.Background = value;
+    }
+
+    [Obsolete("Use MainWindow.RenderingMode.")]
+    public RenderMode RenderingMode
+    {
+        get => MainWindow.RenderingMode;
+        set => MainWindow.RenderingMode = value;
+    }
+
+    [Obsolete("Use MainWindow.MaxDirtyRectCount.")]
+    public int MaxDirtyRectCount
+    {
+        get => MainWindow.MaxDirtyRectCount;
+        set => MainWindow.MaxDirtyRectCount = value;
+    }
+
+    [Obsolete("Use MainWindow.MaxDirtyAreaRatio.")]
+    public float MaxDirtyAreaRatio
+    {
+        get => MainWindow.MaxDirtyAreaRatio;
+        set => MainWindow.MaxDirtyAreaRatio = value;
+    }
+
+    [Obsolete("Use MainWindow.ShowRenderDiagnosticsOverlay.")]
+    public bool ShowRenderDiagnosticsOverlay
+    {
+        get => MainWindow.ShowRenderDiagnosticsOverlay;
+        set => MainWindow.ShowRenderDiagnosticsOverlay = value;
+    }
+
+    [Obsolete("Use MainWindow.ShowDirtyUnionOverlay.")]
+    public bool ShowDirtyUnionOverlay
+    {
+        get => MainWindow.ShowDirtyUnionOverlay;
+        set => MainWindow.ShowDirtyUnionOverlay = value;
+    }
+
+    [Obsolete("Use MainWindow.LastRenderDiagnostics.")]
+    public RenderDiagnostics LastRenderDiagnostics => MainWindow.LastRenderDiagnostics;
+
+    [Obsolete("Use MainWindow.GlobalKeyEvent.")]
+    public event Action<int, KeyAction>? GlobalKeyEvent
+    {
+        add => MainWindow.GlobalKeyEvent += value;
+        remove => MainWindow.GlobalKeyEvent -= value;
+    }
+
+    private static AppWindow CreateWindow(Element contentRoot, PlatformHostCreateInfo hostCreateInfo)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
-        var document = new UIDocument();
-        document.Body.Children.Add(contentRoot);
-        return document;
+        ArgumentNullException.ThrowIfNull(hostCreateInfo);
+        var window = new AppWindow(hostCreateInfo.Title, hostCreateInfo.Width, hostCreateInfo.Height)
+        {
+            RenderBackend = hostCreateInfo.RenderBackend,
+            TitleStyle = hostCreateInfo.TitleStyle,
+            BorderStyle = hostCreateInfo.BorderStyle
+        };
+        window.Load(contentRoot);
+        return window;
     }
 
     protected override void RunCore()
@@ -100,7 +159,12 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         lifecycle.OnAttached();
         try
         {
+            _hostCreateInfo.Title = MainWindow.Title;
+            _hostCreateInfo.RenderBackend = MainWindow.RenderBackend;
+            _hostCreateInfo.TitleStyle = MainWindow.TitleStyle;
+            _hostCreateInfo.BorderStyle = MainWindow.BorderStyle;
             _host = PlatformRegistry.Get().CreateHost(_hostCreateInfo);
+            MainWindow.Attach(_host);
             AttachHostEvents(_host);
 
             _host.Show();
@@ -116,6 +180,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             lifecycle.OnDetached();
             _renderContext?.Dispose();
             _renderContext = null;
+            if (_host != null) MainWindow.Detach(_host);
             _host?.Dispose();
             _host = null;
         }
@@ -142,6 +207,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             if (!_scheduledFrames.TryGetValue(target, out var current) || requestedTime < current)
                 _scheduledFrames[target] = requestedTime;
         }
+
         e.StopPropagation();
     }
 
@@ -149,9 +215,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
 
     public void Close()
     {
-        if (_host == null) return;
-        if (Dispatcher.CheckAccess()) _host.Close();
-        else Dispatcher.Invoke(() => _host?.Close());
+        MainWindow.Close();
     }
 
     public Task InjectPointerAsync(DevToolsPointerInput input) => Dispatcher.InvokeAsync(() =>
@@ -179,7 +243,8 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             try
             {
                 if (_host == null || _renderContext == null)
-                    throw new InvalidOperationException("The application must be running before renderer capture is available.");
+                    throw new InvalidOperationException(
+                        "The application must be running before renderer capture is available.");
 
                 // Prefer the live frame from the active render context. For GPU backends
                 // (e.g. Vulkan) this reads back the actual presented frame, so the capture
@@ -197,7 +262,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                     CanvasSize = _host.ClientSize,
                     DpiScale = _host.DpiScale
                 });
-                captureContext.Clear(Background);
+                captureContext.Clear(MainWindow.Background);
                 _displayTree.Render(captureContext);
                 RenderTextSelection(captureContext);
                 RenderDiagnosticsOverlay(captureContext);
@@ -212,21 +277,29 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         return completion.Task;
     }
 
-    public Task<ElementInspectionSnapshot> CaptureInspectionSnapshotAsync(bool includeSourcePaths = true, bool includeTextContent = true) =>
-        InvokeOnDispatcherAsync(() => new ElementInspectionSnapshot(CreateInspectionNode(_root, includeSourcePaths, includeTextContent, includeChildren: true)));
+    public Task<ElementInspectionSnapshot> CaptureInspectionSnapshotAsync(bool includeSourcePaths = true,
+        bool includeTextContent = true) =>
+        InvokeOnDispatcherAsync(() =>
+            new ElementInspectionSnapshot(CreateInspectionNode(_root, includeSourcePaths, includeTextContent,
+                includeChildren: true)));
 
-    public Task<ElementInspectionNode?> InspectElementAsync(int debugId, bool includeSourcePaths = true, bool includeTextContent = true) =>
+    public Task<ElementInspectionNode?> InspectElementAsync(int debugId, bool includeSourcePaths = true,
+        bool includeTextContent = true) =>
         InvokeOnDispatcherAsync(() => FindElementByDebugId(_root, debugId) is { } element
             ? CreateInspectionNode(element, includeSourcePaths, includeTextContent, includeChildren: true)
             : null);
 
-    public Task<ElementInspectionNode?> HitTestInspectionAsync(Point point, bool includeSourcePaths = true, bool includeTextContent = true) =>
+    public Task<ElementInspectionNode?> HitTestInspectionAsync(Point point, bool includeSourcePaths = true,
+        bool includeTextContent = true) =>
         InvokeOnDispatcherAsync(() => HitTest(point) is { } element
             ? CreateInspectionNode(element, includeSourcePaths, includeTextContent, includeChildren: false)
             : null);
 
     private void RenderFrame()
     {
+        FlushPendingTextSelection();
+        var textSelectionOverlayDirtyBounds = _textSelectionOverlayDirtyBounds;
+        _textSelectionOverlayDirtyBounds = Rect.Empty;
         _renderRequested = false;
         if (_host == null || _renderContext == null) return;
 
@@ -236,6 +309,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         {
             _hostCreateInfo.Title = _document.Title;
             _host.Title = _document.Title;
+            MainWindow.SynchronizeTitle(_document.Title);
         }
 
         var size = _host.ClientSize;
@@ -244,8 +318,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         {
             _layout.Measure(_root, size);
             _layout.Arrange(_root, new Rect(0, 0, size.Width, size.Height));
-            // Body fills client area after head (height 0 this phase)
-            _document.Body.Geometry = new Rect(0, 0, size.Width, size.Height);
+            ArrangeWindowShell(size);
             _displayTree.BuildFrom(_root);
         }
         else
@@ -253,10 +326,10 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             _displayTree.UpdateDirty();
         }
 
-        if (RenderingMode == RenderMode.FullFrame || layoutDirty)
+        if (MainWindow.RenderingMode == RenderMode.FullFrame || layoutDirty)
         {
-            LastRenderDiagnostics = new RenderDiagnostics(
-                RenderingMode,
+            MainWindow.LastRenderDiagnostics = new RenderDiagnostics(
+                MainWindow.RenderingMode,
                 true,
                 layoutDirty ? "LayoutDirty" : "ModeFullFrame",
                 0,
@@ -267,12 +340,14 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         else
         {
             var dirty = _displayTree.CollectDirtyRects();
+            if (!textSelectionOverlayDirtyBounds.IsEmpty)
+                dirty.Add(textSelectionOverlayDirtyBounds);
             if (dirty.Count == 0)
             {
                 // 无节点标脏时仍全量重绘一帧，避免“状态已变但未 InvalidatePaint”时界面卡住
                 // （与脏区优化前“每次 RenderFrame 都清屏重放命令”的行为对齐）
-                LastRenderDiagnostics = new RenderDiagnostics(
-                    RenderingMode,
+                MainWindow.LastRenderDiagnostics = new RenderDiagnostics(
+                    MainWindow.RenderingMode,
                     true,
                     "NoDirtyRects",
                     0,
@@ -282,29 +357,29 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             }
             else
             {
-                LastRenderDiagnostics = RenderDecision.Decide(
-                    RenderingMode,
+                MainWindow.LastRenderDiagnostics = RenderDecision.Decide(
+                    MainWindow.RenderingMode,
                     dirty,
                     size,
-                    MaxDirtyRectCount,
-                    MaxDirtyAreaRatio);
+                    MainWindow.MaxDirtyRectCount,
+                    MainWindow.MaxDirtyAreaRatio);
 
-                if (LastRenderDiagnostics.UsedFullFrame)
+                if (MainWindow.LastRenderDiagnostics.UsedFullFrame)
                 {
                     RenderFullFrame();
                 }
                 else
                 {
                     // 局部绘制进软件缓冲
-                    _renderContext.Clear(Background, LastRenderDiagnostics.DirtyUnion);
-                    _renderContext.PushClip(LastRenderDiagnostics.DirtyUnion);
-                    _displayTree.Render(_renderContext, LastRenderDiagnostics.DirtyUnion);
+                    _renderContext.Clear(MainWindow.Background, MainWindow.LastRenderDiagnostics.DirtyUnion);
+                    _renderContext.PushClip(MainWindow.LastRenderDiagnostics.DirtyUnion);
+                    _displayTree.Render(_renderContext, MainWindow.LastRenderDiagnostics.DirtyUnion);
                     RenderTextSelection(_renderContext);
                     _renderContext.PopClip();
                     RenderDiagnosticsOverlay(_renderContext);
                     _renderContext.Flush();
                     // Present：优先局部；若平台忽略则仍应更新窗口。同时提交 union 保证至少一块区域。
-                    _renderContext.Present(ShowRenderDiagnosticsOverlay ? null : dirty);
+                    _renderContext.Present(MainWindow.ShowRenderDiagnosticsOverlay ? null : dirty);
                 }
             }
         }
@@ -313,10 +388,12 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             _host.SetTextInputRect(MapContentRectToScreen(_focusedInput, _focusedEditor.CaretRect));
     }
 
-    private static ElementInspectionNode CreateInspectionNode(Element element, bool includeSourcePaths, bool includeTextContent, bool includeChildren)
+    private static ElementInspectionNode CreateInspectionNode(Element element, bool includeSourcePaths,
+        bool includeTextContent, bool includeChildren)
     {
         var children = includeChildren
-            ? element.Children.Select(child => CreateInspectionNode(child, includeSourcePaths, includeTextContent, includeChildren: true)).ToArray()
+            ? element.Children.Select(child =>
+                CreateInspectionNode(child, includeSourcePaths, includeTextContent, includeChildren: true)).ToArray()
             : [];
         return new ElementInspectionNode(
             element.DebugId,
@@ -379,32 +456,63 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             var found = FindElementByDebugId(child, debugId);
             if (found != null) return found;
         }
+
         return null;
     }
 
     private bool RunUpdatePass()
     {
-        var hadWork = Dispatcher.HasWork || Reconciler.Current.HasWork;
+        var hadWork = Dispatcher.HasWork || _document.Context.Reconciler.HasWork;
         Dispatcher.Run();
-        if (Reconciler.Current.HasWork)
+        if (_document.Context.Reconciler.HasWork)
         {
             hadWork = true;
-            Reconciler.Current.Flush();
+            _document.Context.Reconciler.Flush();
         }
+
         if (CssStyleReconciler.HasWork)
         {
             hadWork = true;
             CssStyleReconciler.Flush();
         }
+
         return hadWork;
     }
 
     private Element? HitTest(Point point) => _displayTree.HitTestPopups(point) ?? _root.HitTest(point);
 
+    private void ArrangeWindowShell(Size size)
+    {
+        var titleHeight = 0f;
+        if (MainWindow.TitleStyle == TitleStyle.Custom && MainWindow.CustomTitleBar != null)
+        {
+            var titleBar = MainWindow.CustomTitleBar.Query<TitleBar>() ?? MainWindow.CustomTitleBar;
+            titleHeight = Math.Clamp(
+                titleBar.Measure(new Size(size.Width, size.Height)).Height,
+                0,
+                size.Height);
+            var titleBounds = new Rect(0, 0, size.Width, titleHeight);
+            _layout.Measure(_document.Head, titleBounds.Size);
+            _layout.Arrange(_document.Head, titleBounds);
+        }
+        else
+        {
+            _document.Head.Geometry = new Rect(0, 0, size.Width, 0);
+        }
+
+        var bodyBounds = new Rect(
+            0,
+            titleHeight,
+            size.Width,
+            Math.Max(0, size.Height - titleHeight));
+        _layout.Measure(_document.Body, bodyBounds.Size);
+        _layout.Arrange(_document.Body, bodyBounds);
+    }
+
     private void RenderFullFrame()
     {
         if (_renderContext == null) return;
-        _renderContext.Clear(Background);
+        _renderContext.Clear(MainWindow.Background);
         _displayTree.Render(_renderContext);
         RenderTextSelection(_renderContext);
         RenderDiagnosticsOverlay(_renderContext);
@@ -414,19 +522,20 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
 
     private void RenderDiagnosticsOverlay(IRenderContext context)
     {
-        if (!ShowRenderDiagnosticsOverlay) return;
+        if (!MainWindow.ShowRenderDiagnosticsOverlay) return;
 
-        var diagnostics = LastRenderDiagnostics;
+        var diagnostics = MainWindow.LastRenderDiagnostics;
         var panel = new Rect(8, 8, 300, 86);
         context.FillRect(panel, new SolidColorBrush(Color.FromRgba(20, 24, 28, 220)));
         context.DrawRect(panel, Pen.FromColor(Color.FromRgb(80, 180, 255)));
 
-        DrawOverlayText(context, $"mode: {diagnostics.Mode} / {(diagnostics.UsedFullFrame ? "full" : "dirty")}", 16, 16);
+        DrawOverlayText(context, $"mode: {diagnostics.Mode} / {(diagnostics.UsedFullFrame ? "full" : "dirty")}", 16,
+            16);
         DrawOverlayText(context, $"reason: {diagnostics.Reason}", 16, 34);
         DrawOverlayText(context, $"dirty: {diagnostics.DirtyRectCount}, area: {diagnostics.DirtyAreaRatio:P1}", 16, 52);
         DrawOverlayText(context, $"union: {FormatRect(diagnostics.DirtyUnion)}", 16, 70);
 
-        if (ShowDirtyUnionOverlay && !diagnostics.DirtyUnion.IsEmpty)
+        if (MainWindow.ShowDirtyUnionOverlay && !diagnostics.DirtyUnion.IsEmpty)
             context.DrawRect(diagnostics.DirtyUnion, Pen.FromColor(Color.FromRgba(255, 64, 64, 220), 2));
     }
 
@@ -455,6 +564,13 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         if (_host == null) return;
 
         var hit = HitTest(point);
+        if (action == MouseAction.Down && MainWindow.TitleStyle == TitleStyle.Custom &&
+            _document.Head.Geometry.Contains(point) && !IsInteractiveTitleBarElement(hit))
+        {
+            MainWindow.BeginMoveAsync().GetAwaiter().GetResult();
+            return;
+        }
+
         if (action == MouseAction.Down && _displayTree.DismissPopupsOutside(point))
             RequestRender();
         if (action == MouseAction.Move)
@@ -466,12 +582,39 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                 _focusedEditor.HandlePointerMove(MapPointerPoint(_focusedInput, point));
                 needsRender = true;
             }
-            else if (_textSelection is { IsSelecting: true } selection)
+            else if (_textSelection is { IsSelecting: true })
             {
-                needsRender |= UpdateTextSelection(selection, point);
+                if (_textSelection.PreserveWordSelectionUntilDrag)
+                {
+                    var dragDeltaX = point.X - _textSelection.PointerDownPoint.X;
+                    var dragDeltaY = point.Y - _textSelection.PointerDownPoint.Y;
+                    if (dragDeltaX * dragDeltaX + dragDeltaY * dragDeltaY <= 25)
+                    {
+                        if (needsRender) RequestRender();
+                        return;
+                    }
+
+                    _textSelection.PreserveWordSelectionUntilDrag = false;
+                }
+
+                _pendingTextSelectionPoint = point;
+                _pendingTextSelectionHit = hit;
+                if (_clock.Elapsed.TotalSeconds - _lastTextSelectionRenderSeconds >= TextSelectionFrameIntervalSeconds)
+                {
+                    RenderFrame();
+                    needsRender = false;
+                }
+                else
+                {
+                    needsRender = true;
+                }
             }
-            foreach (var select in _root.QueryAll<Select>())
-                needsRender |= select.HandlePointerMove(point);
+            else
+            {
+                foreach (var select in _root.QueryAll<Select>())
+                    needsRender |= select.HandlePointerMove(point);
+            }
+
             if (needsRender) RequestRender();
             return;
         }
@@ -483,12 +626,18 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                 _focusedEditor.HandlePointerUp(MapPointerPoint(_focusedInput, point));
                 _isSelectingText = false;
             }
+
             if (_textSelection is { IsSelecting: true } selection)
             {
-                UpdateTextSelection(selection, point);
+                if (!selection.PreserveWordSelectionUntilDrag)
+                    UpdateTextSelection(selection, hit, point);
+                _pendingTextSelectionPoint = null;
+                _pendingTextSelectionHit = null;
+                selection.PreserveWordSelectionUntilDrag = false;
                 selection.IsSelecting = false;
                 SyncDocumentSelection(selection);
             }
+
             if (_pointerDownTarget != null && hit == _pointerDownTarget)
                 hit?.DispatchTrusted(StandardEvents.CreateClick());
             _pointerDownTarget = null;
@@ -503,7 +652,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         var deltaX = point.X - _lastClickPoint.X;
         var deltaY = point.Y - _lastClickPoint.Y;
         var isDoubleClick = ReferenceEquals(hit, _lastClickTarget) && elapsed <= 0.5 &&
-            deltaX * deltaX + deltaY * deltaY <= 25;
+                            deltaX * deltaX + deltaY * deltaY <= 25;
         _lastClickTarget = isDoubleClick ? null : hit;
         _lastClickPoint = point;
         _lastClickSeconds = _clock.Elapsed.TotalSeconds;
@@ -557,18 +706,22 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     private void ClearDocumentSelection()
     {
         if (_textSelection == null && _document.GetSelection().RangeCount == 0) return;
+        if (_textSelection != null)
+            InvalidateTextSelectionOverlay(GetTextSelectionBounds(_textSelection));
         _textSelection = null;
         _document.GetSelection().RemoveAllRanges();
         RequestRender();
     }
 
     private static bool IsFocusable(UIElement element) => element.IsEnabled &&
-        (element is ITextEditor or Button or CheckBox or Radio or Select or List or Tree or Swiper or Link);
+                                                          (element is ITextEditor or Button or CheckBox or Radio
+                                                              or Select or List or Tree or Swiper or Link);
 
     private static Point MapPointerPoint(Element? target, Point point)
     {
         for (var current = target?.Parent; current != null; current = current.Parent)
-            if (current is IPopupElement popup) return popup.MapPointToContent(point);
+            if (current is IPopupElement popup)
+                return popup.MapPointToContent(point);
         return point;
     }
 
@@ -580,6 +733,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             var origin = popup.MapPointToContent(Point.Zero);
             return rect.Offset(-origin.X, -origin.Y);
         }
+
         return rect;
     }
 
@@ -591,7 +745,22 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         return null;
     }
 
-    private static CursorKind ResolveCursor(Element? hit) => hit is ITextEditor || FindUserSelectRoot(hit) != null ? CursorKind.Text : CursorKind.Arrow;
+    private static CursorKind ResolveCursor(Element? hit) => hit is ITextEditor || FindUserSelectRoot(hit) != null
+        ? CursorKind.Text
+        : CursorKind.Arrow;
+
+    private static bool IsInteractiveTitleBarElement(Element? hit)
+    {
+        for (var current = hit; current != null; current = current.Parent)
+        {
+            if (current is Button or Input or TextArea or CheckBox or Radio or Select or Link or
+                MenuBar or Menu or MenuItem or List or Tree or Swiper or ITextEditor)
+                return true;
+            if (current is UIHeadElement) break;
+        }
+
+        return false;
+    }
 
     private bool UpdateHoverPath(Element? hit) => UpdateStatePath(_hoverPath, hit, ElementState.Hover);
 
@@ -643,7 +812,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     {
         if (_host == null) return;
 
-        GlobalKeyEvent?.Invoke(keyCode, action);
+        MainWindow.RaiseGlobalKeyEvent(keyCode, action);
 
         var shift = CurrentModifiers.HasFlag(KeyModifiers.Shift);
         var control = CurrentModifiers.HasFlag(KeyModifiers.Control);
@@ -677,6 +846,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                 var text = GetSelectedUserText();
                 if (!string.IsNullOrEmpty(text)) _host.SetClipboardText(text);
             }
+
             RenderFrame();
             return;
         }
@@ -704,6 +874,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         {
             _focusedEditor.HandleKey(keyCode, shift, control);
         }
+
         RenderFrame();
     }
 
@@ -755,9 +926,13 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             selection.Anchor = new TextSelectionPoint(selectionPoint.Index, start);
             selection.Focus = new TextSelectionPoint(selectionPoint.Index, end);
         }
+
         selection.IsSelecting = true;
+        selection.PointerDownPoint = point;
+        selection.PreserveWordSelectionUntilDrag = selectWord;
         _textSelection = selection;
         SyncDocumentSelection(selection);
+        InvalidateTextSelectionOverlay(GetTextSelectionBounds(selection));
         RequestRender();
         return true;
     }
@@ -774,14 +949,28 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         return (start, end);
     }
 
-    private bool UpdateTextSelection(TextSelectionState selection, Point point)
+    private bool UpdateTextSelection(TextSelectionState selection, Element? hit, Point point)
     {
-        var selectionPoint = FindTextSelectionPoint(selection, HitTest(point), point);
+        var selectionPoint = FindTextSelectionPoint(selection, hit, point);
         if (selectionPoint.Index < 0 || selectionPoint == selection.Focus) return false;
+        var previousFocus = selection.Focus;
         selection.Focus = selectionPoint;
         SyncDocumentSelection(selection);
-        RequestRender();
+        InvalidateTextSelectionOverlay(GetTextSelectionBounds(selection.Items, previousFocus, selectionPoint));
         return true;
+    }
+
+    private void FlushPendingTextSelection()
+    {
+        if (_pendingTextSelectionPoint is not { } point ||
+            _textSelection is not { IsSelecting: true } selection)
+            return;
+
+        var hit = _pendingTextSelectionHit;
+        _pendingTextSelectionPoint = null;
+        _pendingTextSelectionHit = null;
+        UpdateTextSelection(selection, hit, point);
+        _lastTextSelectionRenderSeconds = _clock.Elapsed.TotalSeconds;
     }
 
     private static Element? FindUserSelectRoot(Element? element)
@@ -807,17 +996,29 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         return items;
     }
 
-    private static void CollectSelectableText(Element element, List<TextSelectionItem> items, Dictionary<Element, List<TextFragment>> fragmentsByElement)
+    private static void CollectSelectableText(Element element, List<TextSelectionItem> items,
+        Dictionary<Element, List<TextFragment>> fragmentsByElement)
     {
         if (!element.IsVisible || !element.IsUserSelectText()) return;
         var selectableStart = items.Count;
         if (fragmentsByElement.TryGetValue(element, out var fragments))
         {
             foreach (var fragment in fragments)
-                items.Add(new TextSelectionItem(element, fragment.Text, fragment.Bounds, fragment));
+                items.Add(new TextSelectionItem(
+                    element,
+                    fragment.Text,
+                    fragment.Bounds,
+                    fragment,
+                    FindTextNode(element, fragment.Text)));
         }
         else if (element is ITextSelectable selectable && !string.IsNullOrEmpty(selectable.SelectableText))
-            items.Add(new TextSelectionItem(element, selectable.SelectableText, selectable.SelectableTextBounds, null));
+            items.Add(new TextSelectionItem(
+                element,
+                selectable.SelectableText,
+                selectable.SelectableTextBounds,
+                null,
+                FindTextNode(element, selectable.SelectableText)));
+
         foreach (var child in element.Children)
             CollectSelectableText(child, items, fragmentsByElement);
         if (items.Count > selectableStart + 1 && element is ITextSelectable)
@@ -828,7 +1029,8 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     {
         for (var current = hit; current != null; current = current.Parent)
         {
-            var direct = selection.Items.FindLastIndex(item => ReferenceEquals(item.Element, current) && !item.Bounds.IsEmpty && item.Bounds.Contains(point));
+            var direct = selection.Items.FindLastIndex(item =>
+                ReferenceEquals(item.Element, current) && !item.Bounds.IsEmpty && item.Bounds.Contains(point));
             if (direct >= 0) return CreateSelectionPoint(selection.Items[direct], direct, point);
         }
 
@@ -846,8 +1048,10 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         for (var i = 0; i < selection.Items.Count; i++)
         {
             var bounds = selection.Items[i].Bounds;
-            var dy = point.Y < bounds.Top ? bounds.Top - point.Y : point.Y > bounds.Bottom ? point.Y - bounds.Bottom : 0;
-            var dx = point.X < bounds.Left ? bounds.Left - point.X : point.X > bounds.Right ? point.X - bounds.Right : 0;
+            var dy = point.Y < bounds.Top ? bounds.Top - point.Y :
+                point.Y > bounds.Bottom ? point.Y - bounds.Bottom : 0;
+            var dx = point.X < bounds.Left ? bounds.Left - point.X :
+                point.X > bounds.Right ? point.X - bounds.Right : 0;
             var distance = dx * dx + dy * dy;
             if (distance >= bestDistance) continue;
             bestDistance = distance;
@@ -889,6 +1093,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             else if (i == end.Index) selected.Add(item.Text[..end.Offset]);
             else selected.Add(item.Text);
         }
+
         return string.Join(Environment.NewLine, selected.Where(text => text.Length > 0));
     }
 
@@ -909,8 +1114,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         if (startElement.OwnerDocument != _document || endElement.OwnerDocument != _document) return;
 
         var range = _document.CreateRange();
-        if (TryGetTextNodeForSelectionItem(startItem, out var startText) &&
-            TryGetTextNodeForSelectionItem(endItem, out var endText))
+        if (startItem.TextNode is { } startText && endItem.TextNode is { } endText)
         {
             range.SetStart(startText, Math.Clamp(startPoint.Offset, 0, startText.Length));
             range.SetEnd(endText, Math.Clamp(endPoint.Offset, 0, endText.Length));
@@ -920,21 +1124,14 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             range.SetStart(startElement, 0);
             range.SetEnd(endElement, endElement.ChildNodes.Count);
         }
+
         documentSelection.AddRange(range);
     }
 
-    private static bool TryGetTextNodeForSelectionItem(TextSelectionItem item, out Square.UI.Text textNode)
+    private static Square.UI.Text? FindTextNode(Element element, string text)
     {
-        var match = item.Element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault(node => node.Data == item.Text)
-            ?? item.Element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault();
-        if (match == null)
-        {
-            textNode = null!;
-            return false;
-        }
-
-        textNode = match;
-        return true;
+        return element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault(node => node.Data == text)
+               ?? element.ChildNodes.OfType<Square.UI.Text>().FirstOrDefault();
     }
 
     private void RenderTextSelection(IRenderContext context)
@@ -958,16 +1155,112 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                 continue;
             }
 
+            RenderSelectedTextRuns(
+                context,
+                item.Fragment,
+                startOffset,
+                endOffset,
+                backgroundBrush,
+                foregroundBrush);
+        }
+    }
+
+    private void InvalidateTextSelectionOverlay(params Rect[] bounds)
+    {
+        foreach (var bound in bounds)
+        {
+            if (bound.IsEmpty) continue;
+            var dirty = bound.Inflate(1, 1);
+            _textSelectionOverlayDirtyBounds = _textSelectionOverlayDirtyBounds.IsEmpty
+                ? dirty
+                : Rect.Union(_textSelectionOverlayDirtyBounds, dirty);
+        }
+    }
+
+    private static Rect GetTextSelectionBounds(TextSelectionState selection)
+    {
+        var (startPoint, endPoint) = GetOrderedSelectionPoints(selection);
+        return GetTextSelectionBounds(selection.Items, startPoint, endPoint);
+    }
+
+    private static Rect GetTextSelectionBounds(
+        List<TextSelectionItem> items,
+        TextSelectionPoint startPoint,
+        TextSelectionPoint endPoint)
+    {
+        if (items.Count == 0) return Rect.Empty;
+        if (startPoint.Index > endPoint.Index ||
+            startPoint.Index == endPoint.Index && startPoint.Offset > endPoint.Offset)
+            (startPoint, endPoint) = (endPoint, startPoint);
+        if (startPoint.Index < 0 || endPoint.Index < 0) return Rect.Empty;
+
+        var bounds = Rect.Empty;
+        for (var i = startPoint.Index; i <= endPoint.Index; i++)
+        {
+            var item = items[i];
+            var startOffset = i == startPoint.Index ? startPoint.Offset : 0;
+            var endOffset = i == endPoint.Index ? endPoint.Offset : item.Text.Length;
+            if (startOffset == endOffset) continue;
+
+            if (item.Fragment == null)
+            {
+                bounds = bounds.IsEmpty ? item.Bounds : Rect.Union(bounds, item.Bounds);
+                continue;
+            }
+
             foreach (var character in item.Fragment.Characters)
             {
                 if (character.EndOffset <= startOffset || character.StartOffset >= endOffset) continue;
-                context.FillRect(character.SelectionBounds, backgroundBrush);
-                var selectedText = item.Text[character.StartOffset..character.EndOffset];
-                context.DrawText(
-                    new TextLayout(selectedText, item.Fragment.Font),
-                    character.Bounds.Position,
-                    foregroundBrush);
+                bounds = bounds.IsEmpty
+                    ? character.SelectionBounds
+                    : Rect.Union(bounds, character.SelectionBounds);
             }
+        }
+
+        return bounds;
+    }
+
+    private static void RenderSelectedTextRuns(
+        IRenderContext context,
+        TextFragment fragment,
+        int startOffset,
+        int endOffset,
+        Brush background,
+        Brush foreground)
+    {
+        var characters = fragment.Characters;
+        var index = 0;
+        while (index < characters.Count)
+        {
+            while (index < characters.Count &&
+                   (characters[index].EndOffset <= startOffset || characters[index].StartOffset >= endOffset))
+                index++;
+            if (index >= characters.Count) break;
+
+            var first = characters[index];
+            var runStart = first.StartOffset;
+            var runEnd = first.EndOffset;
+            var bounds = first.SelectionBounds;
+            var origin = first.Bounds.Position;
+            var lineY = first.Bounds.Y;
+            index++;
+
+            while (index < characters.Count)
+            {
+                var character = characters[index];
+                if (character.EndOffset <= startOffset || character.StartOffset >= endOffset ||
+                    Math.Abs(character.Bounds.Y - lineY) > 0.01f || character.StartOffset != runEnd)
+                    break;
+                runEnd = character.EndOffset;
+                bounds = Rect.Union(bounds, character.SelectionBounds);
+                index++;
+            }
+
+            context.FillRect(bounds, background);
+            context.DrawText(
+                new TextLayout(fragment.Text[runStart..runEnd], fragment.Font),
+                origin,
+                foreground);
         }
     }
 
@@ -975,12 +1268,19 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     {
         var value = foreground
             ? FindStyleInPath(element, "selection-color")
-            : FindStyleInPath(element, "selection-background") ?? FindStyleInPath(element, "selection-background-color");
+            : FindStyleInPath(element, "selection-background") ??
+              FindStyleInPath(element, "selection-background-color");
         if (!string.IsNullOrWhiteSpace(value))
         {
-            try { return Color.Parse(value.Replace(" ", "")); }
-            catch (FormatException) { }
+            try
+            {
+                return Color.Parse(value.Replace(" ", ""));
+            }
+            catch (FormatException)
+            {
+            }
         }
+
         return foreground ? DefaultSelectionForeground : DefaultSelectionBackground;
     }
 
@@ -991,10 +1291,12 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             var value = current.Style.Get(property);
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
+
         return null;
     }
 
-    private static (TextSelectionPoint Start, TextSelectionPoint End) GetOrderedSelectionPoints(TextSelectionState selection)
+    private static (TextSelectionPoint Start, TextSelectionPoint End) GetOrderedSelectionPoints(
+        TextSelectionState selection)
     {
         var anchor = selection.Anchor;
         var focus = selection.Focus;
@@ -1010,9 +1312,16 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         public TextSelectionPoint Anchor { get; set; }
         public TextSelectionPoint Focus { get; set; }
         public bool IsSelecting { get; set; }
+        public Point PointerDownPoint { get; set; }
+        public bool PreserveWordSelectionUntilDrag { get; set; }
     }
 
-    private readonly record struct TextSelectionItem(Element Element, string Text, Rect Bounds, TextFragment? Fragment);
+    private readonly record struct TextSelectionItem(
+        Element Element,
+        string Text,
+        Rect Bounds,
+        TextFragment? Fragment,
+        Square.UI.Text? TextNode);
 
     private readonly record struct TextSelectionPoint(int Index, int Offset);
 
@@ -1027,6 +1336,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
             dueTargets ??= [];
             dueTargets.Add(pair.Key);
         }
+
         if (dueTargets != null)
         {
             foreach (var target in dueTargets)
@@ -1037,10 +1347,10 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         }
 
         var needsRender = (dueTargets != null && dueTargets.Count > 0)
-            || _renderRequested
-            || Reconciler.Current.HasWork
-            || CssStyleReconciler.HasWork
-            || Dispatcher.HasWork;
+                          || _renderRequested
+                          || _document.Context.Reconciler.HasWork
+                          || CssStyleReconciler.HasWork
+                          || Dispatcher.HasWork;
         if (_focusedEditor?.ToggleCaretBlink() == true) needsRender = true;
         if (needsRender) RenderFrame();
     }

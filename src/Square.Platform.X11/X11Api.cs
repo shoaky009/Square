@@ -147,6 +147,14 @@ internal static partial class X11Api
 
     public const int ZPixmap = 2;
     public const int PropModeReplace = 0;
+    public const uint MotifWmHintsDecorations = 1u << 1;
+    public const uint MotifWmDecorBorder = 1u << 1;
+    public const uint MotifWmDecorResizeH = 1u << 2;
+    public const int IconicState = 3;
+    public const int NetWmStateRemove = 0;
+    public const int NetWmStateAdd = 1;
+    public const int NetWmMoveresizeMove = 8;
+    public const int NetWmSourceApplication = 1;
     public const uint AllPlanes = uint.MaxValue;
     public const int BitmapPad = 32;
     public const int LSBFirst = 0;
@@ -194,6 +202,10 @@ internal static partial class X11Api
 
     [LibraryImport("libX11.so.6", EntryPoint = "XUnmapWindow")]
     public static partial int UnmapWindow(IntPtr display, IntPtr window);
+
+    [LibraryImport("libX11.so.6", EntryPoint = "XIconifyWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IconifyWindow(IntPtr display, IntPtr window, int screen);
 
     [LibraryImport("libX11.so.6", EntryPoint = "XDestroyWindow")]
     public static partial int DestroyWindow(IntPtr display, IntPtr window);
@@ -429,6 +441,14 @@ internal static partial class X11Api
     [LibraryImport("libX11.so.6", EntryPoint = "XUngrabPointer")]
     public static partial int UngrabPointer(IntPtr display, IntPtr time);
 
+    [LibraryImport("libX11.so.6", EntryPoint = "XQueryPointer")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool QueryPointer(
+        IntPtr display, IntPtr window,
+        out IntPtr rootReturn, out IntPtr childReturn,
+        out int rootXReturn, out int rootYReturn,
+        out int winXReturn, out int winYReturn, out uint maskReturn);
+
     [LibraryImport("libX11.so.6", EntryPoint = "XDefineCursor")]
     public static partial int DefineCursor(IntPtr display, IntPtr window, IntPtr cursor);
 
@@ -659,6 +679,19 @@ internal static partial class X11Api
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct XPropertyEvent
+    {
+        public int type;
+        public IntPtr serial;
+        public int sendEvent;
+        public IntPtr display;
+        public IntPtr window;
+        public IntPtr atom;
+        public IntPtr time;
+        public int state;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct XClientMessageEvent
     {
         public int type;
@@ -717,6 +750,7 @@ internal static partial class X11Api
         [FieldOffset(0)] public XCrossingEvent crossing;
         [FieldOffset(0)] public XConfigureEvent configure;
         [FieldOffset(0)] public XExposeEvent expose;
+        [FieldOffset(0)] public XPropertyEvent property;
         [FieldOffset(0)] public XClientMessageEvent clientMessage;
         [FieldOffset(0)] public XSelectionRequestEvent selectionRequest;
         [FieldOffset(0)] public XSelectionEvent selection;

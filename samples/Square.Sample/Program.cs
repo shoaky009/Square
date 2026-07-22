@@ -6,11 +6,6 @@ using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
-#if PLATFORM_WIN32
-using Square.Platform.Win32;
-#elif PLATFORM_X11
-using Square.Platform.X11;
-#endif
 #if SQUARE_SAMPLE_DEVTOOLS
 using Square.DevTools;
 #endif
@@ -23,7 +18,6 @@ public static class Program
     public static void Main(string[] args)
     {
         System.Console.WriteLine("Square Framework Sample");
-        RegisterPlatform();
 
         var circleDiffDirectory = GetOption(args, "--circle-regression-diff");
         if (!string.IsNullOrWhiteSpace(circleDiffDirectory))
@@ -32,36 +26,29 @@ public static class Program
             return;
         }
 
-        var document = new UIDocument
-        {
-            Title = "Square Framework"
-        };
-        document.Body.Children.Add(CreatePage(args));
-
-        var app = new DesktopApplication(document, new PlatformHostCreateInfo
-        {
-            Title = document.Title,
-            Width = 900,
-            Height = 980
-        });
+        var window = new AppWindow("Square Framework", 900, 980);
+        window.Load(CreatePage(args));
+        window.LoadCustomTitleBar(new MyTitleBar());
+        window.BorderStyle = BorderStyle.Resizable;
+        var app = new DesktopApplication(window);
         var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND");
         if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
 #if SQUARE_SAMPLE_VULKAN
-            app.UseVulkanBackend();
+            window.UseVulkanBackend();
 #else
             throw new NotSupportedException("This build does not include Vulkan. Build with -p:SquareSampleUseVulkan=true to enable it.");
 #endif
-        ConfigureRendering(app, args);
-        ConfigureDebugOverlayToggle(app, document);
+        ConfigureRendering(window, args);
+        ConfigureDebugOverlayToggle(window);
         SampleSignals.Initialize(app.Dispatcher);
         var screenshot = GetOption(args, "--screenshot");
         if (!string.IsNullOrWhiteSpace(screenshot))
-            ScheduleScreenshot(app, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
+            ScheduleScreenshot(window, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
 
         if (HasOption(args, "--devtools"))
         {
 #if SQUARE_SAMPLE_DEVTOOLS
-            var devTools = app.UseDevToolsServer(new DevToolsOptions
+            var devTools = window.UseDevToolsServer(new DevToolsOptions
             {
                 Port = int.TryParse(GetOption(args, "--devtools-port"), out var port) ? port : 0,
                 AccessToken = GetOption(args, "--devtools-token"),
@@ -181,14 +168,14 @@ public static class Program
         return null;
     }
 
-    private static void ScheduleScreenshot(DesktopApplication app, string path, Action<Bitmap>? validateScreenshot, string? bitmapDumpPath = null)
+    private static void ScheduleScreenshot(AppWindow window, string path, Action<Bitmap>? validateScreenshot, string? bitmapDumpPath = null)
     {
         _ = Task.Run(async () =>
         {
             await Task.Delay(1800);
             try
             {
-                using var bitmap = await app.CaptureRendererBitmapAsync();
+                using var bitmap = await window.CaptureRendererBitmapAsync();
                 validateScreenshot?.Invoke(bitmap);
                 BitmapPngEncoder.Save(bitmap, path);
                 if (!string.IsNullOrWhiteSpace(bitmapDumpPath))
@@ -202,55 +189,55 @@ public static class Program
             }
             finally
             {
-                app.Close();
+                window.Close();
             }
         });
     }
 
-    private static void ConfigureRendering(DesktopApplication app, string[] args)
+    private static void ConfigureRendering(AppWindow window, string[] args)
     {
         var mode = GetOption(args, "--render-mode") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_MODE");
         if (Enum.TryParse<RenderMode>(mode, ignoreCase: true, out var renderMode))
-            app.RenderingMode = renderMode;
+            window.RenderingMode = renderMode;
 
         var overlay = GetOption(args, "--render-overlay") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_OVERLAY");
         if (TryParseBool(overlay, out var showOverlay))
-            app.ShowRenderDiagnosticsOverlay = showOverlay;
+            window.ShowRenderDiagnosticsOverlay = showOverlay;
 
         var dirtyOverlay = GetOption(args, "--dirty-overlay") ?? Environment.GetEnvironmentVariable("SQUARE_DIRTY_OVERLAY");
         if (TryParseBool(dirtyOverlay, out var showDirtyOverlay))
-            app.ShowDirtyUnionOverlay = showDirtyOverlay;
+            window.ShowDirtyUnionOverlay = showDirtyOverlay;
 
         var maxDirtyArea = GetOption(args, "--max-dirty-area") ?? Environment.GetEnvironmentVariable("SQUARE_MAX_DIRTY_AREA");
         if (float.TryParse(maxDirtyArea, out var areaRatio))
-            app.MaxDirtyAreaRatio = Math.Clamp(areaRatio, 0f, 1f);
+            window.MaxDirtyAreaRatio = Math.Clamp(areaRatio, 0f, 1f);
 
         var maxDirtyRects = GetOption(args, "--max-dirty-rects") ?? Environment.GetEnvironmentVariable("SQUARE_MAX_DIRTY_RECTS");
         if (int.TryParse(maxDirtyRects, out var rectCount))
-            app.MaxDirtyRectCount = Math.Max(1, rectCount);
+            window.MaxDirtyRectCount = Math.Max(1, rectCount);
 
-        System.Console.WriteLine($"Render: mode={app.RenderingMode}, overlay={app.ShowRenderDiagnosticsOverlay}, dirtyOverlay={app.ShowDirtyUnionOverlay}, maxDirtyArea={app.MaxDirtyAreaRatio:0.##}, maxDirtyRects={app.MaxDirtyRectCount}");
+        System.Console.WriteLine($"Render: mode={window.RenderingMode}, overlay={window.ShowRenderDiagnosticsOverlay}, dirtyOverlay={window.ShowDirtyUnionOverlay}, maxDirtyArea={window.MaxDirtyAreaRatio:0.##}, maxDirtyRects={window.MaxDirtyRectCount}");
     }
 
-    private static void ConfigureDebugOverlayToggle(DesktopApplication app, UIDocument document)
+    private static void ConfigureDebugOverlayToggle(AppWindow window)
     {
 #if DEBUG
         const int f12 = 0x7B;
         const string baseTitle = "Square Framework";
 
-        UpdateDebugTitle(document, app.ShowRenderDiagnosticsOverlay);
-        app.GlobalKeyEvent += (keyCode, action) =>
+        UpdateDebugTitle(window, window.ShowRenderDiagnosticsOverlay);
+        window.GlobalKeyEvent += (keyCode, action) =>
         {
             if (action != KeyAction.Down || keyCode != f12) return;
 
-            app.ShowRenderDiagnosticsOverlay = !app.ShowRenderDiagnosticsOverlay;
-            UpdateDebugTitle(document, app.ShowRenderDiagnosticsOverlay);
-            app.RequestRender();
+            window.ShowRenderDiagnosticsOverlay = !window.ShowRenderDiagnosticsOverlay;
+            UpdateDebugTitle(window, window.ShowRenderDiagnosticsOverlay);
+            window.RequestRender();
         };
 
-        static void UpdateDebugTitle(UIDocument document, bool overlayVisible)
+        static void UpdateDebugTitle(AppWindow window, bool overlayVisible)
         {
-            document.Title = $"{baseTitle} - Overlay: {(overlayVisible ? "On" : "Off")}";
+            window.Title = $"{baseTitle} - Overlay: {(overlayVisible ? "On" : "Off")}";
         }
 #endif
     }
@@ -294,17 +281,6 @@ public static class Program
             return true;
         }
         return false;
-    }
-
-    private static void RegisterPlatform()
-    {
-#if PLATFORM_WIN32
-        PlatformRegistry.Register(new Win32PlatformFactory());
-#elif PLATFORM_X11
-        PlatformRegistry.Register(new X11PlatformFactory());
-#else
-        throw new PlatformNotSupportedException("No Square platform package is configured for this build.");
-#endif
     }
 
 }

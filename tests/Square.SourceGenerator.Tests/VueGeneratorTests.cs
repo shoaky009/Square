@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Square.Compiler;
+using Square.Runtime.Binding;
 using Xunit;
 
 namespace Square.Compiler.Tests;
@@ -287,19 +288,93 @@ public class VueGeneratorTests
         Assert.Contains("protected override void OnDetachedCore()", generated);
     }
 
+    [Theory]
+    [InlineData("CodeBehind.sqx")]
+    [InlineData("CodeBehind.sqv")]
+    public void CodeBehindPartialCompilesWithEventsAndRefs(string path)
+    {
+        var isVue = path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase);
+        var eventAttribute = isVue
+            ? "@click=\"OnClick\""
+            : "onClick={OnClick}";
+        var refAttribute = isVue ? "ref=\"SaveButton\"" : "ref={SaveButton}";
+        var template =
+            "<template><Button " + refAttribute + " " + eventAttribute + ">Save</Button></template>" +
+            "<script namespace=\"TestApp\"></script>";
+        const string codeBehind = """
+            namespace TestApp;
+            public partial class CodeBehind
+            {
+                private void OnClick(Square.Events.Event e)
+                {
+                    SaveButton.TextContent = "Saved";
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(codeBehind);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            [new SqxGenerator().AsSourceGenerator()],
+            [new InMemoryAdditionalText(path, template)],
+            (CSharpParseOptions?)compilation.SyntaxTrees.First().Options);
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public void TitleBarLowersToBuiltInControl()
+    {
+        const string source = """
+            <template>
+              <TitleBar>
+                <Text slot="icon" text="I" />
+                <Text text="App" />
+                <Button slot="control" text="X" />
+              </TitleBar>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("WindowTitle.sqx", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.Controls.TitleBar()", generated);
+        Assert.DoesNotContain("new TitleBar()", generated);
+        Assert.Contains(".Slots.Set(\"icon\"", generated);
+        Assert.Contains(".Slots.Set(\"\"", generated);
+        Assert.Contains(".Slots.Set(\"control\"", generated);
+        Assert.True(
+            generated.IndexOf(".Children.Add(", StringComparison.Ordinal) <
+            generated.LastIndexOf(".BuildElementTree();", StringComparison.Ordinal));
+    }
+
     private static GeneratorDriverRunResult RunGenerator(params AdditionalText[] files)
     {
-        var compilation = CSharpCompilation.Create(
-            "VueGeneratorTests",
-            [CSharpSyntaxTree.ParseText("public sealed class Placeholder { }")],
-            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CreateCompilation("public sealed class Placeholder { }");
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             [new SqxGenerator().AsSourceGenerator()],
             files,
             (CSharpParseOptions?)compilation.SyntaxTrees.First().Options);
         driver = driver.RunGenerators(compilation);
         return driver.GetRunResult();
+    }
+
+    private static CSharpCompilation CreateCompilation(string source)
+    {
+        var references = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly => !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
+            .Select(assembly => MetadataReference.CreateFromFile(assembly.Location))
+            .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        if (references.All(reference => reference.Display != typeof(PropAttribute).Assembly.Location))
+            references.Add(MetadataReference.CreateFromFile(typeof(PropAttribute).Assembly.Location));
+        return CSharpCompilation.Create(
+            "VueGeneratorTests",
+            [CSharpSyntaxTree.ParseText(source)],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
     private sealed class InMemoryAdditionalText(string path, string content) : AdditionalText

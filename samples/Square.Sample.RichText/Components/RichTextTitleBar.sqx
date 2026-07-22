@@ -1,0 +1,108 @@
+<template>
+  <TitleBar class="rich-title-bar">
+    <Text slot="icon" class="rich-title-icon" text="R" />
+
+    <View class="rich-title-content">
+      <Text class="rich-title" text="RichText Editor" />
+      <MenuBar class="rich-menu-bar">
+        <MenuItem text="File">
+          <Menu>
+            <MenuItem text="Load sample" shortcut="Ctrl+L" onClick={OnLoadSample} />
+            <MenuItem text="Clear document" shortcut="Ctrl+Shift+Delete" onClick={OnClear} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="Edit">
+          <Menu>
+            <MenuItem text="Undo" shortcut="Ctrl+Z" onClick={OnUndo} />
+            <MenuItem text="Redo" shortcut="Ctrl+Y" onClick={OnRedo} />
+            <MenuSeparator />
+            <MenuItem text="Select all" shortcut="Ctrl+A" onClick={OnSelectAll} />
+            <MenuItem text="Copy rich" shortcut="Ctrl+Shift+C" onClick={OnCopyRich} />
+            <MenuItem text="Paste rich" shortcut="Ctrl+Shift+V" onClick={OnPasteRich} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="Format">
+          <Menu>
+            <MenuItem text="Bold" shortcut="Ctrl+B" onClick={OnBold} />
+            <MenuItem text="Italic" shortcut="Ctrl+I" onClick={OnItalic} />
+            <MenuItem text="Underline" shortcut="Ctrl+U" onClick={OnUnderline} />
+            <MenuItem text="Clear formatting" onClick={OnClearFormatting} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="Color">
+          <Menu>
+            <MenuItem text="Blue" onClick={OnBlue} />
+            <MenuItem text="Red" onClick={OnRed} />
+            <MenuItem text="Green" onClick={OnGreen} />
+          </Menu>
+        </MenuItem>
+      </MenuBar>
+    </View>
+  </TitleBar>
+</template>
+
+<style>
+  .rich-title-bar {
+    height: 44px;
+    background: #172033;
+    padding-left: 12px;
+  }
+
+  .rich-title-icon {
+    width: 26px;
+    color: #8fd3ff;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .rich-title-content {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    height: 44px;
+    flex-grow: 1;
+    min-width: 0;
+  }
+
+  .rich-title {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .rich-menu-bar {
+    display: flex;
+    flex-direction: row;
+    width: 280px;
+    height: 32px;
+    background: #172033;
+  }
+
+  .rich-menu-bar MenuItem {
+    color: #f9fafb;
+  }
+
+  .rich-menu-bar MenuItem:hover {
+    background: #2b3a55;
+    color: #ffffff;
+  }
+
+  .rich-menu-bar Menu {
+    width: 248px;
+    background: #f8fafc;
+  }
+
+  .rich-menu-bar Menu MenuItem {
+    background: #f8fafc;
+    color: #263449;
+  }
+
+  .rich-menu-bar Menu MenuItem:hover {
+    background: #dce9f7;
+    color: #102a43;
+  }
+</style>

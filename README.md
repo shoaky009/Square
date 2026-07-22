@@ -24,6 +24,9 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `.sqx` 词法分析、语法分析和 Source Generator
 - `template`、C# `script`、组件级 `style`
 - 强类型属性和 `ObservableValue<T>` / `ObservableCollection<T>`
+- `.sqx.cs` / `.sqv.cs` 同名代码后置 partial 类，可替代大部分模板内 `<script>` 逻辑
+- `Store<TState>`、selector 与 `StoreScope`，支持从任意线程向多个 UI Dispatcher 投递响应式状态
+- 模板可通过 `AppWindow` 操作标题、关闭、最小化、最大化、还原和系统窗口拖动
 - `<Show>`、`<For>`、`<Switch>`、`<Match>` 编译期结构原语
 - 默认插槽、具名插槽和 fallback
 - `ref` 元素引用和命令式元素 API
@@ -135,6 +138,22 @@ private void OnClick() { }
 private void OnClick(Event e) { }
 ```
 
+模板逻辑也可以放在同名代码后置文件中。`Main.sqx.cs` 与生成的 `Main` 类型组成同一个 partial 类，命名空间和有效组件名必须与模板一致：
+
+```csharp
+namespace MyApp;
+
+public partial class Main
+{
+    [Prop(Required = true)]
+    public ObservableValue<string> Title { get; } = new("");
+
+    private void Close(Event e) => AppWindow?.Close();
+}
+```
+
+代码后置可声明 Props、事件方法、生命周期方法、Store 访问器，并可使用模板生成的 `ref` 字段。模板内 `<script>` 与代码后置允许共存。
+
 ## CSS 支持情况
 
 Square 实现自己的 CSS 解析、级联和样式应用管线，不使用浏览器引擎。目标是兼容常用的现代 CSS 语义，而不是完整复刻 Web CSS。
@@ -222,25 +241,27 @@ dotnet --version
 
 ### 创建第一个 Square 应用
 
-一个最小桌面应用只需根组件和 `DesktopApplication`：
+一个最小桌面应用只需创建窗口、加载根组件并运行：
 
 ```csharp
 using Square.Hosting;
-using Square.Platform;
-using Square.Platform.Win32;
 
-PlatformRegistry.Register(new Win32PlatformFactory());
+var window = new AppWindow("My App", 800, 600);
+window.Load(new Main());
 
-var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
-{
-    Title = "My App",
-    Width = 800,
-    Height = 600
-});
-app.Run();
+new DesktopApplication(window).Run();
 ```
 
-`Main` 是由 `.sqx` 文件在编译期生成的组件。Linux/X11 应用改为引用 `Square.Platform.X11` 并注册 `X11PlatformFactory`。`DesktopApplication` 自动处理鼠标命中测试、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环。
+`Main` 是由 `.sqx` 文件在编译期生成的组件。引用 `Square.Platform.Win32` 或 `Square.Platform.X11` 后，平台包会自动注册默认宿主。窗口内容、渲染模式和后端配置属于 `AppWindow`；`DesktopApplication` 负责应用生命周期和消息循环。
+
+自定义标题栏：
+
+```csharp
+window.LoadCustomTitleBar(new MyTitleBar());
+window.TitleStyle = TitleStyle.Custom;
+```
+
+`MyTitleBar.sqx` 可使用内置 `<TitleBar>`。标题栏空白区域默认拖动窗口，Button、Input 等交互控件保持正常点击。
 
 ### 从源码运行
 

@@ -13,7 +13,7 @@ public static class ExtensionRegistration
         if (_registered) return;
         _registered = true;
 
-        UIDocument.RegisterElement("MarkdownViewer", static () => new MarkdownViewer());
-        UIDocument.RegisterElement("RichTextEditor", static () => new RichTextEditor());
+        ElementRegistry.Register("MarkdownViewer", static () => new MarkdownViewer());
+        ElementRegistry.Register("RichTextEditor", static () => new RichTextEditor());
     }
 }

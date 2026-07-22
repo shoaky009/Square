@@ -1,0 +1,24 @@
+namespace Square.UI;
+
+/// <summary>AOT-friendly registry used by window documents to create elements by tag name.</summary>
+public static class ElementRegistry
+{
+    private static readonly Dictionary<string, Func<Element>> Factories =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public static void Register(string tagName, Func<Element> factory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tagName);
+        ArgumentNullException.ThrowIfNull(factory);
+        Factories[tagName] = factory;
+    }
+
+    internal static Element Create(string tagName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tagName);
+        if (!Factories.TryGetValue(tagName, out var factory))
+            throw new InvalidOperationException(
+                $"Unknown element tag '{tagName}'. Register it with ElementRegistry.Register.");
+        return factory();
+    }
+}

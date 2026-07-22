@@ -2,6 +2,8 @@ using Square.Events;
 using Square.Graphics;
 using Square.Runtime;
 using Square.Runtime.Binding;
+using Square.Runtime.State;
+using Square.Hosting;
 using Square.UI.ElementApi;
 using Square.UI.Properties;
 
@@ -174,6 +176,18 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>是否已完成加载（Square 生命周期）。</summary>
     public bool IsLoaded { get; private set; }
 
+    /// <summary>承载当前文档的应用窗口。</summary>
+    public AppWindow? AppWindow => (OwnerDocument as UIDocument)?.AppWindow;
+
+    /// <summary>当前文档的 Store 作用域。</summary>
+    public StoreScope Stores => (OwnerDocument as UIDocument)?.Context.Stores
+        ?? throw new InvalidOperationException("The element is not owned by a UIDocument.");
+
+    internal Reconciler Reconciler => (OwnerDocument as UIDocument)?.Context.Reconciler
+        ?? Square.UI.Reconciler.Current;
+
+    internal Dispatcher? Dispatcher => (OwnerDocument as UIDocument)?.Context.Dispatcher;
+
     /// <summary>初始化样式、类列表与子节点集合。</summary>
     protected Element()
     {
@@ -295,6 +309,26 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Properties.MarkBound(name);
         SetBoundValue(name, source.Value);
         _bindings.Add(source.Subscribe(value => SetBoundValue(name, value)));
+    }
+
+    /// <summary>订阅任意响应值，并在元素所属 UI Dispatcher 上同步属性。</summary>
+    public void BindProperty<T>(string name, IReactiveValue<T> source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        Properties.MarkBound(name);
+        SetBoundValue(name, source.Value);
+        var target = new WeakReference<Element>(this);
+        IDisposable? subscription = null;
+        subscription = source.Subscribe(
+            value =>
+            {
+                if (target.TryGetTarget(out var element))
+                    element.SetBoundValue(name, value);
+                else
+                    subscription?.Dispose();
+            },
+            new ReactiveSubscriptionOptions { Dispatcher = Dispatcher });
+        _bindings.Add(subscription!);
     }
 
     private void SetBoundValue<T>(string name, T value)
@@ -525,7 +559,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// </summary>
     public void ScheduleReconcile()
     {
-        Reconciler.Current.MarkDirty(this);
+        Reconciler.MarkDirty(this);
     }
 
     /// <summary>清除布局脏标记（由布局引擎调用）。</summary>

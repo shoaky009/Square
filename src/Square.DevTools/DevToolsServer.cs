@@ -32,9 +32,9 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
     public int Port { get; }
     public string BaseAddress => $"http://127.0.0.1:{Port}";
 
-    public static DevToolsServer Start(DesktopApplication application, DevToolsOptions? options = null)
+    public static DevToolsServer Start(AppWindow window, DevToolsOptions? options = null)
     {
-        ArgumentNullException.ThrowIfNull(application);
+        ArgumentNullException.ThrowIfNull(window);
         options ??= new DevToolsOptions();
         if (options.Port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(options.Port));
 
@@ -47,11 +47,11 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
         listener.Start();
 
         var server = new DevToolsServer(listener, Task.CompletedTask, token, port);
-        server._acceptLoop = Task.Run(() => server.AcceptLoopAsync(application, options));
+        server._acceptLoop = Task.Run(() => server.AcceptLoopAsync(window, options));
         return server;
     }
 
-    private async Task AcceptLoopAsync(DesktopApplication application, DevToolsOptions options)
+    private async Task AcceptLoopAsync(AppWindow window, DevToolsOptions options)
     {
         while (!_shutdown.IsCancellationRequested)
         {
@@ -73,11 +73,11 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
                 break;
             }
 
-            _ = Task.Run(() => HandleRequestAsync(context, application, options));
+            _ = Task.Run(() => HandleRequestAsync(context, window, options));
         }
     }
 
-    private async Task HandleRequestAsync(HttpListenerContext context, DesktopApplication application, DevToolsOptions options)
+    private async Task HandleRequestAsync(HttpListenerContext context, AppWindow window, DevToolsOptions options)
     {
         try
         {
@@ -99,7 +99,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
 
             if (method == "GET" && path == "/api/v1/screenshot")
             {
-                using var bitmap = await application.CaptureRendererBitmapAsync();
+                using var bitmap = await window.CaptureRendererBitmapAsync();
                 using var stream = new MemoryStream();
                 BitmapPngEncoder.Save(bitmap, stream);
                 await WriteBytesAsync(context.Response, StatusCodes.Ok, stream.ToArray(), "image/png", "square-screenshot.png");
@@ -114,7 +114,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
                     new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
                     ReadEnum<MouseAction>(payload, "action"),
                     ReadModifiers(payload));
-                await application.InjectPointerAsync(input);
+                await window.InjectPointerAsync(input);
                 await WriteNoContentAsync(context.Response);
                 return;
             }
@@ -127,7 +127,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
                     ReadInt(payload, "keyCode"),
                     ReadEnum<KeyAction>(payload, "action"),
                     ReadModifiers(payload));
-                await application.InjectKeyAsync(input);
+                await window.InjectKeyAsync(input);
                 await WriteNoContentAsync(context.Response);
                 return;
             }
@@ -136,7 +136,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
             {
                 if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
                 var payload = await ReadJsonAsync(context.Request);
-                await application.InjectTextAsync(ReadString(payload, "text"));
+                await window.InjectTextAsync(ReadString(payload, "text"));
                 await WriteNoContentAsync(context.Response);
                 return;
             }
@@ -149,7 +149,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
                     new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
                     ReadInt(payload, "delta"),
                     ReadModifiers(payload));
-                await application.InjectWheelAsync(input);
+                await window.InjectWheelAsync(input);
                 await WriteNoContentAsync(context.Response);
                 return;
             }
@@ -157,7 +157,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
             if (method == "GET" && path == "/api/v1/inspect/tree")
             {
                 if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
-                var snapshot = await application.CaptureInspectionSnapshotAsync(options.IncludeSourcePaths, options.IncludeTextContent);
+                var snapshot = await window.CaptureInspectionSnapshotAsync(options.IncludeSourcePaths, options.IncludeTextContent);
                 await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeSnapshot(snapshot));
                 return;
             }
@@ -167,7 +167,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
                 if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
                 var x = ReadFloat(context.Request.QueryString, "x");
                 var y = ReadFloat(context.Request.QueryString, "y");
-                var result = await application.HitTestInspectionAsync(new Point(x, y), options.IncludeSourcePaths, options.IncludeTextContent);
+                var result = await window.HitTestInspectionAsync(new Point(x, y), options.IncludeSourcePaths, options.IncludeTextContent);
                 if (result == null) await WriteJsonAsync(context.Response, StatusCodes.NotFound, "{\"error\":\"not_found\"}");
                 else await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeNode(result));
                 return;
@@ -176,7 +176,7 @@ public sealed class DevToolsServer : IAsyncDisposable, IDisposable
             if (method == "GET" && TryReadElementRoute(path, out var elementId))
             {
                 if (!options.AllowInspector) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
-                var result = await application.InspectElementAsync(elementId, options.IncludeSourcePaths, options.IncludeTextContent);
+                var result = await window.InspectElementAsync(elementId, options.IncludeSourcePaths, options.IncludeTextContent);
                 if (result == null) await WriteJsonAsync(context.Response, StatusCodes.NotFound, "{\"error\":\"not_found\"}");
                 else await WriteJsonAsync(context.Response, StatusCodes.Ok, SerializeNode(result));
                 return;

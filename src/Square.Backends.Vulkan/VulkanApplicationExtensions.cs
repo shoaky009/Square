@@ -4,12 +4,12 @@ namespace Square.Backends.Vulkan;
 
 public static class VulkanApplicationExtensions
 {
-    public static T UseVulkanBackend<T>(this T application)
+    public static T UseVulkanBackend<T>(this T window)
         where T : IRenderBackendApplication
     {
-        ArgumentNullException.ThrowIfNull(application);
+        ArgumentNullException.ThrowIfNull(window);
         VulkanRegistration.Register();
-        application.RenderBackend = "Vulkan";
-        return application;
+        window.RenderBackend = "Vulkan";
+        return window;
     }
 }

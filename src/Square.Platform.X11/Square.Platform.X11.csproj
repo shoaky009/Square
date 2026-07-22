@@ -8,7 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="buildTransitive\**\*.cs" />
     <ProjectReference Include="..\Square\Square.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive\Square.Platform.X11.props" Pack="true" PackagePath="buildTransitive" />
+    <None Include="buildTransitive\Square.Platform.X11.Registration.cs" Pack="true" PackagePath="buildTransitive" />
   </ItemGroup>
 
 </Project>

@@ -319,11 +319,17 @@ public class MenuItem : UIElement, ITextSelectable
     public override void Paint(IRenderContext context)
     {
         var active = HasState(ElementState.Hover) || Parent is Menu menu && ReferenceEquals(menu.ActiveItem, this);
-        var background = active && IsEnabled ? Color.FromRgb(225, 238, 252) : Color.Transparent;
-        if (Parent is MenuBar && Submenu?.IsOpen == true) background = Color.White;
+        var styledBackground = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
+        var background = styledBackground.A > 0
+            ? styledBackground
+            : active && IsEnabled ? Color.FromRgb(225, 238, 252) : Color.Transparent;
+        if (Parent is MenuBar && Submenu?.IsOpen == true && styledBackground.A == 0)
+            background = Color.White;
         if (background.A > 0) context.FillRect(Geometry, new SolidColorBrush(background));
 
-        var foreground = IsEnabled ? Color.FromRgb(32, 36, 40) : Color.FromRgb(150, 154, 160);
+        var foreground = IsEnabled
+            ? ControlDrawing.GetStyledColor(this, "color", Color.FromRgb(32, 36, 40))
+            : Color.FromRgb(150, 154, 160);
         var isBarItem = Parent is MenuBar;
         var labelX = Geometry.X + (isBarItem ? 12 : 30);
         ControlDrawing.DrawText(context, this, TextContent,

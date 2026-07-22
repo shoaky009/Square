@@ -49,7 +49,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
                 catalog = DirectiveCatalog.BuiltIn;
             }
 
-            var contracts = BuildPropContracts(files);
+            var contracts = BuildPropContracts(compilation, files);
             foreach (var file in files)
                 Generate(productionContext, file, contracts, catalog);
         });
@@ -94,30 +94,78 @@ public sealed class SqxGenerator : IIncrementalGenerator
         context.AddSource(hintName, SourceText.From(code, Encoding.UTF8));
     }
 
-    private static IReadOnlyDictionary<string, PropContract[]> BuildPropContracts(ImmutableArray<SqxInput> inputs)
+    private static IReadOnlyDictionary<string, PropContract[]> BuildPropContracts(
+        Compilation compilation,
+        ImmutableArray<SqxInput> inputs)
     {
         var contracts = new Dictionary<string, PropContract[]>(StringComparer.Ordinal);
         foreach (var input in inputs)
         {
-            var script = ExtractScript(input.Content);
-            if (script == null) continue;
-            var matches = Regex.Matches(
-                script,
-                @"\[Prop(?:Attribute)?\s*(?:\((?<options>[^)]*)\))?\]\s*(?:public|internal|protected|private)?\s*(?<type>[A-Za-z_][A-Za-z0-9_<>?., ]*)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{");
-            var props = new List<PropContract>();
-            foreach (Match match in matches)
+            SqxDocument document;
+            try
             {
-                var options = match.Groups["options"].Value;
-                props.Add(new PropContract(
-                    match.Groups["name"].Value,
-                    match.Groups["type"].Value.Trim(),
-                    options.Contains("Required", StringComparison.OrdinalIgnoreCase) &&
-                    options.Contains("true", StringComparison.OrdinalIgnoreCase)));
+                document = ParseDocument(input);
             }
+            catch (SqxParseException)
+            {
+                continue;
+            }
+
+            var props = new Dictionary<string, PropContract>(StringComparer.OrdinalIgnoreCase);
+            var script = ExtractScript(input.Content);
+            if (script != null)
+            {
+                var matches = Regex.Matches(
+                    script,
+                    @"\[Prop(?:Attribute)?\s*(?:\((?<options>[^)]*)\))?\]\s*(?:public|internal|protected|private)?\s*(?<type>[A-Za-z_][A-Za-z0-9_<>?., ]*)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{");
+                foreach (Match match in matches)
+                {
+                    var options = match.Groups["options"].Value;
+                    var prop = new PropContract(
+                        match.Groups["name"].Value,
+                        match.Groups["type"].Value.Trim(),
+                        options.Contains("Required", StringComparison.OrdinalIgnoreCase) &&
+                        options.Contains("true", StringComparison.OrdinalIgnoreCase));
+                    props[prop.Name] = prop;
+                }
+            }
+
+            var namespaceName = string.IsNullOrWhiteSpace(document.Namespace)
+                ? input.Namespace
+                : document.Namespace;
+            var metadataName = string.IsNullOrWhiteSpace(namespaceName)
+                ? document.Name
+                : namespaceName + "." + document.Name;
+            var codeBehindType = compilation.GetTypeByMetadataName(metadataName);
+            if (codeBehindType != null)
+            {
+                foreach (var property in codeBehindType.GetMembers().OfType<IPropertySymbol>())
+                {
+                    var attribute = property.GetAttributes().FirstOrDefault(IsPropAttribute);
+                    if (attribute == null) continue;
+                    var required = attribute.NamedArguments.Any(argument =>
+                        argument.Key == "Required" && argument.Value.Value is true);
+                    var prop = new PropContract(
+                        property.Name,
+                        property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+                        required);
+                    props[prop.Name] = prop;
+                }
+            }
+
             if (props.Count > 0)
-                contracts[Path.GetFileNameWithoutExtension(input.Path)] = props.ToArray();
+                contracts[document.Name] = props.Values.ToArray();
         }
         return contracts;
+    }
+
+    private static bool IsPropAttribute(AttributeData attribute)
+    {
+        var type = attribute.AttributeClass;
+        if (type == null) return false;
+        var metadataName = type.ToDisplayString();
+        return metadataName == "Square.Runtime.Binding.PropAttribute" ||
+            type.Name is "PropAttribute" or "Prop";
     }
 
     private static SqxDocument ParseDocument(SqxInput input) =>

@@ -1,5 +1,8 @@
 using System;
 using Square.Controls;
+using Square.Hosting;
+using Square.Platform;
+using Square.Runtime.State;
 using Square.UI;
 using Xunit;
 
@@ -35,6 +38,149 @@ public class DocumentTests
 
         Assert.Same(doc.Body, view.Parent);
         Assert.Same(doc, view.OwnerDocument);
+        Assert.Same(doc.Context.Reconciler, view.Reconciler);
+        Assert.Same(doc.Context.Stores, view.Stores);
+    }
+
+    [Fact]
+    public void DocumentsOwnIndependentUiContexts()
+    {
+        var first = new UIDocument();
+        var second = new UIDocument();
+
+        Assert.NotSame(first.Context.Dispatcher, second.Context.Dispatcher);
+        Assert.NotSame(first.Context.Reconciler, second.Context.Reconciler);
+        Assert.NotSame(first.Context.Stores, second.Context.Stores);
+    }
+
+    [Fact]
+    public void DesktopApplicationExposesWindowToDocumentAndElements()
+    {
+        var window = new AppWindow("Initial", 800, 600);
+        var content = new View();
+        window.Load(content);
+        var application = new DesktopApplication(window);
+
+        Assert.Same(application.MainWindow, content.AppWindow);
+        Assert.Same(application.MainWindow, content.AppWindow);
+        Assert.Equal("Initial", application.MainWindow.Title);
+
+        application.MainWindow.Title = "Updated";
+
+        Assert.Equal("Updated", window.Document.Title);
+    }
+
+    [Fact]
+    public void AppWindowOwnsContentAndReplacesItBeforeRun()
+    {
+        var window = new AppWindow("Window", 640, 480);
+        var first = new View();
+        var second = new Button();
+
+        window.Load(first);
+        window.Load(second);
+
+        Assert.Same(second, window.Content);
+        Assert.Null(first.Parent);
+        Assert.Same(window.Document, second.OwnerDocument);
+        Assert.Same(window, second.AppWindow);
+        Assert.Equal(new Square.Graphics.Size(640, 480), window.ClientSize);
+    }
+
+    [Fact]
+    public void AppWindowRejectsInvalidDimensionsAndMultipleApplications()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AppWindow("Window", 0, 480));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AppWindow("Window", 640, 0));
+
+        var window = new AppWindow("Window");
+        window.Load(new View());
+        _ = new DesktopApplication(window);
+
+        Assert.Throws<InvalidOperationException>(() => new DesktopApplication(window));
+    }
+
+    [Fact]
+    public void CustomTitleBarIsLoadedIntoWindowHead()
+    {
+        var window = new AppWindow("Window");
+        var titleBar = new TitleBar { PreferredHeight = 42 };
+
+        window.LoadCustomTitleBar(titleBar);
+
+        Assert.Equal(TitleStyle.Custom, window.TitleStyle);
+        Assert.Same(titleBar, window.CustomTitleBar);
+        Assert.Same(window.Document, titleBar.OwnerDocument);
+        Assert.Same(window, titleBar.AppWindow);
+    }
+
+    [Fact]
+    public void AppWindowUsesResizableBorderByDefaultAndPassesConfiguredStyleToHost()
+    {
+        var window = new AppWindow("Window")
+        {
+            BorderStyle = BorderStyle.Fixed
+        };
+
+        var hostInfo = window.CreateHostInfo();
+
+        Assert.Equal(BorderStyle.Fixed, hostInfo.BorderStyle);
+        Assert.Equal(BorderStyle.Resizable, new AppWindow("Default").BorderStyle);
+    }
+
+    [Fact]
+    public void TitleBarRendersIconTitleAndControlSlots()
+    {
+        var window = new AppWindow("Window");
+        var titleBar = new TitleBar();
+        var icon = new Square.Controls.Text("I");
+        var title = new Square.Controls.Text("Custom title");
+        var control = new Button("Menu");
+        titleBar.Slots.Set("icon", parent => parent.Children.Add(icon));
+        titleBar.Slots.Set("", parent => parent.Children.Add(title));
+        titleBar.Slots.Set("control", parent => parent.Children.Add(control));
+        window.LoadCustomTitleBar(titleBar);
+
+        titleBar.BuildElementTree();
+
+        Assert.Equal(3, titleBar.Children.Count);
+        Assert.Same(icon, titleBar.Children[0].Children[0]);
+        Assert.Same(title, titleBar.Children[1].Children[0]);
+        Assert.Same(control, titleBar.Children[2].Children[0]);
+    }
+
+    [Fact]
+    public void TitleBarProvidesDefaultTitleAndWindowControls()
+    {
+        var window = new AppWindow("Default title");
+        var titleBar = new TitleBar();
+        window.LoadCustomTitleBar(titleBar);
+
+        titleBar.BuildElementTree();
+
+        var titleHost = titleBar.Children[1];
+        var controlHost = titleBar.Children[2];
+        Assert.Equal("Default title",
+            Assert.IsType<Square.Controls.Text>(Assert.Single(titleHost.Children)).TextContent);
+        Assert.Equal(3, controlHost.Children.Count);
+        Assert.All(controlHost.Children, child => Assert.IsType<Button>(child));
+    }
+
+    [Fact]
+    public void ReactiveBindingUsesDocumentDispatcher()
+    {
+        var document = new UIDocument();
+        var text = new Square.Controls.Text();
+        document.Body.Children.Add(text);
+        using var store = new Store<string>("initial");
+
+        text.BindProperty("TextContent", store);
+        var worker = new Thread(() => store.Set("updated"));
+        worker.Start();
+        worker.Join();
+
+        document.Context.Dispatcher.Run();
+        Assert.Equal("updated", text.TextContent);
     }
 
     [Fact]

@@ -195,19 +195,22 @@ namespace Square.Compiler.Emit
                         continue;
                     }
 
-                    var elementName = EmitControl(element, indent, localName);
+                    var elementName = EmitControl(element, indent, localName, parentName);
                     _sb.AppendLine(indent + parentName + ".Children.Add(" + elementName + ");");
+                    if (RequiresBuildAfterAttach(element.TagName))
+                        _sb.AppendLine(indent + elementName + ".BuildElementTree();");
                 }
             }
         }
 
-        private string EmitControl(SqxElement element, string indent, string localName)
+        private string EmitControl(SqxElement element, string indent, string localName, string parentName = null)
         {
             var refAttr = FindAttr(element, "ref");
             var isRef = refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue);
             var variableName = isRef ? refAttr.RawValue : NextVariable();
             var tagName = MapTagName(element.TagName);
             var isCustomComponent = !IsBuiltInTag(element.TagName);
+            var usesSlots = isCustomComponent || IsTitleBar(element.TagName);
 
             if (isRef)
                 _sb.AppendLine(indent + variableName + " = new " + tagName + "();");
@@ -217,10 +220,9 @@ namespace Square.Compiler.Emit
             foreach (var attribute in element.Attributes)
                 EmitAttribute(variableName, attribute, indent, localName);
 
-            if (isCustomComponent)
+            if (usesSlots)
             {
                 EmitComponentSlots(element, variableName, indent, localName);
-                _sb.AppendLine(indent + variableName + ".BuildElementTree();");
             }
             else if (!EmitTextContent(element, variableName, indent, localName))
                 EmitNodes(element.Children, indent, variableName, localName);
@@ -482,6 +484,7 @@ namespace Square.Compiler.Emit
             "select" => "Square.Controls.Select",
             "image" => "Square.Controls.Image",
             "canvas" => "Square.Controls.Canvas",
+            "titlebar" => "Square.Controls.TitleBar",
             "link" => "Square.Router.Link",
             "router" => "Square.Router.Router",
             _ => tag
@@ -489,7 +492,13 @@ namespace Square.Compiler.Emit
 
         private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "scrollviewer" or "popup" or "dialog" or
             "menubar" or "menu" or "contextmenu" or "menuitem" or "menuseparator" or "text" or "list" or "listitem" or "tree" or "treeitem" or "swiper" or
-            "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "link";
+            "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "titlebar" or "link";
+
+        private static bool IsTitleBar(string tag) =>
+            string.Equals(tag, "titlebar", StringComparison.OrdinalIgnoreCase);
+
+        private static bool RequiresBuildAfterAttach(string tag) =>
+            !IsBuiltInTag(tag) || IsTitleBar(tag);
 
         private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem" or "treeitem";
 

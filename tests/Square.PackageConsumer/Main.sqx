@@ -1,6 +1,6 @@
 <template>
   <View>
-    <Text>Package consumer</Text>
+    <Text text={Message} />
   </View>
 </template>
 <script lang="csharp" namespace="Square.PackageConsumer">

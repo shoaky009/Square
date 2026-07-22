@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Square.Compiler;
+using Square.Runtime.Binding;
 using Xunit;
 
 namespace Square.Compiler.Tests;
@@ -144,12 +145,41 @@ public class GeneratorDiagnosticsTests
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "SQX0007");
     }
 
+    [Fact]
+    public void CodeBehindPropParticipatesInValidation()
+    {
+        const string codeBehind = """
+            using Square.Runtime.Binding;
+            namespace TestApp;
+            public partial class RequiredCard
+            {
+                [Prop(Required = true)]
+                public ObservableValue<int> Count { get; } = new(0);
+            }
+            """;
+
+        var diagnostics = RunGeneratorWithSource(
+            codeBehind,
+            new InMemoryAdditionalText(
+                "RequiredCard.sqx",
+                "<template><View /></template><script namespace=\"TestApp\"></script>"),
+            new InMemoryAdditionalText("Usage.sqx", "<template><RequiredCard Count=\"bad\" /></template>"));
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "SQX0007");
+    }
+
     private static ImmutableArray<Diagnostic> RunGenerator(params AdditionalText[] files)
+        => RunGeneratorWithSource("public sealed class Placeholder { }", files);
+
+    private static ImmutableArray<Diagnostic> RunGeneratorWithSource(string source, params AdditionalText[] files)
     {
         var compilation = CSharpCompilation.Create(
             "GeneratorTests",
-            [CSharpSyntaxTree.ParseText("public sealed class Placeholder { }")],
-            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+            [CSharpSyntaxTree.ParseText(source)],
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(PropAttribute).Assembly.Location)
+            ],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             [new SqxGenerator().AsSourceGenerator()],

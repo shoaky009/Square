@@ -1,6 +1,7 @@
 using Square.Controls;
 using Square.Events;
 using Square.Graphics;
+using Square.Text;
 using Square.UI;
 
 namespace Square.Extensions.RichText;
@@ -8,7 +9,7 @@ namespace Square.Extensions.RichText;
 public sealed class RichTextEditor : UIElement, ITextEditor
 {
     private const float DefaultFontSize = 14f;
-    private const float Padding = 8f;
+    private const float DefaultPadding = 8f;
     private readonly RichTextEditorState _state;
     private bool _isDragging;
 
@@ -67,15 +68,16 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var contentWidth = float.IsFinite(availableSize.Width)
-            ? Math.Max(1, availableSize.Width - Padding * 2)
+            ? Math.Max(1, availableSize.Width - padding * 2)
             : float.PositiveInfinity;
         var layouts = BuildLayouts(font, lineHeight, new Point(0, 0), contentWidth);
         var width = layouts.Count == 0 ? 0 : layouts.Max(layout => layout.Bounds.Width);
         var height = layouts.Count == 0 ? lineHeight : layouts.Sum(layout => layout.Bounds.Height);
         return new Size(
-            ConstrainWidth(float.IsFinite(availableSize.Width) ? availableSize.Width : Math.Max(width + Padding * 2, MinWidth)),
-            ConstrainHeight(Math.Max(height + Padding * 2, MinHeight)));
+            ConstrainWidth(float.IsFinite(availableSize.Width) ? availableSize.Width : Math.Max(width + padding * 2, MinWidth)),
+            ConstrainHeight(Math.Max(height + padding * 2, MinHeight)));
     }
 
     public override void Paint(IRenderContext context)
@@ -87,14 +89,15 @@ public sealed class RichTextEditor : UIElement, ITextEditor
 
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var color = IsEnabled ? Color.Black : Color.FromRgb(125, 130, 136);
         var selectionBackground = GetSelectionColor("selection-background-color", "selection-background", SelectionBackground);
         var selectionForeground = GetSelectionColor("selection-color", null, SelectionForeground);
         var layouts = BuildLayouts(
             font,
             lineHeight,
-            new Point(Geometry.X + Padding, Geometry.Y + Padding),
-            Math.Max(1, Geometry.Width - Padding * 2));
+            new Point(Geometry.X + padding, Geometry.Y + padding),
+            Math.Max(1, Geometry.Width - padding * 2));
         for (var i = 0; i < layouts.Count; i++)
         {
             PaintBlock(context, layouts[i], color);
@@ -269,6 +272,14 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    public void CollapseSelectionToEnd()
+    {
+        var end = _state.Selection.End;
+        _state.SetSelection(RichTextSelection.Collapsed(end));
+        _isDragging = false;
+        InvalidatePaint();
+    }
+
     public bool DeleteSelection()
     {
         if (_state.Selection.IsCollapsed) return false;
@@ -313,11 +324,12 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var layouts = BuildLayouts(
             font,
             lineHeight,
-            new Point(Geometry.X + Padding, Geometry.Y + Padding),
-            Math.Max(1, Geometry.Width - Padding * 2));
+            new Point(Geometry.X + padding, Geometry.Y + padding),
+            Math.Max(1, Geometry.Width - padding * 2));
         var position = _state.Selection.Focus;
         var blockLayout = layouts[position.BlockIndex];
         var line = blockLayout.Lines[blockLayout.GetLineIndex(position.Offset)];
@@ -330,11 +342,12 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var layouts = BuildLayouts(
             font,
             lineHeight,
-            new Point(Geometry.X + Padding, Geometry.Y + Padding),
-            Math.Max(1, Geometry.Width - Padding * 2));
+            new Point(Geometry.X + padding, Geometry.Y + padding),
+            Math.Max(1, Geometry.Width - padding * 2));
         var position = _state.Selection.Focus;
         var blockLayout = layouts[position.BlockIndex];
         var lineIndex = blockLayout.GetLineIndex(position.Offset);
@@ -375,11 +388,12 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var layouts = BuildLayouts(
             font,
             lineHeight,
-            new Point(Geometry.X + Padding, Geometry.Y + Padding),
-            Math.Max(1, Geometry.Width - Padding * 2));
+            new Point(Geometry.X + padding, Geometry.Y + padding),
+            Math.Max(1, Geometry.Width - padding * 2));
         return GetCaretRect(layouts);
     }
 
@@ -454,11 +468,12 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     {
         var font = ResolveFont();
         var lineHeight = GetLineHeight(font);
+        var padding = ResolvePadding();
         var layouts = BuildLayouts(
             font,
             lineHeight,
-            new Point(Geometry.X + Padding, Geometry.Y + Padding),
-            Math.Max(1, Geometry.Width - Padding * 2));
+            new Point(Geometry.X + padding, Geometry.Y + padding),
+            Math.Max(1, Geometry.Width - padding * 2));
         var blockIndex = layouts.FindIndex(layout => point.Y <= layout.Bounds.Bottom);
         if (blockIndex < 0) blockIndex = layouts.Count - 1;
         return new RichTextPosition(blockIndex, layouts[blockIndex].HitTestOffset(point));
@@ -500,14 +515,34 @@ public sealed class RichTextEditor : UIElement, ITextEditor
 
     private Font ResolveFont()
     {
-        var size = DefaultFontSize;
-        var sizeCss = Style.GetPropertyValue("font-size");
-        if (sizeCss.EndsWith("px", StringComparison.OrdinalIgnoreCase))
-            float.TryParse(sizeCss[..^2], System.Globalization.CultureInfo.InvariantCulture, out size);
-        return new Font("sans-serif", size <= 0 ? DefaultFontSize : size);
+        return FontManager.Instance.FromCss(
+            Style.GetPropertyValue("font-family"),
+            Style.GetPropertyValue("font-size"),
+            Style.GetPropertyValue("font-weight"),
+            Style.GetPropertyValue("font-style"),
+            DefaultFontSize);
     }
 
-    private static float GetLineHeight(Font font) => font.Size * TextLayout.DefaultLineHeight;
+    private float GetLineHeight(Font font)
+    {
+        var value = Style.GetPropertyValue("line-height").Trim();
+        if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase) &&
+            float.TryParse(value[..^2], System.Globalization.CultureInfo.InvariantCulture, out var pixels) && pixels > 0)
+            return pixels;
+        if (float.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var multiplier) && multiplier > 0)
+            return font.Size * multiplier;
+        return font.Size * TextLayout.DefaultLineHeight;
+    }
+
+    private float ResolvePadding()
+    {
+        var value = Style.GetPropertyValue("padding").Trim();
+        if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+            value = value[..^2];
+        return float.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var padding) && padding >= 0
+            ? padding
+            : DefaultPadding;
+    }
 
     private static Color? ParseColor(string? value)
     {

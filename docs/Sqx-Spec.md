@@ -1,6 +1,6 @@
 # SQX 语言规范
 
-> Version: 0.3  
+> Version: 0.3
 > 配套：`Architecture.md`、`Requirements.md`
 
 ---
@@ -31,7 +31,43 @@
 
 Source Generator 将三段编译为同一个 `partial` 组件类。
 
-### 1.1 `<script>` 元数据
+### 1.1 代码后置
+
+模板可以配套一个同名 C# 代码后置文件：
+
+```text
+UserCard.sqx
+UserCard.sqx.cs
+
+Settings.sqv
+Settings.sqv.cs
+```
+
+代码后置声明与模板生成类型相同的 `partial` 类，可承载 Props、事件方法、生命周期方法和普通 C# 逻辑，从而替代大部分 `<script>` 内容：
+
+```csharp
+namespace MyApp.Components;
+
+public partial class UserCard
+{
+    [Prop(Required = true)]
+    public ObservableValue<string> Title { get; } = new("");
+
+    private void OnSave(Event e)
+    {
+        SaveButton.TextContent = Title.Value;
+    }
+}
+```
+
+- 代码后置是普通 SDK `Compile` 项，不在运行时加载或解析。
+- 命名空间必须匹配 `<script namespace="...">`，未指定时匹配项目 `RootNamespace`。
+- 类名必须匹配 `<script name="...">`，未指定时匹配模板文件名。
+- 声明必须使用 `partial`，通常不重复声明基类。
+- 模板 `<script>` 与代码后置可以共存。
+- 代码后置中的 `[Prop]` 同样参与必填与字面量类型检查。
+
+### 1.2 `<script>` 元数据
 
 文件级组件元数据统一声明在唯一的 `<script>` 标签上：
 
@@ -54,7 +90,7 @@ Source Generator 将三段编译为同一个 `partial` 组件类。
 
 通常应沿用文件名和项目命名空间，只在确有需要时覆盖。样式级元数据属于 `<style>`，例如未来的 `<style scoped>`，不放在 `<script>` 上。
 
-### 1.2 section 约束与诊断
+### 1.3 section 约束与诊断
 
 | 规则 | 建议诊断 |
 |---|---|

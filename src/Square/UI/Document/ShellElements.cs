@@ -15,14 +15,21 @@ public sealed class UIRootElement : UIElement
     }
 }
 
-/// <summary>文档头 <c>Head</c>：元数据与自定义标题栏扩展点；本阶段不参与布局绘制。</summary>
+/// <summary>文档头 <c>Head</c>：自定义标题栏宿主。</summary>
 public sealed class UIHeadElement : UIElement
 {
     /// <inheritdoc />
     public override string TagName => "Head";
 
     /// <inheritdoc />
-    public override Size Measure(Size availableSize) => Size.Zero;
+    public override Size Measure(Size availableSize)
+    {
+        if (Children.Count == 0) return Size.Zero;
+        var height = 0f;
+        foreach (var child in Children)
+            height = Math.Max(height, child.Measure(availableSize).Height);
+        return new Size(availableSize.Width, height);
+    }
 
     /// <inheritdoc />
     public override void Paint(IRenderContext ctx) { }

@@ -3,18 +3,33 @@ using System.Runtime.InteropServices;
 namespace Square.Platform.Win32;
 
 internal delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
 internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
 internal static partial class Win32Api
 {
     public const int WS_OVERLAPPEDWINDOW = 0x00CF0000;
+    public const int WS_POPUP = unchecked((int)0x80000000);
+    public const int WS_BORDER = 0x00800000;
+    public const int WS_CAPTION = 0x00C00000;
+    public const int WS_SYSMENU = 0x00080000;
+    public const int WS_THICKFRAME = 0x00040000;
+    public const int WS_MINIMIZEBOX = 0x00020000;
+    public const int WS_MAXIMIZEBOX = 0x00010000;
     public const int WS_VISIBLE = 0x10000000;
     public const int SW_SHOW = 5;
+    public const int SW_MINIMIZE = 6;
+    public const int SW_MAXIMIZE = 3;
+    public const int SW_RESTORE = 9;
     public const int WM_CLOSE = 0x0010;
     public const int WM_DESTROY = 0x0002;
     public const int WM_PAINT = 0x000F;
     public const int WM_SETCURSOR = 0x0020;
+    public const int WM_MOUSEACTIVATE = 0x0021;
+    public const int WM_NCCALCSIZE = 0x0083;
+    public const int WM_NCHITTEST = 0x0084;
     public const int WM_SIZE = 0x0005;
+    public const int WM_SYSCOMMAND = 0x0112;
     public const int WM_DPICHANGED = 0x02E0;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_LBUTTONUP = 0x0202;
@@ -37,8 +52,27 @@ internal static partial class Win32Api
     public const uint SWP_NOACTIVATE = 0x0010;
     public const int UNICODE_NOCHAR = 0xFFFF;
     public const int HTCLIENT = 1;
+    public const int HTCAPTION = 2;
+    public const int HTLEFT = 10;
+    public const int HTRIGHT = 11;
+    public const int HTTOP = 12;
+    public const int HTTOPLEFT = 13;
+    public const int HTTOPRIGHT = 14;
+    public const int HTBOTTOM = 15;
+    public const int HTBOTTOMLEFT = 16;
+    public const int HTBOTTOMRIGHT = 17;
+    public const int MA_ACTIVATE = 1;
+    public const int SIZE_RESTORED = 0;
+    public const int SIZE_MINIMIZED = 1;
+    public const int SIZE_MAXIMIZED = 2;
+    public const int SC_MOVE = 0xF010;
     public const int IDC_ARROW = 32512;
     public const int IDC_IBEAM = 32513;
+    public const int SM_CXSIZEFRAME = 32;
+    public const int SM_CXPADDEDBORDER = 92;
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    public const int DWMWCP_DONOTROUND = 1;
+    public const int DWMWCP_ROUND = 2;
     public const int VK_SHIFT = 0x10;
     public const int VK_CONTROL = 0x11;
     public const int VK_MENU = 0x12;
@@ -56,7 +90,18 @@ internal static partial class Win32Api
     [LibraryImport("user32.dll", EntryPoint = "GetDpiForWindow")]
     public static partial uint GetDpiForWindow(IntPtr hWnd);
 
-    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport("user32.dll", EntryPoint = "GetSystemMetricsForDpi")]
+    public static partial int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
+    public static partial int DwmSetWindowAttribute(
+        IntPtr hWnd,
+        int dwAttribute,
+        ref int pvAttribute,
+        int cbAttribute);
+
+    [LibraryImport("user32.dll", SetLastError = true, EntryPoint = "CreateWindowExW",
+        StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr CreateWindowEx(
         int dwExStyle, string lpClassName, string lpWindowName,
         int dwStyle, int x, int y, int nWidth, int nHeight,
@@ -73,6 +118,9 @@ internal static partial class Win32Api
     [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("user32.dll", EntryPoint = "SetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial bool SetWindowText(IntPtr hWnd, string lpString);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetActiveWindow")]
+    public static partial IntPtr SetActiveWindow(IntPtr hWnd);
 
     [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
@@ -96,6 +144,9 @@ internal static partial class Win32Api
 
     [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
     public static partial IntPtr DefWindowProc(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    public static partial IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [LibraryImport("user32.dll", EntryPoint = "GetDC")]
     public static partial IntPtr GetDC(IntPtr hWnd);

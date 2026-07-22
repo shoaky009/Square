@@ -4,11 +4,8 @@ namespace Square.UI;
 /// Square 应用文档：固定 <c>UI</c> / <c>Head</c> / <c>Body</c> 壳。
 /// <see cref="Document.DocumentElement"/> 为只读的 <c>UI</c> 根；应用内容挂在 <see cref="Body"/> 下。
 /// </summary>
-public sealed class UIDocument : Document
+internal sealed class UIDocument : Document
 {
-    private static readonly Dictionary<string, Func<Element>> ElementFactories =
-        new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>文档根元素 <c>UI</c>（即 documentElement）。</summary>
     public UIRootElement Ui { get; }
 
@@ -17,6 +14,12 @@ public sealed class UIDocument : Document
 
     /// <summary>文档体：窗口客户区内容宿主（对齐 HTML <c>body</c>）。</summary>
     public UIBodyElement Body { get; }
+
+    /// <summary>文档独立的调度、协调和 Store 上下文。</summary>
+    public UIContext Context { get; } = new();
+
+    /// <summary>承载此文档的应用窗口；未绑定到桌面宿主时为 null。</summary>
+    public Square.Hosting.AppWindow? AppWindow { get; internal set; }
 
     /// <summary>创建带 UI/Head/Body 壳的空文档。</summary>
     public UIDocument()
@@ -32,20 +35,10 @@ public sealed class UIDocument : Document
     /// <summary>
     /// 注册标签名到工厂（AOT 友好；供 <see cref="CreateElement(string)"/> 使用）。
     /// </summary>
-    public static void RegisterElement(string tagName, Func<Element> factory)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tagName);
-        ArgumentNullException.ThrowIfNull(factory);
-        ElementFactories[tagName] = factory;
-    }
-
     /// <summary>按标签名创建元素（对齐 <c>document.createElement</c>；须先注册）。</summary>
     public Element CreateElement(string tagName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tagName);
-        if (!ElementFactories.TryGetValue(tagName, out var factory))
-            throw new InvalidOperationException($"Unknown element tag '{tagName}'. Register it with UIDocument.RegisterElement.");
-        var element = factory();
+        var element = ElementRegistry.Create(tagName);
         AssignOwnerDocument(element);
         return element;
     }
@@ -62,6 +55,8 @@ public sealed class UIDocument : Document
     public void Build()
     {
         AssignOwnerDocument(Ui);
+        foreach (var child in Head.Children)
+            child.BuildElementTree();
         foreach (var child in Body.Children)
             child.BuildElementTree();
     }

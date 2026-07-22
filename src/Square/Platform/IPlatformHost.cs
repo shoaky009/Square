@@ -1,4 +1,6 @@
 using Square.Graphics;
+using Square.Hosting;
+
 namespace Square.Platform;
 
 public interface IPlatformHost : IDisposable
@@ -6,6 +8,7 @@ public interface IPlatformHost : IDisposable
     Size ClientSize { get; }
     float DpiScale { get; }
     bool IsRunning { get; }
+    AppWindowState State => AppWindowState.Normal;
     string Title { get; set; }
     CursorKind Cursor { get; set; }
     KeyModifiers Modifiers { get; }
@@ -17,9 +20,42 @@ public interface IPlatformHost : IDisposable
     event Action<string>? TextInput;
     event Action? Tick;
 
+    event Action<AppWindowState>? StateChanged
+    {
+        add { }
+        remove { }
+    }
+
+    event Action? Closed
+    {
+        add { }
+        remove { }
+    }
+
     void Show();
-    void ShowAfterFirstFrame() { }
+
+    void ShowAfterFirstFrame()
+    {
+    }
+
     void Close();
+
+    void Minimize()
+    {
+    }
+
+    void Maximize()
+    {
+    }
+
+    void Restore()
+    {
+    }
+
+    void BeginMove()
+    {
+    }
+
     IRenderContext CreateRenderContext();
     void PumpEvents();
     void SetTextInputRect(Rect rect);
@@ -27,11 +63,41 @@ public interface IPlatformHost : IDisposable
     void SetClipboardText(string text);
 }
 
-public enum MouseAction { Down, Up, Move, Wheel }
-public enum KeyAction { Down, Up }
-public enum CursorKind { Arrow, Text }
+public enum MouseAction
+{
+    Down,
+    Up,
+    Move,
+    Wheel
+}
+
+public enum KeyAction
+{
+    Down,
+    Up
+}
+
+public enum CursorKind
+{
+    Arrow,
+    Text
+}
+
+public enum AppWindowState
+{
+    Normal,
+    Minimized,
+    Maximized
+}
+
 [Flags]
-public enum KeyModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
+public enum KeyModifiers
+{
+    None = 0,
+    Shift = 1,
+    Control = 2,
+    Alt = 4
+}
 
 public interface IPlatformFactory
 {
@@ -50,4 +116,6 @@ public sealed class PlatformHostCreateInfo
     public int Width { get; set; } = 800;
     public int Height { get; set; } = 600;
     public string RenderBackend { get; set; } = "Software";
+    public TitleStyle TitleStyle { get; set; } = TitleStyle.System;
+    public BorderStyle BorderStyle { get; set; } = BorderStyle.Resizable;
 }

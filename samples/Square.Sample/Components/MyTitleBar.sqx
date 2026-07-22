@@ -1,0 +1,51 @@
+<template>
+  <TitleBar class="app-title-bar">
+    <Text slot="icon" class="app-title-icon" text="S" />
+    <Text class="app-title" text="Square Framework" />
+    <View slot="control" class="app-title-actions">
+      <Button class="app-title-button" text="-" onClick={Minimize} />
+      <Button class="app-title-button" text="[]" onClick={ToggleMaximize} />
+      <Button class="app-title-button app-title-close" text="X" onClick={Close} />
+    </View>
+  </TitleBar>
+</template>
+
+<style>
+  .app-title-bar {
+    height: 38px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 12px;
+    background: #20242a;
+  }
+
+  .app-title {
+    color: #ffffff;
+    font-size: 14px;
+  }
+
+  .app-title-icon {
+    width: 28px;
+    color: #7dd3fc;
+    font-size: 16px;
+  }
+
+  .app-title-actions {
+    display: flex;
+    flex-direction: row;
+    height: 38px;
+  }
+
+  .app-title-button {
+    width: 46px;
+    height: 38px;
+    background: #20242a;
+    color: #ffffff;
+  }
+
+  .app-title-close {
+    background: #b3261e;
+  }
+</style>

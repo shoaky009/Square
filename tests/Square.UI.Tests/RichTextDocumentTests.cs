@@ -1,5 +1,6 @@
 using System;
 using Square.Extensions.RichText;
+using Square.Text;
 using Square.Extensions;
 using Square.Controls;
 using Square.Rendering;
@@ -409,6 +410,58 @@ public class RichTextDocumentTests
         editor.ToggleUnderline();
 
         Assert.Equal(3, inputEvents);
+    }
+
+    [Fact]
+    public void RichTextEditorCanCollapseSelectionToEnd()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("hello"));
+        editor.SelectAll();
+
+        editor.CollapseSelectionToEnd();
+
+        Assert.Equal(0, editor.SelectionLength);
+        Assert.Equal(5, editor.CaretIndex);
+    }
+
+    [Fact]
+    public void RichTextEditorResolvesGenericCssFontLikeNormalText()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("hello"));
+        editor.Style.Set("font-family", "sans-serif");
+        editor.Style.Set("font-size", "16px");
+        editor.Style.Set("font-weight", "700");
+        editor.Style.Set("font-style", "italic");
+        var resolveFont = typeof(RichTextEditor).GetMethod(
+            "ResolveFont",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        var font = Assert.IsType<Square.Graphics.Font>(resolveFont.Invoke(editor, null));
+        var expected = FontManager.Instance.FromCss("sans-serif", "16px", "700", "italic", 14);
+
+        Assert.Equal(expected.Family, font.Family);
+        Assert.Equal(expected.Size, font.Size);
+        Assert.Equal(expected.Weight, font.Weight);
+        Assert.Equal(expected.Style, font.Style);
+    }
+
+    [Fact]
+    public void RichTextEditorMeasureUsesCssPadding()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("hello"));
+        editor.Style.Set("font-size", "16px");
+        editor.Style.Set("padding", "18px");
+
+        var measured = editor.Measure(new Square.Graphics.Size(float.PositiveInfinity, float.PositiveInfinity));
+        var font = FontManager.Instance.FromCss(null, "16px", null, null, 14);
+        var expectedTextWidth = RichTextLayoutEngine.LayoutBlock(
+            editor.Document.Blocks[0],
+            font,
+            Square.Graphics.Point.Zero,
+            float.PositiveInfinity,
+            font.Size * Square.Graphics.TextLayout.DefaultLineHeight).Bounds.Width;
+
+        Assert.Equal(expectedTextWidth + 36, measured.Width);
     }
 
     [Fact]

@@ -75,23 +75,16 @@ cd MyApp
 
 ```csharp
 using Square.Hosting;
-using Square.Platform;
-using Square.Platform.Win32;
 
-PlatformRegistry.Register(new Win32PlatformFactory());
+var window = new AppWindow("My First App", 600, 400);
+window.Load(new Main());
 
-var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
-{
-    Title = "My First App",
-    Width = 600,
-    Height = 400
-});
-app.Run();
+new DesktopApplication(window).Run();
 ```
 
-Linux/X11 项目将平台引用和注册类型替换为 `Square.Platform.X11` / `X11PlatformFactory`。
+Windows 项目引用 `Square.Platform.Win32`，Linux 项目引用 `Square.Platform.X11`。平台包自动注册默认宿主，不需要在 `Program.cs` 中调用 `PlatformRegistry.Register(...)`。
 
-`Main` 是由 `Main.sqx` 在编译期生成的组件类。`DesktopApplication` 负责窗口创建、消息循环、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染。
+`Main` 是由 `Main.sqx` 在编译期生成的组件类。`AppWindow` 负责窗口内容、尺寸、标题栏和渲染配置；`DesktopApplication` 负责应用生命周期和消息循环。
 
 ---
 
@@ -677,7 +670,7 @@ dotnet build -p:SquareEmitCompilerGeneratedFiles=true
 | `PLATFORM_X11` | X11 窗口宿主 |
 | `BACKEND_SOFTWARE` | 纯 C# 软件渲染器 |
 
-`DesktopApplication` 在 `RunCore()` 内注册默认软件后端和控件。具体平台位于独立程序集，应用必须在 `app.Run()` 前通过 `PlatformRegistry.Register(...)` 注册 `Win32PlatformFactory` 或 `X11PlatformFactory`。
+`DesktopApplication` 在运行时注册默认软件后端和控件。具体平台位于独立程序集，引用 `Square.Platform.Win32` 或 `Square.Platform.X11` 后会自动成为默认平台；高级宿主仍可通过 `PlatformRegistry.Register(...)` 显式覆盖。
 
 ### 15.4 启用 DevTools
 

@@ -4,11 +4,11 @@ namespace Square.DevTools;
 
 public static class DevToolsApplicationExtensions
 {
-    public static DevToolsServer UseDevToolsServer(this DesktopApplication application, DevToolsOptions? options = null)
+    public static DevToolsServer UseDevToolsServer(this AppWindow window, DevToolsOptions? options = null)
     {
-        ArgumentNullException.ThrowIfNull(application);
-        var server = DevToolsServer.Start(application, options);
-        application.Exited += server.Dispose;
+        ArgumentNullException.ThrowIfNull(window);
+        var server = DevToolsServer.Start(window, options);
+        window.Closed += server.Dispose;
         return server;
     }
 }

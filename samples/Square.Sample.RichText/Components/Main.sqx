@@ -1,40 +1,26 @@
 <template>
   <View class="app-shell">
-    <View class="title-row">
-      <View class="title-copy">
-        <Text class="app-title" text="RichText Editor" />
-        <Text class="app-subtitle" text="Square.Extensions editing surface" />
+    <View class="status-row">
+      <View class="page-heading">
+        <Text class="eyebrow" text="SQUARE EXTENSIONS" />
+        <Text class="app-subtitle" text="Rich text editing workspace" />
       </View>
       <Text ref={StatusLabel} class="status" text="Ready" />
     </View>
 
-    <View class="toolbar">
-      <Button class="tool-button" onClick={OnUndo}>Undo</Button>
-      <Button class="tool-button" onClick={OnRedo}>Redo</Button>
-      <View class="divider" />
-      <Button class="tool-button strong" onClick={OnBold}>B</Button>
-      <Button class="tool-button italic" onClick={OnItalic}>I</Button>
-      <Button class="tool-button underline" onClick={OnUnderline}>U</Button>
-      <Button class="tool-button" onClick={OnClearFormatting}>Clear style</Button>
-      <View class="divider" />
-      <Button class="color-blue" onClick={OnBlue}>Blue</Button>
-      <Button class="color-red" onClick={OnRed}>Red</Button>
-      <Button class="color-green" onClick={OnGreen}>Green</Button>
-      <View class="divider" />
-      <Button class="tool-button" onClick={OnSelectAll}>Select all</Button>
-      <Button class="tool-button" onClick={OnCopyRich}>Copy rich</Button>
-      <Button class="tool-button" onClick={OnPasteRich}>Paste rich</Button>
-      <Button class="tool-button" onClick={OnLoadSample}>Load sample</Button>
-      <Button class="tool-button danger" onClick={OnClear}>Clear</Button>
-    </View>
-
     <View class="workspace">
       <View class="editor-pane">
-        <Text class="pane-label" text="Document" />
+        <View class="pane-heading">
+          <Text class="pane-label" text="DOCUMENT" />
+          <Text class="pane-hint" text="Select text, then use the title-bar menus" />
+        </View>
         <RichTextEditor ref={Editor} class="rich-editor" onInput={OnEditorInput} />
       </View>
       <View class="preview-pane">
-        <Text class="pane-label" text="Plain text output" />
+        <View class="pane-heading">
+          <Text class="pane-label" text="PLAIN TEXT" />
+          <Text class="pane-hint" text="Live document projection" />
+        </View>
         <View class="preview-scroll">
           <Text ref={PreviewText} class="preview-text" text="" />
         </View>
@@ -50,51 +36,52 @@
   {
     base.OnAttachedCore();
     LoadSample();
+    SetStatus("Ready");
   }
 
-  private void OnUndo()
+  internal void OnUndo()
   {
     SetStatus(Editor.Undo() ? "Undo applied" : "Nothing to undo");
     RefreshInspector();
   }
 
-  private void OnRedo()
+  internal void OnRedo()
   {
     SetStatus(Editor.Redo() ? "Redo applied" : "Nothing to redo");
     RefreshInspector();
   }
 
-  private void OnBold()
+  internal void OnBold()
   {
     Editor.ToggleBold();
     SetStatus("Bold toggled");
     RefreshInspector();
   }
 
-  private void OnItalic()
+  internal void OnItalic()
   {
     Editor.ToggleItalic();
     SetStatus("Italic toggled");
     RefreshInspector();
   }
 
-  private void OnUnderline()
+  internal void OnUnderline()
   {
     Editor.ToggleUnderline();
     SetStatus("Underline toggled");
     RefreshInspector();
   }
 
-  private void OnClearFormatting()
+  internal void OnClearFormatting()
   {
     Editor.ClearFormatting();
     SetStatus("Formatting cleared");
     RefreshInspector();
   }
 
-  private void OnBlue() => ApplyColor("#175cd3", "Blue applied");
-  private void OnRed() => ApplyColor("#b42318", "Red applied");
-  private void OnGreen() => ApplyColor("#067647", "Green applied");
+  internal void OnBlue() => ApplyColor("#175cd3", "Blue applied");
+  internal void OnRed() => ApplyColor("#b42318", "Red applied");
+  internal void OnGreen() => ApplyColor("#067647", "Green applied");
 
   private void ApplyColor(string color, string status)
   {
@@ -103,14 +90,14 @@
     RefreshInspector();
   }
 
-  private void OnSelectAll()
+  internal void OnSelectAll()
   {
     Editor.SelectAll();
     SetStatus("Document selected");
     RefreshInspector();
   }
 
-  private void OnCopyRich()
+  internal void OnCopyRich()
   {
     if (Editor.SelectionLength == 0)
     {
@@ -121,7 +108,7 @@
     SetStatus("Rich fragment copied to demo buffer");
   }
 
-  private void OnPasteRich()
+  internal void OnPasteRich()
   {
     if (string.IsNullOrEmpty(_richClipboard))
     {
@@ -132,7 +119,7 @@
     RefreshInspector();
   }
 
-  private void OnLoadSample()
+  internal void OnLoadSample()
   {
     LoadSample();
     SetStatus("Sample loaded");
@@ -140,13 +127,14 @@
 
   private void LoadSample()
   {
-    Editor.PlainText = "Square RichText Editor\n\nSelect any text and apply formatting from the toolbar.\nThe editor supports multiple paragraphs, soft wrapping, pointer selection, undo and redo.\n\n中文、English and full-width characters can be edited together.";
+    Editor.PlainText = "Square RichText Editor\n\nSelect any text and apply formatting from the title-bar menus.\nThe editor supports multiple paragraphs, soft wrapping, pointer selection, undo and redo.\n\n中文、English and full-width characters can be edited together.";
     Editor.SelectAll();
     Editor.ClearFormatting();
+    Editor.CollapseSelectionToEnd();
     RefreshInspector();
   }
 
-  private void OnClear()
+  internal void OnClear()
   {
     Editor.PlainText = "";
     SetStatus("Document cleared");
@@ -164,7 +152,7 @@
     PreviewText.TextContent = Editor.PlainText;
     SelectionText.TextContent = Editor.SelectionLength == 0
       ? "Selection: none"
-      : "Selection: " + Editor.SelectionLength + " chars - " + Editor.SelectedText;
+      : "Selection: " + Editor.SelectionLength + " characters";
   }
 
   private void SetStatus(string text)
@@ -173,31 +161,21 @@
   }
 </script>
 <style>
-  .app-shell { display: flex; flex-direction: column; gap: 12px; padding: 18px; background: #eef1f4; overflow: hidden; }
-  .title-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
-  .title-copy { display: flex; flex-direction: column; gap: 2px; }
-  .app-title { color: #15181c; font-size: 24px; font-weight: 700; }
-  .app-subtitle { color: #667085; font-size: 13px; }
-  .status { color: #344054; font-size: 13px; background: #ffffff; padding: 6px 10px; border: 1px solid #d0d5dd; }
-  .toolbar { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px; background: #ffffff; border: 1px solid #d0d5dd; overflow-x: auto; overflow-y: hidden; }
-  .toolbar Button { height: 34px; flex-shrink: 0; background: #ffffff; color: #344054; border: 1px solid #d0d5dd; }
-  .toolbar Button:hover { background: #f2f4f7; }
-  .tool-button { min-width: 42px; }
-  .strong { font-weight: 700; }
-  .italic { font-style: italic; }
-  .underline { color: #101828; }
-  .divider { width: 1px; height: 26px; flex-shrink: 0; background: #d0d5dd; margin-left: 4px; margin-right: 4px; }
-  .color-blue { background: #175cd3; color: #ffffff; border: 1px solid #175cd3; }
-  .color-red { background: #b42318; color: #ffffff; border: 1px solid #b42318; }
-  .color-green { background: #067647; color: #ffffff; border: 1px solid #067647; }
-  .danger { color: #b42318; }
-  .workspace { display: flex; flex-direction: row; gap: 12px; height: 100vh; min-height: 0; flex-grow: 1; align-items: stretch; }
-  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex: 2 1 0; min-width: 0; min-height: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; overflow: hidden; }
-  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-width: 0; min-height: 0; padding: 12px; background: #ffffff; border: 1px solid #d0d5dd; overflow: hidden; }
-  .pane-label { color: #475467; font-size: 12px; font-weight: 700; }
-  .rich-editor { min-height: 180px; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-size: 16px; color: #101828; background: #ffffff; }
+  .app-shell { display: flex; flex-direction: column; width: 100%; height: 100%; gap: 14px; padding: 22px; background: #e8edf4; overflow: hidden; }
+  .status-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+  .page-heading { display: flex; flex-direction: column; gap: 3px; }
+  .eyebrow { color: #2563a8; font-size: 11px; font-weight: 700; }
+  .app-subtitle { color: #344054; font-size: 18px; font-weight: 700; }
+  .status { color: #175b45; font-size: 12px; background: #dff6ec; padding: 7px 12px; border: 1px solid #a7dfcb; }
+  .workspace { display: flex; flex-direction: row; gap: 16px; min-height: 0; flex-grow: 1; align-items: stretch; }
+  .editor-pane { display: flex; flex-direction: column; gap: 10px; flex: 2 1 0; min-width: 0; min-height: 0; padding: 16px; background: #f8fafc; border: 1px solid #c9d3e0; overflow: hidden; }
+  .preview-pane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-width: 0; min-height: 0; padding: 16px; background: #f3f6fa; border: 1px solid #c9d3e0; overflow: hidden; }
+  .pane-heading { display: flex; flex-direction: column; gap: 2px; }
+  .pane-label { color: #172033; font-size: 12px; font-weight: 700; }
+  .pane-hint { color: #7b8798; font-size: 11px; }
+  .rich-editor { min-height: 180px; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-size: 16px; color: #101828; background: #ffffff; border: 1px solid #d7dee8; padding: 18px; }
   .rich-editor::selection { background: #3390ff; color: #ffffff; }
   .preview-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; align-self: stretch; overflow-y: auto; overflow-x: hidden; }
-  .preview-text { min-width: 0; align-self: stretch; color: #344054; font-size: 14px; line-height: 22px; user-select: text; }
-  .selection-text { height: 52px; min-width: 0; flex-shrink: 0; align-self: stretch; color: #667085; font-size: 12px; background: #f2f4f7; padding: 8px; overflow: hidden; }
+  .preview-text { min-width: 0; align-self: stretch; color: #3d4b5f; font-size: 14px; line-height: 23px; user-select: text; }
+  .selection-text { height: 54px; min-width: 0; flex-shrink: 0; align-self: stretch; color: #526174; font-size: 12px; background: #e6ebf2; padding: 9px; border: 1px solid #d2dae5; overflow: hidden; }
 </style>
