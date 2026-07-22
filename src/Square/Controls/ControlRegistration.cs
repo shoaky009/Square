@@ -40,5 +40,14 @@ public static class ControlRegistration
         ElementRegistry.Register("UI", static () => new UIRootElement());
         ElementRegistry.Register("Head", static () => new UIHeadElement());
         ElementRegistry.Register("Body", static () => new UIBodyElement());
+        ElementRegistry.Register("svg", static () => new Square.UI.Svg.SVGSVGElement());
+        ElementRegistry.Register("g", static () => new Square.UI.Svg.SVGGElement());
+        ElementRegistry.Register("path", static () => new Square.UI.Svg.SVGPathElement());
+        ElementRegistry.Register("rect", static () => new Square.UI.Svg.SVGRectElement());
+        ElementRegistry.Register("circle", static () => new Square.UI.Svg.SVGCircleElement());
+        ElementRegistry.Register("ellipse", static () => new Square.UI.Svg.SVGEllipseElement());
+        ElementRegistry.Register("line", static () => new Square.UI.Svg.SVGLineElement());
+        ElementRegistry.Register("polyline", static () => new Square.UI.Svg.SVGPolylineElement());
+        ElementRegistry.Register("polygon", static () => new Square.UI.Svg.SVGPolygonElement());
     }
 }

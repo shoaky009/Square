@@ -75,11 +75,11 @@ Backend + Platform host (Software/Win32/X11/...)
 | `Square.Compiler` | Roslyn Incremental Generator，`.sqx`/`.sqv` -> C# | `AdditionalText` 输入；Props 校验；诊断映射；扫描 `SqxDirective` 元数据构建指令目录 |
 | `Square.Runtime` | 应用基类、Dispatcher、状态与绑定原语、指令元数据 | `ObservableValue<T>`、`ObservableCollection<T>`、`Signal<T>`、`SqxDirectiveAttribute` |
 | `Square.Events` | DOM 风格事件模型 | `EventTarget`、`Event`、`addEventListener`、`dispatchEvent`、捕获/冒泡路径 |
-| `Square.UI` | DOM 化文档树与 UI 元素基础 | `Node`、`Document`、`UIDocument`、`Element`、`UIElement`、Shell、Range/Selection、Reconciler、属性与样式访问器 |
+| `Square.UI` | DOM 化文档树与 UI 元素基础 | `Node`、`Document`、`UIDocument`、`XMLDocument`、`SVGDocument`、`Element`、`UIElement`、SVG DOM、Shell、Range/Selection、Reconciler |
 | `Square.Controls` | 内置控件、指令声明、基础动画 | View/Text/Button/Input/TextArea/CheckBox/Radio/Select/Image/Canvas 等；`Show`/`For`/`Switch`/`Match`/`Slot` 指令标记 |
 | `Square.CSS` | CSS 解析、选择器、级联、主题、动画协调 | Selector/Cascade/Specificity/Var/Inheritance/Pseudo；`ThemeProvider`；`CssAnimationManager`；`CssStyleReconciler` |
 | `Square.Rendering` | 布局、DisplayTree、DrawCommand、文本片段 | Box/Flex/Grid 布局；脏节点更新；命中测试；`TextFragment` 字符级命中 |
-| `Square.Graphics` | 绘图抽象与图像编解码 | `IRenderContext`、`IRenderBackendFactory`、Color/Rect/Font/Image/Path；PNG 编码与 BMP 转换 |
+| `Square.Graphics` | 绘图抽象与图像编解码 | `IRenderContext`、`IRenderBackendFactory`、Color/Rect/Font/Image/Path；`SvgImage`；PNG 编码与 BMP 转换 |
 | `Square.Backends` | 软件渲染后端与后端注册 | 纯托管 BGRA 软件渲染；脏区 Present；像素/裁剪缓存与批量填充优化 |
 | `Square.Platform` | 平台宿主抽象与实现 | `IPlatformHost`、Win32、X11、截图；P/Invoke 使用 `LibraryImport` |
 | `Square.Hosting` | 桌面应用组合层 | `DesktopApplication`、`RenderMode`、`RenderDecision`、`RenderDiagnostics` |
@@ -103,17 +103,22 @@ EventTarget
   -> Node
        -> Document
             -> UIDocument
+            -> XMLDocument
+                 -> SVGDocument
        -> Element
             -> UIElement
                  -> UIRootElement   TagName "UI"
                  -> UIHeadElement   TagName "Head"
                  -> UIBodyElement   TagName "Body"
                  -> View, Text, Button, Input, ...
-            -> HTMLElement          reserved abstract placeholder
-            -> SVGElement           reserved abstract placeholder
+             -> HTMLElement          reserved abstract placeholder
+             -> SVGElement
+                  -> SVGSVGElement, SVGGElement, SVGPathElement, ...
 ```
 
 `Node` 提供 `OwnerDocument`、`ParentNode`、`ParentElement`、`NodeTypeValue`、`NodeName` 与事件路径父级。`Element` 承载 DOM 风格身份和 Square 的保留模式扩展：`TagName`、`Id`、`ClassList`、`Style`、`ChildNodes`、`Children`、`Geometry`、`Measure`、`Arrange`、`Paint`、`HitTest`、脏标记与生命周期。
+
+内联 `<svg>` 是嵌入文档根：`SVGSVGElement.SvgDocument` 管理 SVG 子树，`ContentType` 为 `image/svg+xml`。模板编译器直接生成浏览器式 SVG 元素类型；SVGDocument 负责内部查询、样式继承、变换、viewBox 与绘制，宿主 UIDocument 仅负责根 SVG 的布局。
 
 ### 4.2 UIDocument 壳
 

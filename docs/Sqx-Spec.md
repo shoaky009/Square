@@ -122,6 +122,10 @@ public partial class UserCard
 | `Select` | 下拉选择 |
 | `Image` | 图片 |
 | `Canvas` | 画布 |
+| `svg` | 内联 SVG 根元素；创建独立 `SVGDocument` |
+| `g` | SVG 分组、样式继承和变换 |
+| `path` / `rect` / `circle` / `ellipse` | SVG 路径与基础图形 |
+| `line` / `polyline` / `polygon` | SVG 线段和点集图形 |
 | `MenuBar` / `Menu` / `ContextMenu` | 顶级菜单栏、弹出菜单与命令式上下文菜单 |
 | `MenuItem` / `MenuSeparator` | 菜单命令、Check/Radio 项、子菜单入口与分隔线 |
 
@@ -129,7 +133,40 @@ public partial class UserCard
 
 命名：PascalCase 控件类型（C# 习惯），`.sqx` 内标签同名。
 
-### 2.2 自定义组件
+SVG 标签使用与浏览器一致的小写名称。模板编译器将它们直接映射到 `Square.UI.Svg` 下的 `SVGSVGElement`、`SVGGElement`、`SVGPathElement` 等类型。SVG 子树不是自定义组件，不使用 Slot，也不调用运行时模板解析。
+
+### 2.2 内联 SVG
+
+```xml
+<svg viewBox="0 0 120 80" width="120" height="80">
+  <g transform="translate(8 8)" fill="#2b78ee">
+    <rect x="0" y="0" width="104" height="64" rx="10" />
+    <circle cx="52" cy="32" r="16" fill="#ffffff" />
+    <path d="M 44 32 L 50 38 L 62 24"
+          fill="none" stroke="#152241" stroke-width="4" />
+  </g>
+</svg>
+```
+
+支持的元素：
+
+- `svg`、`g`
+- `path`、`rect`、`circle`、`ellipse`
+- `line`、`polyline`、`polygon`
+
+支持的主要属性：
+
+- 视口：`viewBox`、`width`、`height`
+- 几何：`x`、`y`、`rx`、`ry`、`cx`、`cy`、`r`、`x1`、`y1`、`x2`、`y2`、`points`、`d`
+- 绘制：`fill`、`stroke`、`stroke-width`、`opacity`、`fill-opacity`、`stroke-opacity`
+- 变换：`translate`、`scale`、`rotate`、`matrix`
+- `style` 中的对应 SVG presentation 属性
+
+这些属性同样支持 SQX 表达式绑定；SQV 中可使用 `:fill="Color"`、`:r="Radius"` 等 Vue 风格绑定。每个 `SVGSVGElement` 持有 `SvgDocument`，其类型为 `SVGDocument : XMLDocument`，`ContentType` 为 `image/svg+xml`。
+
+当前限制：不支持 SVG 脚本、动画、滤镜、mask、gradient、text、外部资源、`use`、`defs`、嵌入 raster image 和路径 `A/a` 圆弧命令。
+
+### 2.3 自定义组件
 
 任何 `.sqx` 文件即一个组件。组件类型名默认取文件名，也可由唯一 `<script name="MyComponent">` 覆盖。
 
@@ -139,7 +176,7 @@ public partial class UserCard
 <MyComponent Title={PageTitle} Count={ItemCount} />
 ```
 
-### 2.3 结构原语（编译期处理，非运行时组件）
+### 2.4 结构原语（编译期处理，非运行时组件）
 
 | 原语 | 用途 |
 |---|---|
@@ -150,7 +187,7 @@ public partial class UserCard
 
 详见 §6。
 
-### 2.4 插槽与组件内容
+### 2.5 插槽与组件内容
 
 自定义组件使用 `<Slot>` 接收调用处的子节点。未指定 `slot` 的直接子节点进入默认插槽：
 

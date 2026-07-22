@@ -7,4 +7,7 @@
 *.sh text eol=lf
 *.glsl text eol=lf
 *.png binary
+*.gif binary
+*.webp binary
+*.bgra binary
 *.nupkg binary

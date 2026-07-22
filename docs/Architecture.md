@@ -62,7 +62,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
 | `Square.Compiler` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
 | `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
-| `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`、属性 | Element Tree；Style/ClassList/Children；HTMLElement/SVGElement 占位；Reconciler 批量更新 |
+| `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`/`XMLDocument`/`SVGDocument`、属性 | UI Element Tree；嵌入 SVG DOM；Style/ClassList/Children；Reconciler 批量更新 |
 | `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
 | `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；Animation；Theme；M1 子集 |
@@ -76,6 +76,8 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |
 
 **依赖方向**：`Square.Compiler` 在编译期生成组件；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（逻辑依赖）；具体 Platform/Backend 项目依赖核心抽象。核心层禁止反向依赖具体 Backend/Platform 实现。`Square.Hosting` 是聚合层，应用在启动前通过 `PlatformRegistry` 注册所引用的平台工厂。
+
+内联 SVG 使用嵌入文档边界：宿主 `UIDocument` 只布局 `SVGSVGElement` 根盒；根元素持有 `SVGDocument : XMLDocument`，SVG 内部元素的 `OwnerDocument` 指向该 SVGDocument。根元素将 SVG 子树递归编译为现有 Geometry/Path/Transform 绘制命令，因此 Software 与 Vulkan 后端不需要单独理解 SVG DOM。
 
 ---
 

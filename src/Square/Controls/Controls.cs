@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Diagnostics;
 using System.Text;
 using Square.Events;
 using Square.Graphics;
@@ -859,23 +860,81 @@ public class Dialog : Popup
 
 public class Image : UIElement, ITextSelectable
 {
+    private IImageFrameSource? _frameSource;
+    private Bitmap? _sourceSurface;
+    private CancellationTokenSource? _loadCancellation;
+    private int _loadVersion;
+    private int _frameIndex;
+    private int _completedPlays;
+    private TimeSpan _remainingFrameDelay;
+    private long _frameDeadline;
+    private bool _frameScheduled;
+
     public string Source { get => GetProperty<string>(nameof(Source)) ?? ""; set => SetProperty(nameof(Source), value); }
     public Square.Graphics.Image? ImageContent { get => GetProperty<Square.Graphics.Image>(nameof(ImageContent)); set => SetProperty(nameof(ImageContent), value); }
+    public Exception? Error { get; private set; }
 
     public string SelectableText => Source;
     public Rect SelectableTextBounds => string.IsNullOrEmpty(Source)
         ? Rect.Empty
         : ControlDrawing.GetTextBounds(this, Source, 12f, new Point(Geometry.X + 8, Geometry.Y + 8));
 
-    public override Size Measure(Size availableSize) => ImageContent == null
+    private Square.Graphics.Image? DisplayImage => _sourceSurface ?? ImageContent;
+
+    public override Size Measure(Size availableSize) => DisplayImage == null
         ? new Size(160, 96)
-        : new Size(ImageContent.Width, ImageContent.Height);
+        : new Size(DisplayImage.Width, DisplayImage.Height);
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(Source)) BeginSourceLoad();
+        else if (name == nameof(ImageContent))
+        {
+            if (ImageContent != null)
+            {
+                ++_loadVersion;
+                CancelPendingLoad();
+                DisposeLoadedSource();
+            }
+            else if (!string.IsNullOrWhiteSpace(Source)) BeginSourceLoad();
+        }
+    }
+
+    protected override void OnAttachedCore()
+    {
+        base.OnAttachedCore();
+        if (_frameSource == null && ImageContent == null && !string.IsNullOrWhiteSpace(Source)) BeginSourceLoad();
+        else ResumeAnimation();
+    }
+
+    protected override void OnDetachedCore()
+    {
+        CancelPendingLoad();
+        DisposeLoadedSource();
+        base.OnDetachedCore();
+    }
+
+    protected override void OnIsVisibleChanged(bool isVisible)
+    {
+        base.OnIsVisibleChanged(isVisible);
+        if (isVisible) ResumeAnimation();
+        else PauseAnimation();
+    }
 
     public override void Paint(IRenderContext ctx)
     {
-        if (ImageContent != null)
+        AdvanceAnimationIfDue();
+        var image = DisplayImage;
+        if (image is VectorImage vectorImage)
         {
-            ctx.DrawImage(ImageContent, Geometry);
+            vectorImage.Draw(ctx, Geometry);
+            return;
+        }
+
+        if (image != null)
+        {
+            ctx.DrawImage(image, Geometry);
             return;
         }
 
@@ -887,6 +946,155 @@ public class Image : UIElement, ITextSelectable
         ctx.DrawRect(Geometry, Pen.FromColor(Color.FromRgb(150, 155, 160)));
         if (!string.IsNullOrEmpty(Source))
             ControlDrawing.DrawText(ctx, this, Source, new Point(Geometry.X + 8, Geometry.Y + 8), Color.FromRgb(80, 85, 90), 12f);
+    }
+
+    private void BeginSourceLoad()
+    {
+        var version = ++_loadVersion;
+        CancelPendingLoad();
+        DisposeLoadedSource();
+        Error = null;
+        InvalidateLayout();
+
+        var source = Source;
+        if (!IsAttached || ImageContent != null || string.IsNullOrWhiteSpace(source)) return;
+
+        var cancellation = new CancellationTokenSource();
+        _loadCancellation = cancellation;
+        _ = LoadSourceAsync(source, version, cancellation.Token);
+    }
+
+    private async Task LoadSourceAsync(string source, int version, CancellationToken cancellationToken)
+    {
+        IImageFrameSource? loaded = null;
+        try
+        {
+            loaded = await ImageSourceLoaderRegistry.LoadAsync(source, cancellationToken).ConfigureAwait(false);
+            var dispatcher = Dispatcher;
+            if (dispatcher == null)
+            {
+                loaded.Dispose();
+                return;
+            }
+
+            await dispatcher.InvokeAsync(() =>
+            {
+                if (version != _loadVersion || cancellationToken.IsCancellationRequested || !IsAttached)
+                {
+                    loaded.Dispose();
+                    return;
+                }
+
+                ApplyLoadedSource(loaded);
+                loaded = null;
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            loaded?.Dispose();
+        }
+        catch (Exception exception)
+        {
+            loaded?.Dispose();
+            var dispatcher = Dispatcher;
+            if (dispatcher == null) return;
+            await dispatcher.InvokeAsync(() =>
+            {
+                if (version != _loadVersion || cancellationToken.IsCancellationRequested || !IsAttached) return;
+                Error = exception;
+                InvalidatePaint();
+                DispatchEvent(new Event("loaderror", new EventInit { Bubbles = true }));
+            }).ConfigureAwait(false);
+        }
+    }
+
+    private void ApplyLoadedSource(IImageFrameSource source)
+    {
+        DisposeLoadedSource();
+        _frameSource = source;
+        _sourceSurface = new Bitmap(source.Width, source.Height);
+        _frameIndex = 0;
+        _completedPlays = 0;
+        CopyCurrentFrame();
+        Error = null;
+        InvalidateLayout();
+        DispatchEvent(new Event("load", new EventInit { Bubbles = true }));
+        ResumeAnimation();
+    }
+
+    private void CopyCurrentFrame()
+    {
+        if (_frameSource == null || _sourceSurface == null) return;
+        _sourceSurface.CopyPixelsFrom(_frameSource.GetFrame(_frameIndex));
+    }
+
+    private void ResumeAnimation()
+    {
+        if (!CanAnimate() || _frameScheduled) return;
+        var delay = _remainingFrameDelay > TimeSpan.Zero
+            ? _remainingFrameDelay
+            : NormalizeFrameDelay(_frameSource!.GetFrameDuration(_frameIndex));
+        _remainingFrameDelay = TimeSpan.Zero;
+        _frameDeadline = Stopwatch.GetTimestamp() + ToStopwatchTicks(delay);
+        _frameScheduled = true;
+        DispatchEvent(StandardEvents.CreateRequestFrame(delay));
+    }
+
+    private void PauseAnimation()
+    {
+        if (!_frameScheduled) return;
+        var ticks = Math.Max(0, _frameDeadline - Stopwatch.GetTimestamp());
+        _remainingFrameDelay = TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency);
+        _frameScheduled = false;
+    }
+
+    private void AdvanceAnimationIfDue()
+    {
+        if (!_frameScheduled || Stopwatch.GetTimestamp() < _frameDeadline) return;
+        _frameScheduled = false;
+        if (!CanAnimate()) return;
+
+        if (_frameIndex + 1 < _frameSource!.FrameCount)
+        {
+            _frameIndex++;
+        }
+        else
+        {
+            _completedPlays++;
+            if (_frameSource.PlayCount > 0 && _completedPlays >= _frameSource.PlayCount) return;
+            _frameIndex = 0;
+        }
+
+        CopyCurrentFrame();
+        ResumeAnimation();
+    }
+
+    private bool CanAnimate() => IsAttached && IsVisible && _frameSource is { FrameCount: > 1 };
+
+    private static TimeSpan NormalizeFrameDelay(TimeSpan delay) =>
+        delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(10);
+
+    private static long ToStopwatchTicks(TimeSpan delay) =>
+        Math.Max(0, (long)Math.Ceiling(delay.TotalSeconds * Stopwatch.Frequency));
+
+    private void CancelPendingLoad()
+    {
+        var cancellation = Interlocked.Exchange(ref _loadCancellation, null);
+        if (cancellation == null) return;
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private void DisposeLoadedSource()
+    {
+        PauseAnimation();
+        _frameSource?.Dispose();
+        _frameSource = null;
+        _sourceSurface?.Dispose();
+        _sourceSurface = null;
+        _frameIndex = 0;
+        _completedPlays = 0;
+        _remainingFrameDelay = TimeSpan.Zero;
     }
 }
 

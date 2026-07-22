@@ -264,6 +264,13 @@ DisplayTree  -> custom View canvas
 
 SVG 属于 DisplayTree 导出，不属于平台宿主或原生 UI adapter。
 
+这里的“SVG”特指将任意 Square `DisplayTree` 导出为 `.svg` 文件的 exporter，该能力仍在规划中。它与已经实现的两项 SVG 能力不同：
+
+- `Square.UI.Svg`：SQX/SQV 模板中的内联 SVG DOM，由 `SVGDocument : XMLDocument` 管理并在应用内绘制。
+- `Square.Graphics.Svg.SvgImage`：从 SVG 文件、流或字符串加载的静态矢量图片资源。
+
+内联 SVG 和 `SvgImage` 都是输入/显示能力；`Square.Export.Svg` 则是把任意 Square 绘制结果转换为 SVG 的输出能力。
+
 ```text
 DisplayTree
   -> SvgDisplayTreeExporter

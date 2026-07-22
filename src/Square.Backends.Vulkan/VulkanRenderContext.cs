@@ -487,8 +487,20 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
             var (ax, ay) = _atlas.Allocate(bitmap.Width, bitmap.Height);
 
             _atlas.WriteBgraRegion(ax, ay, bitmap.Width, bitmap.Height, bitmap.Pixels);
-            cached = new CachedImage { AtlasX = ax, AtlasY = ay, Width = bitmap.Width, Height = bitmap.Height };
+            cached = new CachedImage
+            {
+                AtlasX = ax,
+                AtlasY = ay,
+                Width = bitmap.Width,
+                Height = bitmap.Height,
+                ContentVersion = bitmap.ContentVersion
+            };
             _imageCache.Add(bitmap, cached);
+        }
+        else if (cached.ContentVersion != bitmap.ContentVersion)
+        {
+            _atlas.WriteBgraRegion(cached.AtlasX, cached.AtlasY, cached.Width, cached.Height, bitmap.Pixels);
+            cached.ContentVersion = bitmap.ContentVersion;
         }
 
         var (u0, v0, u1, v1) = _atlas.GetUV(cached.AtlasX, cached.AtlasY, cached.Width, cached.Height);
@@ -976,6 +988,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private sealed class CachedImage
     {
         public int AtlasX, AtlasY, Width, Height;
+        public long ContentVersion;
     }
 
     private CachedGlyph? GetOrRasterizeGlyph(Font font, char ch)

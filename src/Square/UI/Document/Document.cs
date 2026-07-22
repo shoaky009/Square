@@ -119,10 +119,20 @@ public abstract class Document : Node
     /// <summary>递归设置子树 <see cref="Node.OwnerDocument"/>。</summary>
     internal void AssignOwnerDocument(Node node)
     {
+        if (node is IEmbeddedDocumentRoot embedded && embedded.EmbeddedDocument is { } document && !ReferenceEquals(this, document))
+        {
+            document.AssignOwnerDocument(node);
+            return;
+        }
         node.OwnerDocument = this;
         if (node is not Element element) return;
         foreach (var child in element.ChildNodes)
             AssignOwnerDocument(child);
+    }
+
+    internal interface IEmbeddedDocumentRoot
+    {
+        Document? EmbeddedDocument { get; }
     }
 
     private static T? FindById<T>(Element node, string id) where T : Element

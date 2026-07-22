@@ -484,6 +484,15 @@ namespace Square.Compiler.Emit
             "select" => "Square.Controls.Select",
             "image" => "Square.Controls.Image",
             "canvas" => "Square.Controls.Canvas",
+            "svg" => "Square.UI.Svg.SVGSVGElement",
+            "g" => "Square.UI.Svg.SVGGElement",
+            "path" => "Square.UI.Svg.SVGPathElement",
+            "rect" => "Square.UI.Svg.SVGRectElement",
+            "circle" => "Square.UI.Svg.SVGCircleElement",
+            "ellipse" => "Square.UI.Svg.SVGEllipseElement",
+            "line" => "Square.UI.Svg.SVGLineElement",
+            "polyline" => "Square.UI.Svg.SVGPolylineElement",
+            "polygon" => "Square.UI.Svg.SVGPolygonElement",
             "titlebar" => "Square.Controls.TitleBar",
             "link" => "Square.Router.Link",
             "router" => "Square.Router.Router",
@@ -492,7 +501,8 @@ namespace Square.Compiler.Emit
 
         private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "scrollviewer" or "popup" or "dialog" or
             "menubar" or "menu" or "contextmenu" or "menuitem" or "menuseparator" or "text" or "list" or "listitem" or "tree" or "treeitem" or "swiper" or
-            "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "titlebar" or "link";
+            "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "titlebar" or "link" or
+            "svg" or "g" or "path" or "rect" or "circle" or "ellipse" or "line" or "polyline" or "polygon";
 
         private static bool IsTitleBar(string tag) =>
             string.Equals(tag, "titlebar", StringComparison.OrdinalIgnoreCase);
@@ -502,7 +512,7 @@ namespace Square.Compiler.Emit
 
         private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem" or "treeitem";
 
-        private static string MapPropName(string name) => name switch
+        private static string MapPropName(string name) => name.ToLowerInvariant() switch
         {
             "text" => "TextContent",
             "value" => "Value",
@@ -528,6 +538,29 @@ namespace Square.Compiler.Emit
             "background" => "Background",
             "underline" => "Underline",
             "type" => "Type",
+            "viewbox" => "ViewBox",
+            "x" => "X",
+            "y" => "Y",
+            "width" => "Width",
+            "height" => "Height",
+            "rx" => "RadiusX",
+            "ry" => "RadiusY",
+            "cx" => "CenterX",
+            "cy" => "CenterY",
+            "r" => "Radius",
+            "x1" => "X1",
+            "y1" => "Y1",
+            "x2" => "X2",
+            "y2" => "Y2",
+            "points" => "Points",
+            "d" => "Data",
+            "transform" => "Transform",
+            "fill" => "Fill",
+            "stroke" => "Stroke",
+            "stroke-width" => "StrokeWidth",
+            "opacity" => "Opacity",
+            "fill-opacity" => "FillOpacity",
+            "stroke-opacity" => "StrokeOpacity",
             _ => name
         };
 

@@ -146,6 +146,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         {
             if (_isVisible == value) return;
             _isVisible = value;
+            OnIsVisibleChanged(value);
             InvalidateLayout();
         }
     }
@@ -166,6 +167,9 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
 
     /// <summary>交互/伪类状态变化扩展点。</summary>
     protected virtual void OnStateChanged(ElementState flag, bool on) { }
+
+    /// <summary>可见性变化扩展点。</summary>
+    protected virtual void OnIsVisibleChanged(bool isVisible) { }
 
     /// <summary>是否包含指定状态标志（Square 扩展）。</summary>
     public bool HasState(ElementState flag) => State.Has(flag);
@@ -534,7 +538,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     }
 
     /// <summary>仅标记绘制失效（Square 扩展）。</summary>
-    public void InvalidatePaint()
+    public virtual void InvalidatePaint()
     {
         _needsPaint = true;
     }

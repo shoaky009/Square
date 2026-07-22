@@ -77,6 +77,36 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvInlineSvgLowersToSvgDomElements()
+    {
+        const string source = """
+            <template>
+              <svg viewBox="0 0 100 100" width="100" height="100">
+                <g transform="translate(5 10)" fill="#123456">
+                  <rect x="0" y="0" width="20" height="10" />
+                  <circle cx="50" cy="50" r="10" stroke="red" stroke-width="2" />
+                  <path d="M0 0 L10 10 Z" fill-opacity="0.5" />
+                </g>
+              </svg>
+            </template>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("InlineSvg.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new Square.UI.Svg.SVGSVGElement()", generated);
+        Assert.Contains("new Square.UI.Svg.SVGGElement()", generated);
+        Assert.Contains("new Square.UI.Svg.SVGRectElement()", generated);
+        Assert.Contains("new Square.UI.Svg.SVGCircleElement()", generated);
+        Assert.Contains("new Square.UI.Svg.SVGPathElement()", generated);
+        Assert.Contains("SetProperty(\"ViewBox\", \"0 0 100 100\")", generated);
+        Assert.Contains("SetProperty(\"StrokeWidth\", 2)", generated);
+        Assert.Contains("SetProperty(\"FillOpacity\", \"0.5\")", generated);
+        Assert.DoesNotContain("new svg", generated);
+        Assert.DoesNotContain(".Slots.Set", generated);
+    }
+
+    [Fact]
     public void SqvScrollViewerLowersToBuiltInControl()
     {
         const string source = """

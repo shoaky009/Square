@@ -1,0 +1,46 @@
+{
+  "fixtures": [
+    {
+      "file": "animation.gif",
+      "sha256": "79144be19dcdb36c43df3b593933518dd6aa032f39a4316f1fb6859e0c2acba4",
+      "frames": [
+        {
+          "golden": "animation.gif.frame0.bgra",
+          "durationMilliseconds": 50
+        },
+        {
+          "golden": "animation.gif.frame1.bgra",
+          "durationMilliseconds": 120
+        }
+      ]
+    },
+    {
+      "file": "animation.apng",
+      "sha256": "cb9a846809f011d51bf16606033897b1e3009c8acbda656ff557664e4f0fea90",
+      "frames": [
+        {
+          "golden": "animation.apng.frame0.bgra",
+          "durationMilliseconds": 50
+        },
+        {
+          "golden": "animation.apng.frame1.bgra",
+          "durationMilliseconds": 120
+        }
+      ]
+    },
+    {
+      "file": "animation.webp",
+      "sha256": "8d7f9532efc647eacc582e93653a052fe4bbc4ddd5a8922858bc77dbfdb20c62",
+      "frames": [
+        {
+          "golden": "animation.webp.frame0.bgra",
+          "durationMilliseconds": 40
+        },
+        {
+          "golden": "animation.webp.frame1.bgra",
+          "durationMilliseconds": 90
+        }
+      ]
+    }
+  ]
+}

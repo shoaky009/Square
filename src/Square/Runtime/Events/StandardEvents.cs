@@ -110,6 +110,9 @@ public static class StandardEvents
     public static FrameRequestEvent CreateRequestFrame(double framesPerSecond = 60d) =>
         new(framesPerSecond);
 
+    /// <summary>创建带精确延迟的 requestframe 帧请求事件（Square 扩展）。</summary>
+    public static FrameRequestEvent CreateRequestFrame(TimeSpan delay) => new(delay);
+
     private static EventInit BubblingCancelable() => new() { Bubbles = true, Cancelable = true };
     private static EventInit Bubbling() => new() { Bubbles = true, Cancelable = false };
     private static EventInit None() => new() { Bubbles = false, Cancelable = false };

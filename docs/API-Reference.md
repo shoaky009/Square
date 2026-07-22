@@ -613,7 +613,7 @@ public sealed class Range
 
 最小 DOM Range 模型，用于文本选择。边界点按文档顺序比较，支持祖先/兄弟关系判定。
 
-### HTMLElement / SVGElement（占位）
+### HTMLElement / XMLDocument / SVGElement
 
 ```csharp
 namespace Square.UI;
@@ -623,11 +623,23 @@ public abstract class HTMLElement : Element
     public override string? NamespaceURI => "http://www.w3.org/1999/xhtml";
 }
 
+public abstract class XMLDocument : Document
+{
+    public string ContentType { get; }
+    public string XmlVersion { get; set; }
+    public string XmlEncoding { get; set; }
+    public bool XmlStandalone { get; set; }
+}
+
+namespace Square.UI.Svg;
+
 public abstract class SVGElement : Element
 {
     public override string? NamespaceURI => "http://www.w3.org/2000/svg";
 }
 ```
+
+`HTMLElement` 目前仍是 HTML DOM 扩展点。`SVGElement` 已用于真实 SVG DOM；具体元素及 `SVGDocument` 见“SVGDocument 与模板 SVG”。
 
 ### UIElement
 
@@ -992,8 +1004,15 @@ public class Image : UIElement
 {
     public string Source { get; set; }
     public Square.Graphics.Image? ImageContent { get; set; }
+    public Exception? Error { get; }
 }
 ```
+
+`Source` 通过 `ImageSourceLoaderRegistry` 异步解析。核心 `Square` 只定义 `IImageFrameSource`、`IImageSourceLoader` 和注册表；引用 `Square.Images` 后会注册本地文件加载器。相对路径按进程当前工作目录解析，目前不支持 HTTP(S)、data URI 或嵌入资源。
+
+通过 `Source` 加载的图片资源由控件拥有，改变 `Source` 或卸载控件会取消旧请求并释放旧文档。动画在控件挂载且可见时自动播放，隐藏时暂停并从剩余帧时长恢复。成功派发冒泡的 `load`，失败设置只读 `Error` 并派发冒泡的 `loaderror`；失败不会在 UI Dispatcher 上抛出。
+
+`ImageContent` 仍可直接接收调用方管理的 `Bitmap` 或 `VectorImage`，不会转移所有权。手动内容优先显示并禁用 `Source` 自动加载，此时 `Source` 仅作为替代文本；清空 `ImageContent` 后会重新加载非空 `Source`。
 
 ### Canvas
 
@@ -1011,6 +1030,8 @@ public class Canvas : UIElement
 ```
 
 `RequestFrame()` 通过 `StandardEvents.RequestFrame` 冒泡并合并，`DesktopApplication` 在 Tick 中检查调度帧并触发重绘。
+
+`FrameRequestEvent` 同时支持 FPS 构造和精确 `TimeSpan` 延迟。图片动画使用精确延迟，以保留不规则或长帧时长。
 
 ### ITextEditor / TextEditorBase
 
@@ -1355,6 +1376,70 @@ public static class BitmapPngEncoder
 
 输出 8 位 RGBA PNG（IHDR + zlib 压缩 IDAT + IEND），纯 C# 实现，含 CRC32 校验。
 
+### SvgImage
+
+```csharp
+namespace Square.Graphics.Svg;
+
+public sealed class SvgImage : VectorImage
+{
+    public static SvgImage Load(string path);
+    public static SvgImage Load(Stream stream);
+    public static SvgImage Parse(string svg);
+}
+```
+
+`SvgImage` 是核心 `Square.Graphics` 中的纯 C# 静态 SVG 实现，可直接赋给 `Square.Controls.Image.ImageContent`。当前支持 `svg`、`g`、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`，以及 `viewBox`、基础变换、填充、描边、透明度和内联 `style`。路径支持直线、三次贝塞尔和二次贝塞尔命令；脚本、外部资源、滤镜、文本、渐变和动画暂不支持。
+
+```csharp
+using var icon = SvgImage.Load("icon.svg");
+image.ImageContent = icon;
+```
+
+SVG 通过现有矢量绘制命令渲染，不依赖反射、动态代码或原生库，支持 trimming 和 NativeAOT。PNG、JPEG、GIF、WebP 等其他图片格式归属独立的 `Square.Images` 模块。
+
+### SVGDocument 与模板 SVG
+
+```csharp
+namespace Square.UI;
+
+public abstract class XMLDocument : Document
+{
+    public string ContentType { get; }
+    public string XmlVersion { get; set; }
+    public string XmlEncoding { get; set; }
+    public bool XmlStandalone { get; set; }
+}
+
+namespace Square.UI.Svg;
+
+public sealed class SVGDocument : XMLDocument;
+public abstract class SVGElement : Element;
+public sealed class SVGSVGElement : SVGElement;
+public sealed class SVGGElement : SVGElement;
+public sealed class SVGPathElement : SVGElement;
+public sealed class SVGRectElement : SVGElement;
+public sealed class SVGCircleElement : SVGElement;
+public sealed class SVGEllipseElement : SVGElement;
+public sealed class SVGLineElement : SVGElement;
+public sealed class SVGPolylineElement : SVGElement;
+public sealed class SVGPolygonElement : SVGElement;
+```
+
+SQX 与 SQV 模板可以直接声明 SVG DOM：
+
+```xml
+<svg viewBox="0 0 100 100" width="100" height="100">
+  <g transform="translate(10 10)" fill="#2b78ee">
+    <rect x="0" y="0" width="80" height="80" rx="8" />
+    <circle cx="40" cy="40" r="18" fill="#ffffff" />
+    <path d="M 25 40 L 36 51 L 58 29" fill="none" stroke="#152241" stroke-width="5" />
+  </g>
+</svg>
+```
+
+模板编译器将标签直接生成为 `Square.UI.Svg` 下对应的浏览器式 SVG 元素类型。每个根 `SVGSVGElement` 持有独立的 `SvgDocument`，该文档继承 `XMLDocument`，`ContentType` 为 `image/svg+xml`，并管理 SVG 内部节点、查询、样式继承、变换、viewBox 与渲染。宿主 UI 文档仅负责根 `<svg>` 的盒布局。
+
 ### BmpPngConverter
 
 ```csharp
@@ -1371,6 +1456,160 @@ public static class BmpPngConverter
 |---|---|
 | `Convert(bmpPath, pngPath)` | 读取 BMP 并写出为 PNG |
 | `LoadBmp(path)` | 加载非压缩 24/32 位 BMP 为 `Bitmap`（自上而下/自下而上均支持） |
+
+### Square.Images.ImageDecoder
+
+`Square.Images` 是独立可选包，不由核心 `Square` 反向依赖。包加载时会向核心 `ImageSourceLoaderRegistry` 注册本地文件加载器，使 `<Image source="...">` 能直接显示并播放支持的格式。
+
+```csharp
+namespace Square.Images;
+
+public static class ImageDecoder
+{
+    public static ImageDocument Decode(string path, ImageDecoderOptions? options = null);
+    public static ImageDocument Decode(Stream stream, ImageDecoderOptions? options = null);
+    public static ImageDocument Decode(ReadOnlySpan<byte> data, ImageDecoderOptions? options = null);
+}
+
+public sealed class ImageDocument : IDisposable
+{
+    public ImageFormat Format { get; }
+    public ImageDocumentKind Kind { get; }
+    public IReadOnlyList<ImageItem> Items { get; }
+    public int PrimaryIndex { get; }
+    public ImageItem PrimaryItem { get; }
+    public Bitmap PrimaryBitmap { get; }
+    public ImageAnimationInfo? Animation { get; }
+    public ImageMetadata Metadata { get; }
+    public bool IsDisposed { get; }
+
+    public Bitmap GetBitmap(int index);
+}
+
+public sealed class ImageItem
+{
+    public int Index { get; }
+    public int Width { get; }
+    public int Height { get; }
+    public int BitDepth { get; }
+    public int SourceBitDepth { get; }
+    public TimeSpan Duration { get; }
+    public Point? Hotspot { get; }
+}
+
+public sealed class ImageAnimationInfo
+{
+    public bool LoopsForever { get; }
+    public int PlayCount { get; }
+    public TimeSpan TotalDuration { get; }
+}
+
+public sealed class ImageMetadata
+{
+    public ImageOrientation OriginalOrientation { get; }
+    public bool OrientationApplied { get; }
+}
+
+public sealed class ImageDecoderOptions
+{
+    public int MaxWidth { get; init; }
+    public int MaxHeight { get; init; }
+    public long MaxPixelCount { get; init; }
+    public long MaxDecodedBytes { get; init; }
+    public long MaxEncodedBytes { get; init; }
+    public int MaxChunkBytes { get; init; }
+    public int MaxItemCount { get; init; }
+    public long MaxTotalDecodedBytes { get; init; }
+    public long MaxMetadataBytes { get; init; }
+    public int MaxExifTagCount { get; init; }
+    public int MaxIfdDepth { get; init; }
+    public PngCrcPolicy PngCrcPolicy { get; init; }
+    public ExifOrientationPolicy ExifOrientationPolicy { get; init; }
+}
+
+public enum PngCrcPolicy
+{
+    AllChunks,
+    CriticalChunksOnly,
+    Ignore
+}
+
+public enum ExifOrientationPolicy
+{
+    Apply,
+    Ignore
+}
+
+public enum ImageDocumentKind
+{
+    Still,
+    Animation,
+    Pages,
+    Variants
+}
+```
+
+解码器按文件签名自动识别格式，不依赖扩展名。`ImageDocument` 统一表示单张图片、动画、页面集合和尺寸变体；所有已解码像素均为 top-down、紧密排列、straight-alpha BGRA `Bitmap`。
+
+`ImageDocument` 拥有其全部位图。调用方不应单独释放 `PrimaryBitmap` 或 `GetBitmap(index)` 的返回值；释放文档会统一释放所有项目位图。
+
+自动控件加载：
+
+```xml
+<Image source="Assets/animation.webp" />
+```
+
+手动解码：
+
+```csharp
+using var document = ImageDecoder.Decode("photo.jpg");
+image.ImageContent = document.PrimaryBitmap;
+```
+
+当前格式支持：
+
+| 格式 | 文档类型 | 支持范围 |
+|---|---|---|
+| PNG/APNG | `Still` / `Animation` | PNG 灰度、RGB、indexed、Alpha、Adam7；APNG `acTL`/`fcTL`/`fdAT`、帧矩形、时长、循环、source/over blend 和 dispose none/background/previous |
+| JPEG | `Still` | 8 位基线顺序 JPEG、灰度和 YCbCr、Huffman、采样与 Exif Orientation |
+| BMP | `Still` | Windows BMP，未压缩 24 位 BGR 和 32 位 BGRA，top-down / bottom-up |
+| GIF | `Still` / `Animation` | GIF87a/GIF89a 全部帧；完整逻辑画布合成、时长、循环、透明索引、全局/局部调色板、交错、12 位 LZW、disposal 0–3 |
+| ICO | `Variants` | 全部目录变体；1/4/8/24/32 位 BMP 嵌入和 PNG 嵌入；主变体选择 |
+| CUR | `Variants` | ICO 同类变体解码，并公开热点 |
+| WebP | `Still` / `Animation` | 静态 VP8L 与 VP8X `ANIM`/`ANMF` 内嵌 VP8L 无损动画；帧矩形、时长、循环、blend 和 dispose-to-background |
+| TIFF | `Pages` | Classic TIFF 42，大小端，多 IFD 页面，未压缩 Strip，1/8 位灰度、Palette、8 位 RGB/RGBA、ExtraSamples Alpha 与页面 Orientation |
+
+GIF、APNG 和动画 WebP 的每个 `ImageItem` 都是完整画布的合成快照。`Duration` 是该帧原始时长；`ImageAnimationInfo.PlayCount` 表示总播放次数，`LoopsForever` 表示无限循环。
+
+```csharp
+using var animation = ImageDecoder.Decode("animation.gif");
+
+foreach (var frame in animation.Items)
+{
+    Bitmap bitmap = animation.GetBitmap(frame.Index);
+    TimeSpan duration = frame.Duration;
+}
+```
+
+ICO/CUR 中的项目是尺寸/位深变体，不是动画帧。`PrimaryIndex` 按像素面积优先、源位深次优选择；CUR 的 `Hotspot` 非空。
+
+```csharp
+using var icon = ImageDecoder.Decode("app.ico");
+Bitmap preferred = icon.PrimaryBitmap;
+
+foreach (var variant in icon.Items)
+    Console.WriteLine($"{variant.Width}x{variant.Height}, {variant.SourceBitDepth} bit");
+```
+
+JPEG Exif Orientation 默认应用到像素。`Metadata.OriginalOrientation` 保留文件原始值，`Metadata.OrientationApplied` 表示是否发生方向变换。设置 `ExifOrientationPolicy.Ignore` 可保留原始像素方向。
+
+TIFF 每个 IFD 页面对应一个 `ImageItem`，页面可具有不同尺寸、源位深和 Orientation。页面元数据位于 `ImageItem.Metadata`，文档级 `Metadata` 对应主页面。当前 TIFF 仅支持 Chunky、未压缩 Strip；LZW、Deflate、PackBits、Tile、Planar Separate、CMYK、YCbCr、Lab 和 BigTIFF 尚未支持。
+
+WebP 当前支持静态 `VP8L` 和 `ANIM`/`ANMF` 内嵌 VP8L 无损动画，并保留完全透明像素的 RGB 分量。VP8 lossy、独立 `ALPH` chunk 和动画有损帧仍会作为尚未支持的格式拒绝。
+
+解码限制分别覆盖编码输入、单项目尺寸与内存、文档项目数、全部项目累计解码内存，以及 Exif 元数据大小、标签数和 IFD 深度。
+
+实现只使用 BCL `ZLibStream` 和显式格式分派，无反射、动态代码、native library 或运行时 codec discovery，支持 trimming 与 NativeAOT。
 
 ---
 
@@ -1958,12 +2197,15 @@ private void OnClick(Event e) { }
 | `Square.Runtime.Signals` | `Signal<T>`, `SignalHub` |
 | `Square.Events` | `EventTarget`, `Event`, `EventInit`, `EventPhase`, `StandardEvents`, `FrameRequestEvent` |
 | `Square.Directives` | `SqxDirectiveAttribute`（编译期指令发现） |
-| `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
+| `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `XMLDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SlotCollection`, `RenderFragment` |
+| `Square.UI.Svg` | `SVGDocument`, `SVGElement`, `SVGSVGElement`, `SVGGElement`, `SVGPathElement`, `SVGRectElement`, `SVGCircleElement`, `SVGEllipseElement`, `SVGLineElement`, `SVGPolylineElement`, `SVGPolygonElement` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
 | `Square.Controls` | `View`, `ScrollViewer`, `List`, `ListItem`, `Tree`, `TreeItem`, `Swiper`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
 | `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `Bitmap`, `RenderBackendRegistry` |
+| `Square.Graphics.Svg` | `SvgImage` |
+| `Square.Images` | `ImageDecoder`, `ImageDocument`, `ImageItem`, `ImageAnimationInfo`, `ImageMetadata`, `ImageDecoderOptions`, `ImageFormat`, `ImageDocumentKind`, `ImageOrientation`, `ExifOrientationPolicy`, `PngCrcPolicy` |
 | `Square.Graphics.Codecs` | `BitmapPngEncoder`, `BmpPngConverter`, `Crc32` |
 | `Square.Rendering` | `LayoutEngine`, `ComputedStyle`, `DisplayMode`, `FlexDirection`, `DisplayTree`, `DisplayNode`, `TextFragment`, `TextCharacterFragment` |
 | `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `IPlatformScreenshotProvider`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformScreenshot` |

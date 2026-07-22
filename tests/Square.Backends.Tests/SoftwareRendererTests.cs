@@ -4,6 +4,8 @@ using Square.Backends;
 using Square.Controls;
 using Square.Extensions.RichText;
 using Square.Graphics;
+using Square.Graphics.Svg;
+using Square.UI.Svg;
 using Square.Rendering;
 using Square.Text.Glyph;
 using Square.UI;
@@ -18,6 +20,64 @@ public class SoftwareRendererTests
     {
         var bmp = new Bitmap(w, h);
         return new RenderContext(bmp, 1f);
+    }
+
+    [Fact]
+    public void RendersSvgImageThroughImageControl()
+    {
+        using var context = CreateContext(40, 40);
+        context.Clear(Color.White);
+        using var svg = SvgImage.Parse("""
+            <svg viewBox="0 0 20 20">
+              <rect width="20" height="20" fill="#123456" />
+              <circle cx="10" cy="10" r="4" fill="#ffffff" />
+            </svg>
+            """);
+        var image = new Square.Controls.Image { ImageContent = svg, Geometry = new Rect(0, 0, 40, 40) };
+
+        image.Paint(context);
+
+        var corner = context.GetBitmap().GetPixel(2, 2);
+        var center = context.GetBitmap().GetPixel(20, 20);
+        Assert.Equal((byte)0x12, corner[2]);
+        Assert.Equal((byte)0x34, corner[1]);
+        Assert.Equal((byte)0x56, corner[0]);
+        Assert.Equal((byte)255, center[2]);
+        Assert.Equal((byte)255, center[1]);
+        Assert.Equal((byte)255, center[0]);
+    }
+
+    [Fact]
+    public void RendersSvgDocumentElementTree()
+    {
+        using var context = CreateContext(40, 40);
+        context.Clear(Color.White);
+        var svg = new SVGSVGElement { Geometry = new Rect(0, 0, 40, 40) };
+        svg.SetProperty("ViewBox", "0 0 20 20");
+        var group = new SVGGElement();
+        group.SetProperty("Fill", "#123456");
+        var rect = new SVGRectElement();
+        rect.SetProperty("Width", 20);
+        rect.SetProperty("Height", 20);
+        var circle = new SVGCircleElement();
+        circle.SetProperty("CenterX", 10);
+        circle.SetProperty("CenterY", 10);
+        circle.SetProperty("Radius", 4);
+        circle.SetProperty("Fill", "#ffffff");
+        group.Children.Add(rect);
+        group.Children.Add(circle);
+        svg.Children.Add(group);
+
+        svg.Paint(context);
+
+        var corner = context.GetBitmap().GetPixel(2, 2);
+        var center = context.GetBitmap().GetPixel(20, 20);
+        Assert.Equal((byte)0x12, corner[2]);
+        Assert.Equal((byte)0x34, corner[1]);
+        Assert.Equal((byte)0x56, corner[0]);
+        Assert.Equal((byte)255, center[2]);
+        Assert.Equal((byte)255, center[1]);
+        Assert.Equal((byte)255, center[0]);
     }
 
     [Fact]

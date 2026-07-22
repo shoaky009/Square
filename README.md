@@ -31,6 +31,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - 默认插槽、具名插槽和 fallback
 - `ref` 元素引用和命令式元素 API
 - View、ScrollViewer、Popup、Dialog、MenuBar、Menu、ContextMenu、MenuItem、MenuSeparator、Text、ListItem、Link、Button、Input、TextArea、CheckBox、Radio、Select、Image、Canvas
+- 模板内联 SVG DOM：`svg`、`g`、`path`、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`
 - CSS 选择器、级联、变量、伪类、属性选择器及基础样式
 - Box / Flex / Grid 布局（Flex 经 Yoga.Net，Grid 内置实现）
 - 纯 C# Software Renderer
@@ -45,7 +46,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `ScrollViewer`、可选择 `List`、层级 `Tree`、分页 `Swiper`、`Popup`、`Dialog`、`MenuBar`、多级 `Menu` 与命令式 `ContextMenu`
 - CSS Animation / `@keyframes` 基础支持
 - Theme 系统（`ThemeProvider` 主题切换）
-- `Document` / `UIDocument` 文档模型（UI/Head/Body 壳）
+- `Document` / `UIDocument` 文档模型（UI/Head/Body 壳），以及 `XMLDocument` / `SVGDocument` 嵌入文档模型
 - `FontFace` / `FontFaceSet` CSS Font Loading 子集
 - 内置结构指令目录与发射管线（第三方自定义指令发射仍为实验性接口）
 - `Reconciler` 批量脏标记与更新调度
@@ -54,7 +55,8 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `Square.Extensions.RichText`：富文本文档模型、跨 run 布局、软换行、selection/caret/hit test、格式命令与 `RichTextEditor` 控件
 - `Square.DevTools`：localhost HTTP 调试服务，支持 renderer PNG 截图和鼠标、键盘、文本、滚轮模拟输入
 - 进程内 renderer 截图：`DesktopApplication.CaptureRendererBitmapAsync()` 将保留的 DisplayTree 离屏重放为 Bitmap，不依赖 PID、窗口枚举或桌面合成器
-- PNG 编码（`BitmapPngEncoder`）与 BMP 解码（`BmpPngConverter`），纯 C# 无外部依赖
+- 纯 C# SVG：`SvgImage` 静态矢量资源，以及由 `SVGDocument` 管理、可直接写入 SQX/SQV 模板的 SVG DOM
+- `Square.Images` 独立解码包：统一 `ImageDocument` 模型，支持纯 C# PNG/APNG、JPEG、BMP、GIF 动画、ICO/CUR 变体、TIFF 多页面与无损 WebP 动画；JPEG/TIFF 支持 Orientation；引用该包后 `<Image source="...">` 可异步加载本地文件并自动播放动画
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
 - Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充、圆角主体快速路径与边缘子像素光栅化）
@@ -125,6 +127,60 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 ```
 
 SQX 不需要 `<sqx>` 文件级根标签。`<template>` 必须且只能有一个；`<script>` 和 `<style>` 可选且各自最多一个。组件名默认取文件名，文件级元数据可放在唯一的 `<script>` 标签上：
+
+模板中可以直接声明 SVG。编译器会生成 `Square.UI.Svg` 下的浏览器式 SVG 元素类型，不使用运行时模板解析或反射：
+
+```xml
+<svg viewBox="0 0 100 100" width="100" height="100">
+  <g transform="translate(10 10)" fill="#2b78ee">
+    <rect x="0" y="0" width="80" height="80" rx="8" />
+    <circle cx="40" cy="40" r="18" fill="#ffffff" />
+    <path d="M 25 40 L 36 51 L 58 29"
+          fill="none" stroke="#152241" stroke-width="5" />
+  </g>
+</svg>
+```
+
+每个根 `<svg>` 持有独立的 `SVGDocument : XMLDocument`。宿主 `UIDocument` 负责根 SVG 的盒布局，`SVGDocument` 负责内部节点查询、样式继承、变换、`viewBox` 和矢量绘制。当前不支持脚本、动画、滤镜、渐变、文本、外部资源和嵌入位图。
+
+完整的内联 SVG 示例位于 `samples/Square.Sample/Components/MediaSamplesPage.sqx` 和 `samples/Square.Sample.Vue/Components/MediaSamplesPage.sqv`。
+
+引用可选的 `Square.Images` 包后，`Image.Source` 会在后台加载本地文件路径。GIF、APNG 和动画 WebP 在控件挂载且可见时自动播放；隐藏或卸载时暂停/释放。加载失败保留占位并通过 `Image.Error` 与冒泡的 `loaderror` 事件报告：
+
+```xml
+<Image source="Assets/loading.gif" />
+```
+
+相对路径按应用当前工作目录解析。当前 `Source` 不支持 HTTP(S)、data URI 或嵌入资源。通过 `Source` 加载的文档由控件拥有；直接设置 `ImageContent` 时资源仍由调用方管理并优先显示，此时 `Source` 只作为替代文本。
+
+也可以通过 `ImageDecoder` 手动解码为 `ImageDocument`。文档拥有其全部 `Bitmap`，图片使用期间必须保持文档未释放：
+
+```csharp
+using Square.Images;
+
+using var document = ImageDecoder.Decode("photo.jpg");
+image.ImageContent = document.PrimaryBitmap;
+```
+
+GIF87a/GIF89a、APNG 和动画 WebP 会公开所有完整合成帧、帧时长、循环信息、透明、blend 和 disposal；ICO/CUR 会公开全部尺寸/位深变体及 CUR 热点；Classic TIFF 会公开全部 IFD 页面。普通 PNG、JPEG、BMP 与静态 WebP 返回单项目文档。JPEG Exif 和 TIFF 页面 Orientation 默认应用，可通过 `ExifOrientationPolicy.Ignore` 保留原始像素方向。TIFF 当前支持大小端、未压缩 Strip、1/8 位灰度、Palette、8 位 RGB/RGBA 和 ExtraSamples Alpha；LZW/Deflate/PackBits、Tile、Planar Separate、CMYK/YCbCr 和 BigTIFF 尚未支持。WebP 支持 simple/VP8X 静态 VP8L 及 ANIM/ANMF 内嵌 VP8L 无损动画；VP8 lossy、独立 `ALPH` 和动画有损帧尚未支持。
+
+```csharp
+using var animation = ImageDecoder.Decode("animation.gif");
+
+foreach (var frame in animation.Items)
+{
+    Bitmap bitmap = animation.GetBitmap(frame.Index);
+    TimeSpan duration = frame.Duration;
+}
+```
+
+```csharp
+using var icon = ImageDecoder.Decode("app.ico");
+Bitmap preferred = icon.PrimaryBitmap;
+
+foreach (var variant in icon.Items)
+    Console.WriteLine($"{variant.Width}x{variant.Height}, {variant.SourceBitDepth} bit");
+```
 
 ```xml
 <script lang="csharp" namespace="MyApp.Components" name="UserCard" access="internal">

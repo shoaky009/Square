@@ -11,11 +11,23 @@ public sealed class FrameRequestEvent : Event
         : base(StandardEvents.RequestFrame, new EventInit { Bubbles = true, Cancelable = false })
     {
         FramesPerSecond = Math.Clamp(framesPerSecond, 1d, 240d);
+        Delay = TimeSpan.FromSeconds(1d / FramesPerSecond);
+    }
+
+    public FrameRequestEvent(TimeSpan delay)
+        : base(StandardEvents.RequestFrame, new EventInit { Bubbles = true, Cancelable = false })
+    {
+        if (delay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(delay));
+        Delay = delay;
+        FramesPerSecond = delay > TimeSpan.Zero ? 1d / delay.TotalSeconds : 240d;
     }
 
     /// <summary>期望帧率。</summary>
     public double FramesPerSecond { get; }
 
     /// <summary>帧间隔秒数（1 / FramesPerSecond）。</summary>
-    public double IntervalSeconds => 1d / FramesPerSecond;
+    public double IntervalSeconds => Delay.TotalSeconds;
+
+    /// <summary>请求距离当前时刻的精确延迟。</summary>
+    public TimeSpan Delay { get; }
 }

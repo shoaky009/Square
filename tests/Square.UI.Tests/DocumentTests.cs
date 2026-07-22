@@ -4,6 +4,7 @@ using Square.Hosting;
 using Square.Platform;
 using Square.Runtime.State;
 using Square.UI;
+using Square.UI.Svg;
 using Xunit;
 
 namespace Square.UI.Tests;
@@ -247,6 +248,26 @@ public class DocumentTests
     {
         var doc = new UIDocument();
         Assert.Throws<InvalidOperationException>(() => doc.CreateElement("NoSuchTag"));
+    }
+
+    [Fact]
+    public void EmbeddedSvgUsesItsOwnXmlDocument()
+    {
+        var uiDocument = new UIDocument();
+        var svg = Assert.IsType<SVGSVGElement>(uiDocument.CreateElement("svg"));
+        var group = new SVGGElement();
+        var path = new SVGPathElement { Id = "shape" };
+        group.Children.Add(path);
+        svg.Children.Add(group);
+        uiDocument.Body.Children.Add(svg);
+
+        Assert.IsAssignableFrom<XMLDocument>(svg.SvgDocument);
+        Assert.Equal("image/svg+xml", svg.SvgDocument.ContentType);
+        Assert.Same(svg.SvgDocument, svg.OwnerDocument);
+        Assert.Same(svg.SvgDocument, group.OwnerDocument);
+        Assert.Same(svg.SvgDocument, path.OwnerDocument);
+        Assert.Same(path, svg.SvgDocument.GetElementById("shape"));
+        Assert.Same(svg, svg.SvgDocument.DocumentElement);
     }
 
     [Fact]

@@ -189,6 +189,7 @@ public sealed class LayoutEngine
         ApplyOverflow(element, node);
 
         var (visibleChildren, visibleCount) = RentVisibleChildren(element);
+        if (element is Square.UI.Svg.SVGSVGElement) visibleCount = 0;
         try
         {
             if (visibleCount == 0)

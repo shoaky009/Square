@@ -4,6 +4,8 @@
 > 状态：已完成  
 > 原则：**严格参考 Web API / MDN DOM**；大刀阔斧改架构，不为兼容旧 Visual/Routed 模型保留别名（除非实现期短暂适配）
 
+> 后续增量说明：原计划中的 SVG 占位已经实现为 `XMLDocument -> SVGDocument`、`Square.UI.Svg` 元素树及 SQX/SQV 内联 SVG。本文中“SVGDocument（后）”“SVGElement 占位”等表述记录的是重建周期当时的范围，当前状态以 `design.md`、`Architecture.md` 和 `Roadmap.md` 为准。
+
 配套：`Architecture.md`、`Rendering.md`、`API-Reference.md`、`plan.md`、`design.md`  
 本文件是 **重建范围与实现规格** 的权威说明。
 
