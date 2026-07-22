@@ -6,6 +6,29 @@
     <Radio ref={RadioA} text="Radio - option A" group="demo" checked={OptionA} onChange={OnRadioAChanged} />
     <Radio ref={RadioB} text="Radio - option B" group="demo" checked={OptionB} onChange={OnRadioBChanged} />
     <Select ref={DemoSelect} value={SelectedValue} options={ColorOptions} onChange={OnSelectChanged} />
+    <List ref={DemoList} items={ListOptions} onChange={OnListChanged} style="height: 96px; border: 1px solid #c7cdd4;" />
+    <Text class="status" text={ListSelectionStatus} />
+    <Tree ref={DemoTree} onChange={OnTreeChanged} style="height: 160px; border: 1px solid #c7cdd4;">
+      <TreeItem text="Tree - workspace" expanded="true">
+        <TreeItem text="src">
+          <TreeItem text="Square" />
+          <TreeItem text="Square.Compiler" />
+        </TreeItem>
+        <TreeItem text="tests" />
+      </TreeItem>
+      <TreeItem text="Tree - README.md" />
+    </Tree>
+    <Text class="status" text={TreeSelectionStatus} />
+    <View style="display: flex; flex-direction: row; gap: 8px;">
+      <Button onClick={OnPreviousSlide}>Previous slide</Button>
+      <Button onClick={OnNextSlide}>Next slide</Button>
+    </View>
+    <Swiper ref={DemoSwiper} loop="true" onChange={OnSlideChanged} style="height: 84px; border: 1px solid #c7cdd4;">
+      <View style="padding: 12px; background: #eff6ff;"><Text>Swiper - first page</Text></View>
+      <View style="padding: 12px; background: #ecfdf3;"><Text>Swiper - second page</Text></View>
+      <View style="padding: 12px; background: #fff7ed;"><Text>Swiper - third page</Text></View>
+    </Swiper>
+    <Text class="status" text={SwiperStatus} />
     <Show when={ShowCount}>
       <Text class="status" text="Show: button clicked" />
     </Show>
@@ -23,6 +46,10 @@
   public ObservableValue<bool> OptionB = new(false);
   public ObservableValue<string> SelectedValue = new("Blue");
   public ObservableValue<string[]> ColorOptions = new(["Blue", "Green", "Orange"]);
+  public ObservableValue<string[]> ListOptions = new(["List - first", "List - second", "List - third"]);
+  public ObservableValue<string> ListSelectionStatus = new("List: no selection");
+  public ObservableValue<string> TreeSelectionStatus = new("Tree: no selection");
+  public ObservableValue<string> SwiperStatus = new("Swiper: page 1");
   public ObservableCollection<string> Items = new() { "For: ready" };
 
   private void OnClick(Event e)
@@ -53,6 +80,28 @@
   private void OnSelectChanged()
   {
     SelectedValue.Value = DemoSelect.Value;
+  }
+
+  private void OnListChanged()
+  {
+    ListSelectionStatus.Value = DemoList.SelectedItem is null
+      ? "List: no selection"
+      : "List: " + DemoList.SelectedItem.TextContent;
+  }
+
+  private void OnTreeChanged()
+  {
+    TreeSelectionStatus.Value = DemoTree.SelectedItem is null
+      ? "Tree: no selection"
+      : "Tree: " + DemoTree.SelectedItem.TextContent;
+  }
+
+  private void OnPreviousSlide() => DemoSwiper.Previous();
+  private void OnNextSlide() => DemoSwiper.Next();
+
+  private void OnSlideChanged()
+  {
+    SwiperStatus.Value = "Swiper: page " + (DemoSwiper.SelectedIndex + 1);
   }
 </script>
 <style>

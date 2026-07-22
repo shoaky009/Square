@@ -55,7 +55,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 
 ## 3. 模块划分与职责
 
-当前物理程序集为 `Square`、`Square.Compiler`、`Square.Platform.Win32`、`Square.Platform.X11`、`Square.Backends.Vulkan`、`Square.Extensions` 和 `Square.Tooling`。下表中的 Runtime/UI/Controls 等名称是 `Square` 聚合程序集内部保持稳定的逻辑模块与命名空间。
+当前物理程序集为 `Square`、`Square.Compiler`、`Square.Platform.Win32`、`Square.Platform.X11`、`Square.Backends.Vulkan`、`Square.Extensions` 和 `Square.DevTools`。下表中的 Runtime/UI/Controls 等名称是 `Square` 聚合程序集内部保持稳定的逻辑模块与命名空间。
 
 | 模块 | 职责 | 关键设计 |
 |---|---|---|

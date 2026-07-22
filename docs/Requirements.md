@@ -623,7 +623,7 @@ Square.Platform.Win32
 Square.Platform.X11
 Square.Backends.Vulkan
 Square.Extensions
-Square.Tooling
+Square.DevTools
 ```
 
 `Square` 聚合 Runtime、Events、UI、Controls、Router、CSS、Graphics、Rendering、Text、Hosting、Platform 抽象和 Software Backend；这些逻辑模块继续使用各自的 `Square.*` 命名空间。

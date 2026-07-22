@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\**\*.sqx" Exclude="$(DefaultItemExcludes)" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\**\*.sqv" Exclude="$(DefaultItemExcludes)" />
+  </ItemGroup>
+</Project>

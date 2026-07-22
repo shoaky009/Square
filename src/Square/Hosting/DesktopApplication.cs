@@ -37,7 +37,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     private readonly List<UIElement> _hoverPath = [];
     private readonly List<UIElement> _activePath = [];
     private bool _renderRequested;
-    private KeyModifiers? _toolingModifiers;
+    private KeyModifiers? _devToolsModifiers;
 
     public DesktopApplication(UIDocument document, PlatformHostCreateInfo hostCreateInfo)
     {
@@ -154,21 +154,21 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         else Dispatcher.Invoke(() => _host?.Close());
     }
 
-    public Task InjectPointerAsync(ToolingPointerInput input) => Dispatcher.InvokeAsync(() =>
+    public Task InjectPointerAsync(DevToolsPointerInput input) => Dispatcher.InvokeAsync(() =>
     {
-        WithToolingModifiers(input.Modifiers, () => HandleMouse(input.Position, input.Action));
+        WithDevToolsModifiers(input.Modifiers, () => HandleMouse(input.Position, input.Action));
     });
 
-    public Task InjectKeyAsync(ToolingKeyInput input) => Dispatcher.InvokeAsync(() =>
+    public Task InjectKeyAsync(DevToolsKeyInput input) => Dispatcher.InvokeAsync(() =>
     {
-        WithToolingModifiers(input.Modifiers, () => HandleKey(input.KeyCode, input.Action));
+        WithDevToolsModifiers(input.Modifiers, () => HandleKey(input.KeyCode, input.Action));
     });
 
     public Task InjectTextAsync(string text) => Dispatcher.InvokeAsync(() => HandleTextInput(text ?? ""));
 
-    public Task InjectWheelAsync(ToolingWheelInput input) => Dispatcher.InvokeAsync(() =>
+    public Task InjectWheelAsync(DevToolsWheelInput input) => Dispatcher.InvokeAsync(() =>
     {
-        WithToolingModifiers(input.Modifiers, () => HandleWheel(input.Position, input.Delta));
+        WithDevToolsModifiers(input.Modifiers, () => HandleWheel(input.Position, input.Delta));
     });
 
     public Task<Bitmap> CaptureRendererBitmapAsync()
@@ -184,7 +184,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
                 // Prefer the live frame from the active render context. For GPU backends
                 // (e.g. Vulkan) this reads back the actual presented frame, so the capture
                 // reflects real GPU output instead of a software re-render — which is what
-                // makes GPU-side rendering bugs visible in tooling screenshots.
+                // makes GPU-side rendering bugs visible in DevTools screenshots.
                 if (_renderContext is IRenderBitmapSource { IsCaptureAvailable: true } liveSource)
                 {
                     completion.SetResult(liveSource.CaptureBitmap());
@@ -563,7 +563,7 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
     }
 
     private static bool IsFocusable(UIElement element) => element.IsEnabled &&
-        (element is ITextEditor or Button or CheckBox or Radio or Select or Link);
+        (element is ITextEditor or Button or CheckBox or Radio or Select or List or Tree or Swiper or Link);
 
     private static Point MapPointerPoint(Element? target, Point point)
     {
@@ -721,19 +721,19 @@ public sealed class DesktopApplication : Application, IRenderBackendApplication
         RenderFrame();
     }
 
-    private KeyModifiers CurrentModifiers => _toolingModifiers ?? _host?.Modifiers ?? KeyModifiers.None;
+    private KeyModifiers CurrentModifiers => _devToolsModifiers ?? _host?.Modifiers ?? KeyModifiers.None;
 
-    private void WithToolingModifiers(KeyModifiers modifiers, Action action)
+    private void WithDevToolsModifiers(KeyModifiers modifiers, Action action)
     {
-        var previous = _toolingModifiers;
-        _toolingModifiers = modifiers;
+        var previous = _devToolsModifiers;
+        _devToolsModifiers = modifiers;
         try
         {
             action();
         }
         finally
         {
-            _toolingModifiers = previous;
+            _devToolsModifiers = previous;
         }
     }
 

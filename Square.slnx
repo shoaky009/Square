@@ -4,7 +4,7 @@
   <Project Path="src/Square.Platform.X11/Square.Platform.X11.csproj" />
   <Project Path="src/Square.Compiler/Square.Compiler.csproj" />
   <Project Path="src/Square.Extensions/Square.Extensions.csproj" />
-  <Project Path="src/Square.Tooling/Square.Tooling.csproj" />
+  <Project Path="src/Square.DevTools/Square.DevTools.csproj" />
   <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
   <Folder Name="/Samples/">
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />

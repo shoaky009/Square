@@ -176,7 +176,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
 
         api.CmdEndRenderPass(cmd);
 
-        // Copy the presented frame into the host-visible readback buffer so tooling can
+        // Copy the presented frame into the host-visible readback buffer so DevTools can
         // capture GPU-accurate screenshots. The image is in PresentSrcKhr layout here
         // (render pass FinalLayout); RecordCopy transitions it and restores it for present.
         if (_readbackEnabled)

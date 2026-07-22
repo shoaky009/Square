@@ -6,6 +6,10 @@
     <Description>Square markup compiler and Roslyn source generator</Description>
     <LangVersion>latest</LangVersion>
     <PublishAot>false</PublishAot>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <IncludeSymbols>false</IncludeSymbols>
+    <PackageTags>$(PackageTags);source-generator;roslyn;sqx;sqv</PackageTags>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
@@ -21,12 +25,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Remove="Markup\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="buildTransitive\Square.Compiler.props" Pack="true" PackagePath="buildTransitive" Visible="false" />
   </ItemGroup>
 
 </Project>

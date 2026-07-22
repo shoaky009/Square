@@ -2,29 +2,39 @@
 
   <PropertyGroup>
     <NetVersion>net10.0</NetVersion>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>14.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <Authors>Square</Authors>
+    <GenerateDocumentationFile Condition="'$(IsPackable)' == 'true'">true</GenerateDocumentationFile>
+    <Authors>Wuldas</Authors>
     <Product>Square Framework</Product>
-    <Copyright>Copyright © Square</Copyright>
+    <Copyright>Copyright © 2026 Wuldas</Copyright>
     <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/wuldas/Square</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/wuldas/Square.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>ui;desktop;nativeaot;cross-platform;sqx</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;obj-*\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <StripSymbols>true</StripSymbols>
+    <InvariantGlobalization Condition="'$(PublishAot)' == 'true'">true</InvariantGlobalization>
+    <StripSymbols Condition="'$(PublishAot)' == 'true'">true</StripSymbols>
   </PropertyGroup>
 
   <PropertyGroup>
     <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux'))">X11</SquareTargetPlatform>
-    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">X11</SquareTargetPlatform>
+    <SquareUnsupportedPlatform Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('osx'))">macOS is not implemented yet. Supported desktop targets are win-* and linux-*.</SquareUnsupportedPlatform>
     <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(OS)' == 'Windows_NT'">Win32</SquareTargetPlatform>
-    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == ''">X11</SquareTargetPlatform>
+    <SquareTargetPlatform Condition="'$(SquareTargetPlatform)' == '' and '$(OS)' != 'Windows_NT' and '$(RuntimeIdentifier)' == ''">X11</SquareTargetPlatform>
     <IsWindowsBuild Condition="'$(SquareTargetPlatform)' == 'Win32'">true</IsWindowsBuild>
     <IsWindowsBuild Condition="'$(SquareTargetPlatform)' != 'Win32'">false</IsWindowsBuild>
 

@@ -39,8 +39,8 @@
 [x] `Square.Compiler`：Incremental Generator + Props 校验 + ref 生成 + 绑定编译 + 诊断映射
 [x] `Square.CSS`：Tokenizer/Selector/Cascade/Variables/Inheritance（含子代/兄弟/通用/属性选择器、`!important`、基础伪类）
 [x] `Square.Graphics`：`IRenderContext`/`IRenderBackendFactory` + 基础类型
-[~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha ✓ / SIMD 待实现 / 脏区待实现）
-[~] `Square.Rendering`：Box/Flex/Grid 布局 + Element→DisplayTree→DrawCommand→提交（子树挂卸 ✓ / 增量保留模式待实现）
+[~] `Square.Backends`：纯 C# Software Renderer（BGRA/预乘 Alpha、脏区提交 ✓ / SIMD 与完整 layer opacity 待实现）
+[~] `Square.Rendering`：Box/Flex/Grid 布局 + Element→DisplayTree→DrawCommand→提交（子树挂卸、脏节点更新 ✓ / 更细粒度结构增量同步待实现）
 [x] `Square.Runtime` + `Square.UI`：Application/Element/UIDocument 基类/属性/元素操作 API（Style/ClassList/Children/Event）
 [x] `Square.Hosting`：`DesktopApplication` 聚合层——提取窗口、输入路由、焦点管理、文本编辑、剪贴板、帧调度和布局渲染循环
 [x] `Square.Controls`：10 个第一阶段控件 + 结构原语（Show/For/Switch/Match）+ 默认样式 + 基础动画时钟/缓动
@@ -75,11 +75,11 @@
 
 ## 5. 架构重建（Rebuild）✅ 已完成
 
-重建分支已合并至 `main`。所有 P0–P4 阶段和 D0–D4 指令 SDK 阶段均已完成：
+重建分支已合并至 `main`。P0–P4 已完成；内置指令目录与发射管线已完成，第三方自定义指令的通用发射仍标记为实验性：
 
 - [x] P0：文档规格
 - [x] P1：DOM 事件系统（EventTarget / Event / addEventListener / dispatchEvent + 捕获/冒泡）
-- [x] P1.5/D0–D4：自定义指令 SDK（[SqxDirective] + DirectiveCatalog + DirectiveEmitPipeline）
+- [~] P1.5/D0–D4：内置指令目录与发射管线 ✓ / 第三方通用发射与端到端测试待完成
 - [x] P2：去掉 Visual，Element 替代（EventTarget → Node → Element → UIElement）
 - [x] P3：Document / UIDocument 壳（UI/Head/Body，documentElement 只读）
 - [x] P4：DisplayTree / DisplayNode + HTMLElement/SVGElement 占位
@@ -95,9 +95,9 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 - **`.sqv` Vue 模板前端**：在保留 `.sqx` 原生语法的前提下，新增 Vue 3 模板语法兼容前端。`SqvParser` 将 `{{ }}` 插值、`:prop` / `v-bind`、`@event` / `v-on`、`v-if` / `v-else-if` / `v-else`、`v-for` / `:key`、`ref` 及事件修饰符（`.stop` / `.prevent`）规范化为与 `.sqx` 相同的中间表示，运行时仍是纯 C#。配套 `samples/Square.Sample.Vue` 提供控件、表单、媒体、Markdown、路由、信号、溢出等示例页面。完整设计与后续里程碑见 `docs/vue-plan.md`。
 - **`Square.Extensions` 扩展模块**：新增可选项目，承载第三方集成与高级控件。首个组件 `MarkdownViewer` 基于 Markdig 将 Markdown 解析为 Square 元素树（标题、段落、列表、引用、代码块、分隔线、链接）。通过 `ExtensionRegistration.RegisterDefaults()` 注册扩展控件标签。
 - **平台截图**：`PlatformScreenshot.CaptureByProcessId` / `TryCaptureByProcessId` 按进程 ID 捕获窗口位图，Win32 与 X11 各有实现，按构建层 `PLATFORM_*` 裁剪。
-- **进程内 renderer 截图**：`DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程将 DisplayTree 重放到离屏 Software bitmap，不依赖 PID、窗口枚举或桌面合成器；Tooling 与示例 `--screenshot` 默认使用该路径。
+- **进程内 renderer 截图**：`DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程将 DisplayTree 重放到离屏 Software bitmap，不依赖 PID、窗口枚举或桌面合成器；DevTools 与示例 `--screenshot` 默认使用该路径。
 - **原生 Vulkan 后端**：基于 Silk.NET 实现 Windows/Win32 与 Linux/X11 surface、swapchain、批处理、纹理 atlas、MSAA、字体渲染和可选 GPU framebuffer readback；已支持 NativeAOT 系统 loader、内嵌 SPIR-V 与无动态代码的 validation callback。
-- **Tooling NativeAOT**：移除 ASP.NET Core/Kestrel 依赖，改为 loopback `HttpListener`、显式路由与手写 JSON 序列化，主示例 AOT 发布可继续启用截图、输入注入和 Inspector。
+- **DevTools NativeAOT**：移除 ASP.NET Core/Kestrel 依赖，改为 loopback `HttpListener`、显式路由与手写 JSON 序列化，主示例 AOT 发布可继续启用截图、输入注入和 Inspector。
 - **PNG 编码与 BMP 解码**：`Square.Graphics.Codecs` 命名空间下，`BitmapPngEncoder` 将 `Bitmap` 编码为 8 位 RGBA PNG（zlib 压缩），`BmpPngConverter` 提供非压缩 24/32 位 BMP 加载与 BMP→PNG 转换，纯 C# 无外部依赖。
 - **DOM `Range` 与 `TextFragment`**：`Square.UI.Range` 提供最小 DOM Range 文本选择模型（`SetStart` / `SetEnd` / `SelectNodeContents` / `Collapse` / 边界点比较）；`Square.Rendering.TextFragment` 提供字符级命中测试（`HitTestOffset`），为富文本编辑与选择奠定基础。
 - **Software Renderer 性能优化**：`RenderContext` 缓存位图像素指针与尺寸、裁剪区域缓存（避免栈查找）、批量 BGRA 填充；`LayoutEngine` 与 `StyleAccessor` 同步优化。
@@ -123,7 +123,7 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 
 M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文本命中测试与渲染优化等增量已落地。当前重点：
 
-- M3 扩展控件（ScrollViewer、Popup、Dialog、MenuBar/Menu/ContextMenu 已落地；继续 List/Tree/Swiper）
+- M3 扩展控件（ScrollViewer、List、Tree、Swiper、Popup、Dialog、MenuBar/Menu/ContextMenu 已落地；基础范围完成）
 - M4 Vulkan 描边收尾：`LineCap` / `LineJoin` / `MiterLimit`、任意 Path dash、复杂路径抗锯齿场景与真实 GPU readback 自动验证已落地
 - Vulkan NativeAOT：Windows x64 原生发布、启动、GPU readback 与截图回归验证已通过
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）

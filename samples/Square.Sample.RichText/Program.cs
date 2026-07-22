@@ -6,7 +6,7 @@ using Square.Platform.Win32;
 #elif PLATFORM_X11
 using Square.Platform.X11;
 #endif
-using Square.Tooling;
+using Square.DevTools;
 using Square.UI;
 
 namespace Square.Sample.RichText;
@@ -40,14 +40,15 @@ public static class Program
             RenderingMode = RenderMode.DirtyRegion
         };
 
-        var tooling = app.UseToolingServer(new ToolingOptions
+        var devTools = app.UseDevToolsServer(new DevToolsOptions
         {
             Port = 0,
-            AccessToken = "square-richtext-demo",
-            AllowInputInjection = true
+            AllowInputInjection = true,
+            AllowInspector = true,
+            IncludeTextContent = true
         });
-        System.Console.WriteLine($"Square Tooling: {tooling.BaseAddress}/api/v1/health");
-        System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
+        System.Console.WriteLine($"Square DevTools: {devTools.BaseAddress}/api/v1/health");
+        System.Console.WriteLine($"Token header: {DevToolsServer.TokenHeader}: {devTools.AccessToken}");
         app.Run();
     }
 }

@@ -1,1 +1,15 @@
-<Project />
+<Project>
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ValidateSquareTargetPlatform" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(SquareUnsupportedPlatform)' != ''" Text="$(SquareUnsupportedPlatform)" />
+    <Error Condition="'$(SquareTargetPlatform)' != 'Win32' and '$(SquareTargetPlatform)' != 'X11'"
+           Text="Unsupported SquareTargetPlatform '$(SquareTargetPlatform)'. Supported values are Win32 and X11." />
+    <Error Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.Contains('linux')) and '$(SquareTargetPlatform)' != 'X11'"
+           Text="RuntimeIdentifier '$(RuntimeIdentifier)' requires SquareTargetPlatform=X11." />
+    <Error Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win-')) and '$(SquareTargetPlatform)' != 'Win32'"
+           Text="RuntimeIdentifier '$(RuntimeIdentifier)' requires SquareTargetPlatform=Win32." />
+  </Target>
+</Project>

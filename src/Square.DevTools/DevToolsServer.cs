@@ -9,18 +9,18 @@ using Square.Graphics.Codecs;
 using Square.Hosting;
 using Square.Platform;
 
-namespace Square.Tooling;
+namespace Square.DevTools;
 
-public sealed class ToolingServer : IAsyncDisposable, IDisposable
+public sealed class DevToolsServer : IAsyncDisposable, IDisposable
 {
-    public const string TokenHeader = "X-Square-Tooling-Token";
+    public const string TokenHeader = "X-Square-DevTools-Token";
 
     private readonly HttpListener _listener;
     private readonly CancellationTokenSource _shutdown = new();
     private Task _acceptLoop;
     private int _disposed;
 
-    private ToolingServer(HttpListener listener, Task acceptLoop, string accessToken, int port)
+    private DevToolsServer(HttpListener listener, Task acceptLoop, string accessToken, int port)
     {
         _listener = listener;
         _acceptLoop = acceptLoop;
@@ -32,10 +32,10 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
     public int Port { get; }
     public string BaseAddress => $"http://127.0.0.1:{Port}";
 
-    public static ToolingServer Start(DesktopApplication application, ToolingOptions? options = null)
+    public static DevToolsServer Start(DesktopApplication application, DevToolsOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(application);
-        options ??= new ToolingOptions();
+        options ??= new DevToolsOptions();
         if (options.Port is < 0 or > 65535) throw new ArgumentOutOfRangeException(nameof(options.Port));
 
         var token = string.IsNullOrWhiteSpace(options.AccessToken)
@@ -46,12 +46,12 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
         listener.Prefixes.Add($"http://127.0.0.1:{port}/");
         listener.Start();
 
-        var server = new ToolingServer(listener, Task.CompletedTask, token, port);
+        var server = new DevToolsServer(listener, Task.CompletedTask, token, port);
         server._acceptLoop = Task.Run(() => server.AcceptLoopAsync(application, options));
         return server;
     }
 
-    private async Task AcceptLoopAsync(DesktopApplication application, ToolingOptions options)
+    private async Task AcceptLoopAsync(DesktopApplication application, DevToolsOptions options)
     {
         while (!_shutdown.IsCancellationRequested)
         {
@@ -77,7 +77,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
         }
     }
 
-    private async Task HandleRequestAsync(HttpListenerContext context, DesktopApplication application, ToolingOptions options)
+    private async Task HandleRequestAsync(HttpListenerContext context, DesktopApplication application, DevToolsOptions options)
     {
         try
         {
@@ -110,7 +110,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
             {
                 if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
                 var payload = await ReadJsonAsync(context.Request);
-                var input = new ToolingPointerInput(
+                var input = new DevToolsPointerInput(
                     new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
                     ReadEnum<MouseAction>(payload, "action"),
                     ReadModifiers(payload));
@@ -123,7 +123,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
             {
                 if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
                 var payload = await ReadJsonAsync(context.Request);
-                var input = new ToolingKeyInput(
+                var input = new DevToolsKeyInput(
                     ReadInt(payload, "keyCode"),
                     ReadEnum<KeyAction>(payload, "action"),
                     ReadModifiers(payload));
@@ -145,7 +145,7 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
             {
                 if (!options.AllowInputInjection) { await WriteJsonAsync(context.Response, StatusCodes.Forbidden, "{}"); return; }
                 var payload = await ReadJsonAsync(context.Request);
-                var input = new ToolingWheelInput(
+                var input = new DevToolsWheelInput(
                     new Point(ReadFloat(payload, "x"), ReadFloat(payload, "y")),
                     ReadInt(payload, "delta"),
                     ReadModifiers(payload));

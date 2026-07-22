@@ -2,6 +2,7 @@
 
 > Version: 0.4  
 > 配套：`Architecture.md`、`Graphics.md`、`Layout.md`
+> `PushLayer` / `PopLayer` 当前实现嵌套绘制透明度乘法；`bounds` 尚不创建离屏表面，真正的 group opacity/compositing 仍为后续能力。
 
 ---
 

@@ -111,6 +111,26 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void LayersMultiplyPrimitiveOpacityAndRestoreAfterPop()
+    {
+        var context = CreateContext(3, 1);
+        context.Clear(Color.Transparent);
+
+        context.PushLayer(new Rect(0, 0, 2, 1), 0.5f);
+        context.FillRect(new Rect(0, 0, 1, 1), new SolidColorBrush(Color.Red));
+        context.PushLayer(new Rect(1, 0, 1, 1), 0.5f);
+        context.FillRect(new Rect(1, 0, 1, 1), new SolidColorBrush(Color.Red));
+        context.PopLayer();
+        context.PopLayer();
+        context.FillRect(new Rect(2, 0, 1, 1), new SolidColorBrush(Color.Red));
+
+        var pixels = context.GetBitmap().Pixels;
+        Assert.InRange(pixels[3], 127, 128);
+        Assert.InRange(pixels[7], 63, 64);
+        Assert.Equal(255, pixels[11]);
+    }
+
+    [Fact]
     public void DisplayTreeCollectTextFragmentsUsesDrawTextCommands()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 40) };
@@ -1072,11 +1092,11 @@ public class SoftwareRendererTests
     private static void AssertRegionEqual(Bitmap expected, Bitmap actual, Rect region)
     {
         for (var y = Math.Max(0, (int)region.Top); y < Math.Min(expected.Height, (int)region.Bottom); y++)
-        for (var x = Math.Max(0, (int)region.Left); x < Math.Min(expected.Width, (int)region.Right); x++)
-        {
-            var i = y * expected.Stride + x * 4;
-            Assert.Equal(expected.Pixels.AsSpan(i, 4).ToArray(), actual.Pixels.AsSpan(i, 4).ToArray());
-        }
+            for (var x = Math.Max(0, (int)region.Left); x < Math.Min(expected.Width, (int)region.Right); x++)
+            {
+                var i = y * expected.Stride + x * 4;
+                Assert.Equal(expected.Pixels.AsSpan(i, 4).ToArray(), actual.Pixels.AsSpan(i, 4).ToArray());
+            }
     }
 
     private static void AssertBitmapEqual(Bitmap expected, Bitmap actual)
@@ -1353,11 +1373,11 @@ public class SoftwareRendererTests
         var bitmap = context.GetBitmap();
         var partialTopPixels = 0;
         for (var y = 5; y <= 8; y++)
-        for (var x = 8; x <= 24; x++)
-        {
-            if (AlphaAt(bitmap, x, y) is > 0 and < 255)
-                partialTopPixels++;
-        }
+            for (var x = 8; x <= 24; x++)
+            {
+                if (AlphaAt(bitmap, x, y) is > 0 and < 255)
+                    partialTopPixels++;
+            }
 
         Assert.True(partialTopPixels >= 4, $"Expected antialiased stroke pixels near the ellipse top, found {partialTopPixels}.");
     }
@@ -1555,14 +1575,14 @@ public class SoftwareRendererTests
         ctx.Clear(Color.Black);
         var src = new Bitmap(4, 3);
         for (var y = 0; y < src.Height; y++)
-        for (var x = 0; x < src.Width; x++)
-        {
-            var idx = y * src.Stride + x * 4;
-            src.Pixels[idx] = (byte)(10 + x);
-            src.Pixels[idx + 1] = (byte)(20 + y);
-            src.Pixels[idx + 2] = 30;
-            src.Pixels[idx + 3] = 255;
-        }
+            for (var x = 0; x < src.Width; x++)
+            {
+                var idx = y * src.Stride + x * 4;
+                src.Pixels[idx] = (byte)(10 + x);
+                src.Pixels[idx + 1] = (byte)(20 + y);
+                src.Pixels[idx + 2] = 30;
+                src.Pixels[idx + 3] = 255;
+            }
 
         ctx.DrawImage(src, new Rect(4, 1, 4, 3));
 

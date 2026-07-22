@@ -11,8 +11,8 @@ using Square.Platform.Win32;
 #elif PLATFORM_X11
 using Square.Platform.X11;
 #endif
-#if SQUARE_SAMPLE_TOOLING
-using Square.Tooling;
+#if SQUARE_SAMPLE_DEVTOOLS
+using Square.DevTools;
 #endif
 using Square.UI;
 
@@ -22,7 +22,7 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        System.Console.WriteLine("Square Framework - M1 Window Demo");
+        System.Console.WriteLine("Square Framework Sample");
         RegisterPlatform();
 
         var circleDiffDirectory = GetOption(args, "--circle-regression-diff");
@@ -58,20 +58,20 @@ public static class Program
         if (!string.IsNullOrWhiteSpace(screenshot))
             ScheduleScreenshot(app, screenshot, GetScreenshotValidator(args), GetOption(args, "--circle-regression-bgra"));
 
-        if (HasOption(args, "--tooling"))
+        if (HasOption(args, "--devtools"))
         {
-#if SQUARE_SAMPLE_TOOLING
-            var tooling = app.UseToolingServer(new ToolingOptions
+#if SQUARE_SAMPLE_DEVTOOLS
+            var devTools = app.UseDevToolsServer(new DevToolsOptions
             {
-                Port = int.TryParse(GetOption(args, "--tooling-port"), out var port) ? port : 0,
-                AccessToken = GetOption(args, "--tooling-token"),
+                Port = int.TryParse(GetOption(args, "--devtools-port"), out var port) ? port : 0,
+                AccessToken = GetOption(args, "--devtools-token"),
                 AllowInputInjection = true,
                 AllowInspector = true
             });
-            System.Console.WriteLine($"Square Tooling: {tooling.BaseAddress}/api/v1/health");
-            System.Console.WriteLine($"Token header: {ToolingServer.TokenHeader}: {tooling.AccessToken}");
+            System.Console.WriteLine($"Square DevTools: {devTools.BaseAddress}/api/v1/health");
+            System.Console.WriteLine($"Token header: {DevToolsServer.TokenHeader}: {devTools.AccessToken}");
 #else
-            throw new NotSupportedException("This build does not include Tooling. Build with -p:SquareSampleUseTooling=true to enable it.");
+            throw new NotSupportedException("This build does not include DevTools. Build with -p:SquareSampleUseDevTools=true to enable it.");
 #endif
         }
 

@@ -88,6 +88,7 @@ public class ListItem : UIElement, ITextSelectable
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
+    public bool IsSelected { get => GetProperty<bool>(nameof(IsSelected)); set => SetProperty(nameof(IsSelected), value); }
     /// <summary>Bullet or number prefix, e.g. "• ", "1. ". Empty draws no marker.</summary>
     public string Marker { get => GetProperty<string>(nameof(Marker)) ?? "• "; set => SetProperty(nameof(Marker), value); }
 
@@ -118,12 +119,24 @@ public class ListItem : UIElement, ITextSelectable
 
     public override void Paint(IRenderContext ctx)
     {
-        var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
+        var background = ControlDrawing.GetStyledColor(this, "background",
+            IsSelected ? Color.FromRgb(0, 120, 212) : Color.Transparent);
         ControlDrawing.DrawStyledBackground(ctx, this, background);
 
         var label = Marker + TextContent;
         if (!string.IsNullOrEmpty(label.Trim()))
-            ControlDrawing.DrawText(ctx, this, label, Geometry.Position, Color, FontSize);
+        {
+            var foreground = IsSelected
+                ? ControlDrawing.GetStyledColor(this, "color", Color.White)
+                : ControlDrawing.GetStyledColor(this, "color", Color);
+            ControlDrawing.DrawText(ctx, this, label, Geometry.Position, foreground, FontSize);
+        }
+    }
+
+    protected override void OnPropertyChanged(string name)
+    {
+        base.OnPropertyChanged(name);
+        if (name == nameof(IsSelected)) SetState(ElementState.Checked, IsSelected);
     }
 }
 

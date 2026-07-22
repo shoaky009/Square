@@ -269,6 +269,24 @@ public class VueGeneratorTests
         Assert.Contains(".AddEventListener(\"change\", e => Plan.Value = ((Square.Controls.Select)e.Target!).Value);", generated);
     }
 
+    [Fact]
+    public void GeneratedCleanupCoexistsWithUserDetachHook()
+    {
+        const string source = """
+            <template><Button ref={SaveButton}>Save</Button></template>
+            <script lang="csharp">
+              protected override void OnDetachedCore() { }
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Cleanup.sqx", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("protected override void OnGeneratedDetachedCore()", generated);
+        Assert.Contains("SaveButton = null!;", generated);
+        Assert.Contains("protected override void OnDetachedCore()", generated);
+    }
+
     private static GeneratorDriverRunResult RunGenerator(params AdditionalText[] files)
     {
         var compilation = CSharpCompilation.Create(

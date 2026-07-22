@@ -23,9 +23,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private readonly PresentFrameHandler? _presentFrame;
     private readonly Stack<ClipRegion> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
+    private readonly Stack<float> _opacityStack = new();
     private readonly List<double> _polygonIntersections = new(64);
     private Rect[] _scaledDirtyRects = [];
     private Matrix3x2 _currentTransform;
+    private float _currentOpacity = 1f;
     private readonly SystemGlyphRasterizer _glyphRasterizer = new();
 
     public Size CanvasSize => _canvasSize;
@@ -256,8 +258,12 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         BlendBitmap(src, srcRect, TransformRect(dest));
     }
 
-    public void PushLayer(Rect bounds, float opacity) { }
-    public void PopLayer() { }
+    public void PushLayer(Rect bounds, float opacity)
+    {
+        _opacityStack.Push(_currentOpacity);
+        _currentOpacity *= Math.Clamp(opacity, 0f, 1f);
+    }
+    public void PopLayer() => _currentOpacity = _opacityStack.Count > 0 ? _opacityStack.Pop() : 1f;
 
     public void Flush() { }
 
@@ -293,6 +299,8 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         _dpiScale = dpiScale;
         if (dpiChanged) _glyphRasterizer.Clear();
         _transformStack.Clear();
+        _opacityStack.Clear();
+        _currentOpacity = 1f;
         _clipStack.Clear();
         UpdateClipCache();
         _currentTransform = CreateDpiTransform(dpiScale);
@@ -346,6 +354,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         _glyphRasterizer.Clear();
         _clipStack.Clear();
         _transformStack.Clear();
+        _opacityStack.Clear();
         _polygonIntersections.Clear();
         _scaledDirtyRects = [];
         _bitmap.Dispose();
@@ -368,6 +377,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     private void BlendRect(Rect rect, Color color)
     {
+        color = ApplyOpacity(color);
         var alpha = color.A;
         if (alpha == 0) return;
 
@@ -432,6 +442,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         if (!IsPointVisible(x + 0.5f, y + 0.5f)) return;
         var idx = y * _bitmapStride + x * 4;
         var span = _bitmapPixels.AsSpan(idx, 4);
+        color = ApplyOpacity(color);
         var alpha = color.A;
         if (alpha == 0) return;
         var pr = (byte)(color.R * alpha / 255);
@@ -1296,7 +1307,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 if (dstX < 0 || dstX >= _bitmap.Width) continue;
                 var srcIdx = sy * src.Stride + sx * 4;
                 var di = dstX * 4;
-                var sa = src.Pixels[srcIdx + 3];
+                var sa = ApplyOpacity(src.Pixels[srcIdx + 3]);
                 if (sa == 0) continue;
                 var sr = src.Pixels[srcIdx + 2];
                 var sg = src.Pixels[srcIdx + 1];
@@ -1329,6 +1340,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         var copyX1 = Math.Min(width, Math.Min(_bitmap.Width - dx0, src.Width - sx0));
         var copyY1 = Math.Min(height, Math.Min(_bitmap.Height - dy0, src.Height - sy0));
         if (copyX0 >= copyX1 || copyY0 >= copyY1) return true;
+        if (_currentOpacity < 1f) return false;
 
         var copyWidthBytes = (copyX1 - copyX0) * 4;
         for (var y = copyY0; y < copyY1; y++)
@@ -1352,6 +1364,15 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             if (row[i] != 255) return false;
         return true;
     }
+
+    private Color ApplyOpacity(Color color)
+    {
+        if (_currentOpacity >= 1f) return color;
+        return new Color(color.R, color.G, color.B, ApplyOpacity(color.A));
+    }
+
+    private byte ApplyOpacity(byte alpha) =>
+        (byte)Math.Clamp((int)MathF.Round(alpha * _currentOpacity), 0, 255);
 
     private static void BlendBitmapRow(ReadOnlySpan<byte> srcSpan, Span<byte> dstSpan)
     {

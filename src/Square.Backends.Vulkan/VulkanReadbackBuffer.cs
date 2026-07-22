@@ -7,7 +7,7 @@ namespace Square.Backends.Vulkan;
 /// <summary>
 /// Host-visible buffer that receives a copy of the presented swapchain image each frame,
 /// enabling GPU-accurate screenshots (<see cref="IRenderBitmapSource"/>) without re-rendering
-/// the display tree on a software context. This is what lets tooling capture real GPU output
+/// the display tree on a software context. This is what lets DevTools capture real GPU output
 /// (so GPU-side bugs such as a dropped render pass are visible in screenshots).
 /// </summary>
 /// <remarks>

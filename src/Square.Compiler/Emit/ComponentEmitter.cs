@@ -124,9 +124,9 @@ namespace Square.Compiler.Emit
             _sb.AppendLine();
 
             var hasStructs = _structCounts.Count > 0;
-            if ((_refs.Count > 0 || hasStructs) && !ContainsOnDetachedCore(_doc.ScriptCode))
+            if (_refs.Count > 0 || hasStructs)
             {
-                _sb.AppendLine("    protected override void OnDetachedCore()");
+                _sb.AppendLine("    protected override void OnGeneratedDetachedCore()");
                 _sb.AppendLine("    {");
                 foreach (var item in _refs)
                     _sb.AppendLine("        " + item.Name + " = null!;");
@@ -136,7 +136,7 @@ namespace Square.Compiler.Emit
                 EmitNullFields("_show");
                 EmitNullFields("_for");
                 EmitNullFields("_switch");
-                _sb.AppendLine("        base.OnDetachedCore();");
+                _sb.AppendLine("        base.OnGeneratedDetachedCore();");
                 _sb.AppendLine("    }");
                 _sb.AppendLine();
             }
@@ -437,10 +437,6 @@ namespace Square.Compiler.Emit
                    value.StartsWith(localName + "[", StringComparison.Ordinal);
         }
 
-        private static bool ContainsOnDetachedCore(string script) =>
-            !string.IsNullOrEmpty(script) &&
-            script.Contains("OnDetachedCore", StringComparison.Ordinal);
-
         private static bool IsWrapperExpression(SqxNode node)
         {
             if (node is not SqxExpression expression) return false;
@@ -473,7 +469,11 @@ namespace Square.Compiler.Emit
             "menuitem" => "Square.Controls.MenuItem",
             "menuseparator" => "Square.Controls.MenuSeparator",
             "text" => "Square.Controls.Text",
+            "list" => "Square.Controls.List",
             "listitem" => "Square.Controls.ListItem",
+            "tree" => "Square.Controls.Tree",
+            "treeitem" => "Square.Controls.TreeItem",
+            "swiper" => "Square.Controls.Swiper",
             "button" => "Square.Controls.Button",
             "input" => "Square.Controls.Input",
             "textarea" => "Square.Controls.TextArea",
@@ -488,10 +488,10 @@ namespace Square.Compiler.Emit
         };
 
         private static bool IsBuiltInTag(string tag) => tag.ToLowerInvariant() is "view" or "scrollviewer" or "popup" or "dialog" or
-            "menubar" or "menu" or "contextmenu" or "menuitem" or "menuseparator" or "text" or "listitem" or
+            "menubar" or "menu" or "contextmenu" or "menuitem" or "menuseparator" or "text" or "list" or "listitem" or "tree" or "treeitem" or "swiper" or
             "button" or "input" or "textarea" or "checkbox" or "radio" or "select" or "image" or "canvas" or "link";
 
-        private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem";
+        private static bool IsTextContentElement(string tag) => tag.ToLowerInvariant() is "text" or "button" or "link" or "listitem" or "treeitem";
 
         private static string MapPropName(string name) => name switch
         {
@@ -507,6 +507,10 @@ namespace Square.Compiler.Emit
             "checkable" => "IsCheckable",
             "stays-open-on-click" => "StaysOpenOnClick",
             "options" => "Options",
+            "items" => "Items",
+            "selected-index" => "SelectedIndex",
+            "expanded" => "IsExpanded",
+            "loop" => "Loop",
             "to" => "To",
             "href" => "Href",
             "marker" => "Marker",

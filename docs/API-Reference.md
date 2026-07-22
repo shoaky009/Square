@@ -1,7 +1,7 @@
 # API 参考
 
 > Version: 0.3
-> 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`、`Tooling.md`、`Rendering-Targets.md`
+> 配套：`Getting-Started.md`、`Architecture.md`、`Sqx-Spec.md`、`DevTools.md`、`Rendering-Targets.md`
 
 本文按模块列出 Square 框架的公共 API。所有类型签名基于源码，以 `命名空间.类型名` 组织。
 
@@ -65,22 +65,22 @@ public enum RenderMode
 
 ---
 
-## 1.1. Square.Tooling — 本地调试与自动化服务
+## 1.1. Square.DevTools — 本地调试与自动化服务
 
-### ToolingServer
+### DevToolsServer
 
 ```csharp
-namespace Square.Tooling;
+namespace Square.DevTools;
 
-public sealed class ToolingServer : IAsyncDisposable, IDisposable
+public sealed class DevToolsServer : IAsyncDisposable, IDisposable
 {
-    public const string TokenHeader = "X-Square-Tooling-Token";
+    public const string TokenHeader = "X-Square-DevTools-Token";
 
     public string AccessToken { get; }
     public int Port { get; }
     public string BaseAddress { get; } // http://127.0.0.1:{Port}
 
-    public static ToolingServer Start(DesktopApplication application, ToolingOptions? options = null);
+    public static DevToolsServer Start(DesktopApplication application, DevToolsOptions? options = null);
     public void Dispose();
     public ValueTask DisposeAsync();
 }
@@ -94,22 +94,22 @@ public sealed class ToolingServer : IAsyncDisposable, IDisposable
 | `BaseAddress` | 本地服务根地址 |
 | `Dispose()` / `DisposeAsync()` | 停止并释放 loopback `HttpListener` 与后台请求循环 |
 
-Endpoint 以 `/api/v1` 为前缀，提供 `/health`、`/screenshot`、`/input/pointer`、`/input/key`、`/input/text` 和 `/input/wheel`。请求/响应格式见 [`Tooling.md`](Tooling.md)。
+Endpoint 以 `/api/v1` 为前缀，提供 `/health`、`/screenshot`、`/input/pointer`、`/input/key`、`/input/text` 和 `/input/wheel`。请求/响应格式见 [`DevTools.md`](DevTools.md)。
 
 推荐通过应用扩展启动服务：
 
 ```csharp
-var tooling = app.UseToolingServer(options);
+var devTools = app.UseDevToolsServer(options);
 ```
 
-服务会在 `DesktopApplication` 退出时自动释放。直接调用 `ToolingServer.Start()` 仍可用于需要自行控制生命周期的场景。
+服务会在 `DesktopApplication` 退出时自动释放。直接调用 `DevToolsServer.Start()` 仍可用于需要自行控制生命周期的场景。
 
-### ToolingOptions
+### DevToolsOptions
 
 ```csharp
-namespace Square.Tooling;
+namespace Square.DevTools;
 
-public sealed class ToolingOptions
+public sealed class DevToolsOptions
 {
     public int Port { get; set; } = 0;
     public string? AccessToken { get; set; }
@@ -124,7 +124,7 @@ public sealed class ToolingOptions
 
 - `0`：由操作系统自动分配空闲端口，是默认和多实例推荐模式。
 - `1..65535`：严格绑定指定端口；端口冲突时 `Start` 抛出异常。
-- 启动后通过 `ToolingServer.Port` 和 `ToolingServer.BaseAddress` 获取实际地址。
+- 启动后通过 `DevToolsServer.Port` 和 `DevToolsServer.BaseAddress` 获取实际地址。
 
 `GET /api/v1/health` 返回：
 
@@ -138,17 +138,17 @@ public sealed class ToolingOptions
 }
 ```
 
-### Tooling input records
+### DevTools input records
 
 ```csharp
 namespace Square.Hosting;
 
-public sealed record ToolingPointerInput(Point Position, MouseAction Action, KeyModifiers Modifiers = KeyModifiers.None);
-public sealed record ToolingKeyInput(int KeyCode, KeyAction Action, KeyModifiers Modifiers = KeyModifiers.None);
-public sealed record ToolingWheelInput(Point Position, int Delta, KeyModifiers Modifiers = KeyModifiers.None);
+public sealed record DevToolsPointerInput(Point Position, MouseAction Action, KeyModifiers Modifiers = KeyModifiers.None);
+public sealed record DevToolsKeyInput(int KeyCode, KeyAction Action, KeyModifiers Modifiers = KeyModifiers.None);
+public sealed record DevToolsWheelInput(Point Position, int Delta, KeyModifiers Modifiers = KeyModifiers.None);
 ```
 
-`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 Tooling 层跨线程投递输入与截图。`CaptureRendererBitmapAsync()` 优先读取活动渲染上下文的实时帧：若 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`（Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`）则直接读回真实 GPU 输出；否则在 UI 线程将当前 DisplayTree 重放到离屏 Software bitmap。两种路径都不捕获平台窗口边框。
+`DesktopApplication` 暴露 `InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync`、`InjectWheelAsync` 和 `CaptureRendererBitmapAsync()` 供 DevTools 层跨线程投递输入与截图。`CaptureRendererBitmapAsync()` 优先读取活动渲染上下文的实时帧：若 RenderContext 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`（Vulkan 需设置 `SQUARE_VULKAN_READBACK=1`）则直接读回真实 GPU 输出；否则在 UI 线程将当前 DisplayTree 重放到离屏 Software bitmap。两种路径都不捕获平台窗口边框。
 
 ---
 
@@ -1491,7 +1491,7 @@ public static class PlatformScreenshot
 
 截图由当前注册的平台工厂提供。配合 `BitmapPngEncoder` 可将截图保存为 PNG。
 
-`PlatformScreenshot` 用于捕获真实平台窗口，与 `DesktopApplication.CaptureRendererBitmapAsync()` 的进程内 renderer 截图区分。自动化和 Tooling 默认使用后者，以避免 PID 查找、遮挡、窗口边框和桌面合成器差异。
+`PlatformScreenshot` 用于捕获真实平台窗口，与 `DesktopApplication.CaptureRendererBitmapAsync()` 的进程内 renderer 截图区分。自动化和 DevTools 默认使用后者，以避免 PID 查找、遮挡、窗口边框和桌面合成器差异。
 
 ---
 
@@ -1708,8 +1708,86 @@ public class ListItem : UIElement
     public string Marker { get; set; }    // 默认 "• "
     public Color Color { get; set; }
     public float FontSize { get; set; }
+    public bool IsSelected { get; set; }
 }
 ```
+
+### List
+
+```csharp
+namespace Square.Controls;
+
+public enum SelectionMode { None, Single, Multiple }
+
+public class List : ScrollViewer
+{
+    public string[] Items { get; set; }
+    public SelectionMode SelectionMode { get; set; }
+    public int SelectedIndex { get; set; }
+    public ListItem? SelectedItem { get; }
+    public IReadOnlyList<int> SelectedIndices { get; }
+    public IReadOnlyList<ListItem> SelectedItems { get; }
+
+    public void SetItemsSource(ObservableCollection<string>? source);
+    public bool SelectIndex(int index, bool control = false, bool shift = false);
+    public void ClearSelection();
+    public bool HandleKey(int keyCode, bool shift = false, bool control = false);
+}
+```
+
+`List` 默认单选并复用 `ScrollViewer` 的纵向滚动。选择变化派发冒泡的 `selectionchange` 和 `change` 事件；多选模式支持 Control 切换与 Shift 范围选择。既可声明 `<ListItem>` 子项，也可通过 `Items` 或 `SetItemsSource(ObservableCollection<string>)` 生成文本项。
+
+### Tree / TreeItem
+
+```csharp
+namespace Square.Controls;
+
+public class Tree : ScrollViewer
+{
+    public TreeItem? SelectedItem { get; }
+    public bool SelectItem(TreeItem? item);
+    public void ClearSelection();
+    public bool HandleKey(int keyCode);
+}
+
+public class TreeItem : UIElement
+{
+    public string TextContent { get; set; }
+    public bool IsExpanded { get; set; }
+    public bool IsSelected { get; set; }
+    public IReadOnlyList<TreeItem> Items { get; }
+    public bool HasItems { get; }
+
+    public bool Expand();
+    public bool Collapse();
+    public bool Toggle();
+}
+```
+
+`Tree` 使用嵌套 `<TreeItem>` 表达层级。上下键在可见节点间移动，右键展开或进入第一个子项，左键折叠或返回父项，Enter/Space 切换展开状态。选择变化派发 `selectionchange` 和 `change`，节点展开/折叠分别派发 `expand` 和 `collapse`。
+
+### Swiper
+
+```csharp
+namespace Square.Controls;
+
+public class Swiper : View
+{
+    public int SelectedIndex { get; set; }
+    public bool Loop { get; set; }
+    public int Count { get; }
+    public Element? SelectedItem { get; }
+    public bool CanGoPrevious { get; }
+    public bool CanGoNext { get; }
+
+    public bool GoTo(int index);
+    public bool Previous();
+    public bool Next();
+    public bool HandleKey(int keyCode);
+}
+```
+
+`Swiper` 将直接子元素作为页面，同时只显示当前页。左右键导航，Home/End 跳到首尾页；`Loop` 开启时首尾循环。当前基础版本提供离散分页与 `change` 事件，不包含拖拽手势或过渡动画。
 
 ### Link（路由，继承控件 Link）
 
@@ -1883,7 +1961,7 @@ private void OnClick(Event e) { }
 | `Square.UI` | `Node`, `Element`, `UIElement`, `ElementState`, `Document`, `UIDocument`, `Range`, `UIRootElement`, `UIHeadElement`, `UIBodyElement`, `HTMLElement`, `SVGElement`, `SlotCollection`, `RenderFragment` |
 | `Square.UI.ElementApi` | `StyleAccessor`, `ClassListAccessor`, `ChildrenCollection` |
 | `Square.UI.Properties` | `PropertyStore` |
-| `Square.Controls` | `View`, `ScrollViewer`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `ListItem`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
+| `Square.Controls` | `View`, `ScrollViewer`, `List`, `ListItem`, `Tree`, `TreeItem`, `Swiper`, `Popup`, `Dialog`, `MenuBar`, `Menu`, `ContextMenu`, `MenuItem`, `MenuSeparator`, `Text`, `Link`, `Button`, `Input`, `TextArea`, `CheckBox`, `Radio`, `Select`, `Image`, `Canvas` |
 | `Square.Controls.Primitives` | `ShowNode`, `ForNode`, `SwitchNode` |
 | `Square.Graphics` | `IRenderContext`, `Color`, `Rect`, `Size`, `Point`, `Brush`, `Pen`, `Font`, `PathGeometry`, `TextLayout`, `Bitmap`, `RenderBackendRegistry` |
 | `Square.Graphics.Codecs` | `BitmapPngEncoder`, `BmpPngConverter`, `Crc32` |

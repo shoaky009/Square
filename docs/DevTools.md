@@ -1,21 +1,21 @@
-# Tooling
+# DevTools
 
 > Version: 0.5  
 > 配套：`Getting-Started.md`、`API-Reference.md`、`Rendering.md`
 
-`Square.Tooling` 提供一个只监听 `127.0.0.1` 的 HTTP 调试服务，用于在运行中的 Square 桌面应用上做截图采集和输入自动化。它面向本地开发、示例演示、端到端测试和外部调试工具，不参与应用的正常 UI 渲染管线。
+`Square.DevTools` 提供一个只监听 `127.0.0.1` 的 HTTP 调试服务，用于在运行中的 Square 桌面应用上做截图采集和输入自动化。它面向本地开发、示例演示、端到端测试和外部调试工具，不参与应用的正常 UI 渲染管线。
 
 ---
 
 ## 1. 启动服务
 
-应用需要引用 `Square.Tooling`，然后在 `DesktopApplication.Run()` 前调用 `UseToolingServer()`。服务会随应用退出自动释放。
+应用需要引用 `Square.DevTools`，然后在 `DesktopApplication.Run()` 前调用 `UseDevToolsServer()`。服务会随应用退出自动释放。
 
 ```csharp
 using Square.Hosting;
 using Square.Platform;
 using Square.Platform.Win32;
-using Square.Tooling;
+using Square.DevTools;
 
 PlatformRegistry.Register(new Win32PlatformFactory());
 
@@ -26,20 +26,20 @@ var app = new DesktopApplication(new Main(), new PlatformHostCreateInfo
     Height = 600
 });
 
-var tooling = app.UseToolingServer(new ToolingOptions
+var devTools = app.UseDevToolsServer(new DevToolsOptions
 {
     Port = 0,
     AccessToken = "dev-token",
     AllowInputInjection = true
 });
 
-Console.WriteLine($"{tooling.BaseAddress}/api/v1/health");
-Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
+Console.WriteLine($"{devTools.BaseAddress}/api/v1/health");
+Console.WriteLine($"{DevToolsServer.TokenHeader}: {devTools.AccessToken}");
 
 app.Run();
 ```
 
-`ToolingOptions`：
+`DevToolsOptions`：
 
 | 属性 | 默认值 | 说明 |
 |---|---:|---|
@@ -50,42 +50,42 @@ app.Run();
 | `IncludeSourcePaths` | `true` | Inspector 响应是否包含模板源码路径 |
 | `IncludeTextContent` | `true` | Inspector 响应是否包含元素文本内容 |
 
-RichText 示例已经集成 Tooling：
+RichText 示例已经集成 DevTools：
 
 ```bash
 dotnet run --project samples/Square.Sample.RichText/Square.Sample.RichText.csproj
 ```
 
-主示例 `Square.Sample` 通过命令行选项按需启用 Tooling，可与任意后端组合。Vulkan 默认关闭 GPU readback；设置 `SQUARE_VULKAN_READBACK=1` 后，截图才会读取真实 GPU 帧（见 [3. API 概览](#3-api-概览) 的 screenshot 说明）：
+主示例 `Square.Sample` 通过命令行选项按需启用 DevTools，可与任意后端组合。Vulkan 默认关闭 GPU readback；设置 `SQUARE_VULKAN_READBACK=1` 后，截图才会读取真实 GPU 帧（见 [3. API 概览](#3-api-概览) 的 screenshot 说明）：
 
 ```bash
 # Software 后端（默认）
-dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --tooling
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --devtools
 
-# Vulkan 后端 + Tooling + GPU readback (PowerShell)
+# Vulkan 后端 + DevTools + GPU readback (PowerShell)
 $env:SQUARE_VULKAN_READBACK = "1"
-dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend=Vulkan --tooling
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend=Vulkan --devtools
 ```
 
-`Square.Sample` 支持的 Tooling 相关选项：
+`Square.Sample` 支持的 DevTools 相关选项：
 
 | 选项 | 说明 |
 |---|---|
-| `--tooling` | 启动 ToolingServer（缺省不启动） |
-| `--tooling-port=<port>` | 指定端口；省略时使用自动端口（`Port = 0`） |
-| `--tooling-token=<token>` | 指定访问令牌；省略时自动生成随机 token |
+| `--devtools` | 启动 DevToolsServer（缺省不启动） |
+| `--devtools-port=<port>` | 指定端口；省略时使用自动端口（`Port = 0`） |
+| `--devtools-token=<token>` | 指定访问令牌；省略时自动生成随机 token |
 
 启动后控制台会输出实际 base address 和 token header，例如：
 
 ```text
 http://127.0.0.1:54321
-X-Square-Tooling-Token: square-richtext-demo
+X-Square-DevTools-Token: <启动时生成的随机令牌>
 ```
 
 ### 端口分配规则
 
 1. 库和示例默认使用 `Port = 0`，由操作系统原子分配空闲端口，允许多个 Square 程序并行启动。
-2. 自动端口模式下，调用方必须读取 `ToolingServer.Port` 或 `ToolingServer.BaseAddress`，不得假设端口为 `5128`。
+2. 自动端口模式下，调用方必须读取 `DevToolsServer.Port` 或 `DevToolsServer.BaseAddress`，不得假设端口为 `5128`。
 3. 只有需要固定外部配置时才使用 `1..65535`。指定端口被占用时启动失败，不自动换到其他端口，避免客户端连接到错误实例。
 4. 每个进程默认生成独立随机 token。固定 token 仅用于受控的本地示例或测试。
 5. 服务始终只监听 `127.0.0.1`，禁止通过自动端口规则扩大监听范围。
@@ -95,18 +95,18 @@ X-Square-Tooling-Token: square-richtext-demo
 自动端口是常规开发、并行测试和多实例运行的默认选择：
 
 ```csharp
-var tooling = app.UseToolingServer();
+var devTools = app.UseDevToolsServer();
 
-Console.WriteLine($"Tooling endpoint: {tooling.BaseAddress}/api/v1");
-Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
+Console.WriteLine($"DevTools endpoint: {devTools.BaseAddress}/api/v1");
+Console.WriteLine($"{DevToolsServer.TokenHeader}: {devTools.AccessToken}");
 ```
 
-`UseToolingServer()` 会在应用退出时自动释放服务。需要自行控制生命周期时仍可直接调用 `ToolingServer.Start()` 并手工释放。
+`UseDevToolsServer()` 会在应用退出时自动释放服务。需要自行控制生命周期时仍可直接调用 `DevToolsServer.Start()` 并手工释放。
 
-`ToolingServer.Start` 返回前，`HttpListener` 已完成监听。此时：
+`DevToolsServer.Start` 返回前，`HttpListener` 已完成监听。此时：
 
-- `tooling.Port` 是实际绑定端口，不会是 `0`。
-- `tooling.BaseAddress` 是当前实例的实际根地址。
+- `devTools.Port` 是实际绑定端口，不会是 `0`。
+- `devTools.BaseAddress` 是当前实例的实际根地址。
 - 操作系统负责原子选择端口，不需要先探测再绑定，因此不存在“检查为空闲后被其他进程抢占”的竞态窗口。
 
 ### 固定端口模式
@@ -114,7 +114,7 @@ Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
 只有外部工具无法接收动态地址，或防火墙/容器映射要求固定端口时才使用固定端口：
 
 ```csharp
-var tooling = app.UseToolingServer(new ToolingOptions
+var devTools = app.UseDevToolsServer(new DevToolsOptions
 {
     Port = 5128
 });
@@ -126,7 +126,7 @@ var tooling = app.UseToolingServer(new ToolingOptions
 
 Square 不提供全局注册表或固定发现端口。应用负责把实例元数据传给需要连接的工具，推荐优先级如下：
 
-1. 父进程直接读取 `ToolingServer.BaseAddress` 和 `AccessToken`。
+1. 父进程直接读取 `DevToolsServer.BaseAddress` 和 `AccessToken`。
 2. 应用将地址和 token 输出到结构化日志、测试结果或进程间通信通道。
 3. 本地手工调试时输出到控制台。
 4. 不推荐通过扫描全部监听端口发现实例。
@@ -137,7 +137,7 @@ Square 不提供全局注册表或固定发现端口。应用负责把实例元�
 {
   "processId": 12345,
   "baseAddress": "http://127.0.0.1:54321",
-  "tokenHeader": "X-Square-Tooling-Token",
+  "tokenHeader": "X-Square-DevTools-Token",
   "accessToken": "<token>"
 }
 ```
@@ -151,7 +151,7 @@ Square 不提供全局注册表或固定发现端口。应用负责把实例元�
 所有 endpoint 都必须携带 header：
 
 ```text
-X-Square-Tooling-Token: <access-token>
+X-Square-DevTools-Token: <access-token>
 ```
 
 缺少或错误 token 时返回：
@@ -201,7 +201,7 @@ Inspector endpoint 见 [7. 元素调试与 Inspector](#7-元素调试与-inspect
 示例：
 
 ```bash
-curl -H "X-Square-Tooling-Token: square-richtext-demo" \
+curl -H "X-Square-DevTools-Token: $TOKEN" \
   http://127.0.0.1:<port>/api/v1/health
 ```
 
@@ -210,7 +210,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 将当前保留的 DisplayTree 在进程内离屏重放为位图并返回 PNG，文件名为 `square-screenshot.png`。
 
 ```bash
-curl -H "X-Square-Tooling-Token: square-richtext-demo" \
+curl -H "X-Square-DevTools-Token: $TOKEN" \
   -o screenshot.png \
   http://127.0.0.1:<port>/api/v1/screenshot
 ```
@@ -249,7 +249,7 @@ curl -H "X-Square-Tooling-Token: square-richtext-demo" \
 成功返回 `204 No Content`。
 
 ```bash
-curl -X POST -H "X-Square-Tooling-Token: square-richtext-demo" \
+curl -X POST -H "X-Square-DevTools-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"x\":40,\"y\":32,\"action\":\"Down\"}" \
   http://127.0.0.1:<port>/api/v1/input/pointer
@@ -326,12 +326,12 @@ curl -X POST -H "X-Square-Tooling-Token: square-richtext-demo" \
 | 状态码 | 场景 |
 |---:|---|
 | `400` | JSON 无效、字段缺失、字段类型错误或枚举值不支持 |
-| `401` | 缺少或错误 `X-Square-Tooling-Token` |
+| `401` | 缺少或错误 `X-Square-DevTools-Token` |
 | `403` | `AllowInputInjection=false` 时调用 `/input/*` |
 | `403` | `AllowInspector=false` 时调用 `/inspect/*` |
 | `500` | 截图或输入注入期间出现未处理异常 |
 
-Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时服务尚未启动；`ToolingServer.Start` 会直接抛出异常。
+DevTools 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时服务尚未启动；`DevToolsServer.Start` 会直接抛出异常。
 
 输入 JSON 使用 camelCase 字段名。枚举值解析不区分大小写。
 
@@ -339,9 +339,9 @@ Tooling 启动阶段的端口冲突不会转换为 HTTP 状态码，因为此时
 
 ## 5. 运行模型
 
-Tooling HTTP 请求由仅绑定 loopback 的 `HttpListener` 处理，不依赖 ASP.NET Core。输入注入不会直接跨线程操作 UI；`ToolingServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
+DevTools HTTP 请求由仅绑定 loopback 的 `HttpListener` 处理，不依赖 ASP.NET Core。输入注入不会直接跨线程操作 UI；`DevToolsServer` 会调用 `DesktopApplication.InjectPointerAsync`、`InjectKeyAsync`、`InjectTextAsync` 和 `InjectWheelAsync`，再通过 `Dispatcher.InvokeAsync` 投递到 UI 线程。
 
-`Square.Tooling` 支持 NativeAOT。服务使用显式路由和 JSON 读写，不依赖运行时 endpoint 发现、反射序列化元数据或动态代码生成。主示例 AOT 发布后仍可使用 `--tooling`：
+`Square.DevTools` 支持 NativeAOT。服务使用显式路由和 JSON 读写，不依赖运行时 endpoint 发现、反射序列化元数据或动态代码生成。主示例 AOT 发布后仍可使用 `--devtools`：
 
 ```powershell
 dotnet publish samples/Square.Sample/Square.Sample.csproj `
@@ -349,13 +349,13 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj `
   -r win-x64 `
   -p:SquareSamplePublishAot=true `
   -p:SquareSampleUseVulkan=true `
-  -p:SquareSampleUseTooling=true `
+  -p:SquareSampleUseDevTools=true `
   -o artifacts/aot-vulkan-win-x64
 
-artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan --tooling
+artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan --devtools
 ```
 
-`Square.Sample` 的 AOT 发布默认不引用 `Square.Tooling`。只有 `SquareSampleUseTooling=true` 时才添加项目引用和 `app.UseToolingServer()` 调用路径；普通应用不引用 `Square.Tooling` 即可从发布产物中完全移除 Tooling 服务。
+`Square.Sample` 的 AOT 发布默认不引用 `Square.DevTools`。只有 `SquareSampleUseDevTools=true` 时才添加项目引用和 `app.UseDevToolsServer()` 调用路径；普通应用不引用 `Square.DevTools` 即可从发布产物中完全移除 DevTools 服务。
 
 截图通过 `DesktopApplication.CaptureRendererBitmapAsync()` 获取，优先读取活动渲染上下文的实时帧：若 `_renderContext` 实现 `IRenderBitmapSource` 且 `IsCaptureAvailable` 为 `true`，直接 `CaptureBitmap()` 读回真实 GPU 输出；否则在 UI 线程创建离屏 Software RenderContext，重放当前 DisplayTree、文本选择和诊断覆盖层。因此 Software 与 Vulkan 都能使用同一截图 API；Vulkan 只有在设置 `SQUARE_VULKAN_READBACK=1` 后才捕获真实 GPU 帧，默认使用软件重放以降低内存和拷贝成本。
 
@@ -371,22 +371,22 @@ artifacts/aot-vulkan-win-x64/Square.Sample.exe --backend Vulkan --tooling
 TOKEN=square-richtext-demo
 BASE=http://127.0.0.1:<port>/api/v1
 
-curl -X POST -H "X-Square-Tooling-Token: $TOKEN" \
+curl -X POST -H "X-Square-DevTools-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"x":45,"y":230,"action":"Down"}' \
   "$BASE/input/pointer"
 
-curl -X POST -H "X-Square-Tooling-Token: $TOKEN" \
+curl -X POST -H "X-Square-DevTools-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"x":45,"y":230,"action":"Up"}' \
   "$BASE/input/pointer"
 
-curl -X POST -H "X-Square-Tooling-Token: $TOKEN" \
+curl -X POST -H "X-Square-DevTools-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello from tooling"}' \
+  -d '{"text":"Hello from DevTools"}' \
   "$BASE/input/text"
 
-curl -H "X-Square-Tooling-Token: $TOKEN" \
+curl -H "X-Square-DevTools-Token: $TOKEN" \
   -o after-input.png \
   "$BASE/screenshot"
 ```
@@ -396,14 +396,14 @@ curl -H "X-Square-Tooling-Token: $TOKEN" \
 ```powershell
 $token = "square-richtext-demo"
 $base = "http://127.0.0.1:<port>/api/v1"
-$headers = @{ "X-Square-Tooling-Token" = $token }
+$headers = @{ "X-Square-DevTools-Token" = $token }
 
 Invoke-RestMethod -Method Post -Headers $headers -ContentType "application/json" `
   -Body '{"x":45,"y":230,"action":"Down"}' "$base/input/pointer"
 Invoke-RestMethod -Method Post -Headers $headers -ContentType "application/json" `
   -Body '{"x":45,"y":230,"action":"Up"}' "$base/input/pointer"
 Invoke-RestMethod -Method Post -Headers $headers -ContentType "application/json" `
-  -Body '{"text":"Hello from tooling"}' "$base/input/text"
+  -Body '{"text":"Hello from DevTools"}' "$base/input/text"
 Invoke-WebRequest -Headers $headers -OutFile "after-input.png" "$base/screenshot"
 ```
 
@@ -411,7 +411,7 @@ Invoke-WebRequest -Headers $headers -OutFile "after-input.png" "$base/screenshot
 
 ## 7. 元素调试与 Inspector
 
-Tooling 提供运行时 Inspector：通过坐标、元素 ID 或树查询定位 Square 元素，并返回模板源码位置、布局盒、样式、状态和绘制信息。该能力用于 IDE 跳转、可视化检查、端到端测试失败诊断和外部调试工具。
+DevTools 提供运行时 Inspector：通过坐标、元素 ID 或树查询定位 Square 元素，并返回模板源码位置、布局盒、样式、状态和绘制信息。该能力用于 IDE 跳转、可视化检查、端到端测试失败诊断和外部调试工具。
 
 ### 7.1 总体目标
 
@@ -423,7 +423,7 @@ Inspector 不应只暴露截图，也不应只暴露 DisplayTree。它需要把�
   -> Source Generator emits ElementDebugInfo
   -> Element.DebugInfo
   -> LayoutBox / DisplayNode keeps Element reference or debug id
-  -> Tooling hit test / query
+  -> DevTools hit test / query
   -> source location + runtime state
 ```
 
@@ -431,7 +431,7 @@ Inspector 不应只暴露截图，也不应只暴露 DisplayTree。它需要把�
 
 1. **源码位置由 Source Generator 注入**：不要依赖 C# caller info，因为 caller info 会指向 `.g.cs`，不是 `.sqx` / `.sqv`。
 2. **权威调试信息挂在 Element 上**：Rendering 只传递引用或 debug id，不作为源码信息的唯一来源。
-3. **Tooling 只读为主**：Inspector 默认不修改 Element Tree；未来需要样式热调试时再单独设计写入权限。
+3. **DevTools 只读为主**：Inspector 默认不修改 Element Tree；未来需要样式热调试时再单独设计写入权限。
 4. **Debug 信息可裁剪**：Release / NativeAOT 发布可以通过构建属性关闭详细 source path 或完全关闭 Inspector metadata。
 
 ### 7.2 编译期数据：SourceSpan 与 ElementDebugInfo
@@ -509,7 +509,7 @@ public ElementDebugInfo? DebugInfo { get; }
 
 ### 7.4 Layout / DisplayTree 反查
 
-Tooling 的坐标点选需要从屏幕坐标回到 Element：
+DevTools 的坐标点选需要从屏幕坐标回到 Element：
 
 ```text
 client point
@@ -525,7 +525,7 @@ client point
 |---|---|
 | `LayoutBox.Element` | 布局命中、盒模型检查、尺寸定位 |
 | `DisplayNode.Element` 或 `DebugElementId` | 绘制命中、截图叠加、高亮 |
-| `Element.DebugId` | Tooling 返回稳定引用，后续查询详情 |
+| `Element.DebugId` | DevTools 返回稳定引用，后续查询详情 |
 
 `DebugId` 只要求在单次运行期间稳定，不要求跨进程或跨构建稳定。跨构建跳转应依赖 `SourceSpan`。
 
@@ -585,7 +585,7 @@ client point
 
 ### 7.6 IDE 跳转协议
 
-Tooling 只返回源码位置，不直接假设 IDE。外部工具可以按响应中的 source location 调用 IDE：
+DevTools 只返回源码位置，不直接假设 IDE。外部工具可以按响应中的 source location 调用 IDE：
 
 ```text
 file: Components/Main.sqx
@@ -599,14 +599,14 @@ column: 5
 |---|---|---|
 | `POST` | `/inspect/open-source` | 由本地开发工具注册 handler 后打开源码 |
 
-该 endpoint 不应默认启用，避免 Tooling 服务直接执行外部命令。默认安全模型应保持“返回数据，由调用方决定如何打开 IDE”。
+该 endpoint 不应默认启用，避免 DevTools 服务直接执行外部命令。默认安全模型应保持“返回数据，由调用方决定如何打开 IDE”。
 
 ### 7.7 安全与隐私
 
 Inspector 会暴露源码路径、组件名、文本内容和样式信息，因此需要比截图/输入更明确的开关：
 
 ```csharp
-public sealed class ToolingOptions
+public sealed class DevToolsOptions
 {
     public bool AllowInspector { get; set; } = true;
     public bool IncludeSourcePaths { get; set; } = true;
@@ -622,19 +622,19 @@ public sealed class ToolingOptions
 | Release | false | false | 除非显式打开 |
 | NativeAOT publish | false | false | 避免泄露路径并减少 metadata |
 
-即使 Inspector 启用，服务仍只监听 `127.0.0.1`，并继续要求 `X-Square-Tooling-Token`。
+即使 Inspector 启用，服务仍只监听 `127.0.0.1`，并继续要求 `X-Square-DevTools-Token`。
 
 ### 7.8 分阶段实现
 
 | 阶段 | 内容 | 退出标准 |
 |---|---|---|
-| D0 | 文档计划与命名稳定 | Tooling 文档明确 Inspector 数据流和 endpoint 草案 |
+| D0 | 文档计划与命名稳定 | DevTools 文档明确 Inspector 数据流和 endpoint 草案 |
 | D1 | `SourceSpan` 贯通 Parser / AST | `.sqx` / `.sqv` AST 节点保留准确行列 |
 | D2 | Generator 注入 `ElementDebugInfo` | 生成的元素可回溯到模板源位置 |
-| D3 | `Element.DebugId` 与 runtime registry | Tooling 可通过 ID 查询当前运行时元素摘要 |
+| D3 | `Element.DebugId` 与 runtime registry | DevTools 可通过 ID 查询当前运行时元素摘要 |
 | D4 | Layout / DisplayTree hit test | `/inspect/hit-test` 可从坐标返回元素与源码位置 |
 | D5 | Tree / element detail endpoint | `/inspect/tree`、`/inspect/elements/{id}` 可用 |
 | D6 | Style / layout diagnostics | 可查看 computed style、matched rules、box model |
-| D7 | IDE 集成 | 外部工具可基于 Tooling 响应跳转源码 |
+| D7 | IDE 集成 | 外部工具可基于 DevTools 响应跳转源码 |
 
 优先级建议：先完成 D1-D4，形成“点选 UI -> 定位 `.sqx/.sqv` 源码”的闭环；样式规则解释、IDE 打开、热编辑可以后置。

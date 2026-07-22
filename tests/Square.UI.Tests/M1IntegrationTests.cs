@@ -40,7 +40,7 @@ public class M1IntegrationTests
         var tabs = Assert.Single(root.QueryAll<Tabs>());
         var controlsPage = Assert.Single(root.QueryAll<ControlsSamplesPage>());
         var textPage = Assert.Single(root.QueryAll<TextSamplesPage>());
-        var button = Assert.Single(controlsPage.QueryAll<Button>());
+        var button = Assert.Single(controlsPage.QueryAll<Button>(), item => item.TextContent == "Button - add activity");
         var inputs = root.QueryAll<Input>();
         var input = inputs[0];
         Assert.Equal("Button - add activity", button.TextContent);
@@ -154,7 +154,7 @@ public class M1IntegrationTests
         var root = Assert.IsType<View>(Assert.Single(component.Children));
         var controlsPage = Assert.Single(root.QueryAll<ControlsSamplesPage>());
         var textPage = Assert.Single(root.QueryAll<TextSamplesPage>());
-        var button = Assert.Single(controlsPage.QueryAll<Button>());
+        var button = Assert.Single(controlsPage.QueryAll<Button>(), item => item.TextContent == "Button - add activity");
         var input = Assert.Single(textPage.QueryAll<Input>(), editor => editor.ClassList.Contains("editor-default"));
 
         input.SelectAll();
@@ -180,7 +180,7 @@ public class M1IntegrationTests
         var tabs = Assert.Single(root.QueryAll<Tabs>());
         tabs.SelectedIndex = 1;
         var controlsPage = Assert.Single(root.QueryAll<ControlsSamplesPage>());
-        var button = Assert.Single(controlsPage.QueryAll<Button>());
+        var button = Assert.Single(controlsPage.QueryAll<Button>(), item => item.TextContent == "Button - add activity");
         var tabPanels = Assert.Single(root.QueryAll<View>(), view => view.ClassList.Contains("tab-panels"));
 
         for (var i = 0; i < 60; i++)

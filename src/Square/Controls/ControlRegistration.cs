@@ -22,7 +22,11 @@ public static class ControlRegistration
         UIDocument.RegisterElement("MenuItem", static () => new MenuItem());
         UIDocument.RegisterElement("MenuSeparator", static () => new MenuSeparator());
         UIDocument.RegisterElement("Text", static () => new Controls.Text());
+        UIDocument.RegisterElement("List", static () => new Controls.List());
         UIDocument.RegisterElement("ListItem", static () => new ListItem());
+        UIDocument.RegisterElement("Tree", static () => new Tree());
+        UIDocument.RegisterElement("TreeItem", static () => new TreeItem());
+        UIDocument.RegisterElement("Swiper", static () => new Swiper());
         UIDocument.RegisterElement("Link", static () => new Controls.Link());
         UIDocument.RegisterElement("Button", static () => new Button());
         UIDocument.RegisterElement("Input", static () => new Input());

@@ -67,7 +67,7 @@ cd MyApp
 | `OutputItemType="Analyzer"` | Source Generator 作为分析器引用，不输出程序集 |
 | `AdditionalFiles Include="**\*.sqx"` | 将 `.sqx` 文件注册为 Source Generator 输入 |
 
-`Square` 包含桌面运行时、控件、CSS、路由、布局和软件渲染。窗口宿主由 `Square.Platform.Win32` 或 `Square.Platform.X11` 提供；Vulkan、Extensions 与 Tooling 仍按需单独引用。
+`Square` 包含桌面运行时、控件、CSS、路由、布局和软件渲染。窗口宿主由 `Square.Platform.Win32` 或 `Square.Platform.X11` 提供；Vulkan、Extensions 与 DevTools 仍按需单独引用。
 
 ### 2.3 编写入口
 
@@ -637,9 +637,9 @@ dotnet publish samples/Square.Sample/Square.Sample.csproj \
   --self-contained true
 ```
 
-Square 从设计上保证 NativeAOT 兼容：不使用 `Reflection.Emit`、`dynamic`、运行时程序集加载。P/Invoke 使用 `LibraryImport` 源生成器。Software、Vulkan 与 Tooling 均支持 NativeAOT；Vulkan 后端通过显式系统库加载器加载 `vulkan-1.dll` 或 `libvulkan.so`，shader 使用构建期生成的内嵌 SPIR-V；Tooling 使用 `HttpListener`、显式路由和手写 JSON 输出。
+Square 以 NativeAOT 兼容为设计约束：不使用 `Reflection.Emit`、`dynamic` 或运行时程序集发现。P/Invoke 使用源生成或显式静态入口。CI 验证 Win32/X11 Software AOT 发布；Vulkan 与 DevTools 也提供 AOT 路径，但组合场景仍属于实验性验证范围。Vulkan 后端通过显式系统库加载器加载 `vulkan-1.dll` 或 `libvulkan.so`，shader 使用构建期生成的内嵌 SPIR-V；DevTools 使用 `HttpListener`、显式路由和手写 JSON 输出。
 
-主示例的 AOT 发布默认不引用 Vulkan 和 Tooling。需要 Vulkan AOT 时增加 `-p:SquareSampleUseVulkan=true`，需要 Tooling 时增加 `-p:SquareSampleUseTooling=true`；不传对应属性时，相关项目及其依赖不会进入发布产物。
+主示例的 AOT 发布默认不引用 Vulkan 和 DevTools。需要 Vulkan AOT 时增加 `-p:SquareSampleUseVulkan=true`，需要 DevTools 时增加 `-p:SquareSampleUseDevTools=true`；不传对应属性时，相关项目及其依赖不会进入发布产物。
 
 ---
 
@@ -679,27 +679,27 @@ dotnet build -p:SquareEmitCompilerGeneratedFiles=true
 
 `DesktopApplication` 在 `RunCore()` 内注册默认软件后端和控件。具体平台位于独立程序集，应用必须在 `app.Run()` 前通过 `PlatformRegistry.Register(...)` 注册 `Win32PlatformFactory` 或 `X11PlatformFactory`。
 
-### 15.4 启用 Tooling
+### 15.4 启用 DevTools
 
-需要截图、输入自动化或运行时 Inspector 时，引用 `Square.Tooling`，并在 `app.Run()` 前启动服务：
+需要截图、输入自动化或运行时 Inspector 时，引用 `Square.DevTools`，并在 `app.Run()` 前启动服务：
 
 ```csharp
-using Square.Tooling;
+using Square.DevTools;
 
-var tooling = app.UseToolingServer(new ToolingOptions
+var devTools = app.UseDevToolsServer(new DevToolsOptions
 {
   Port = 0
 });
 
-Console.WriteLine($"Tooling: {tooling.BaseAddress}/api/v1");
-Console.WriteLine($"{ToolingServer.TokenHeader}: {tooling.AccessToken}");
+Console.WriteLine($"DevTools: {devTools.BaseAddress}/api/v1");
+Console.WriteLine($"{DevToolsServer.TokenHeader}: {devTools.AccessToken}");
 
 app.Run();
 ```
 
-`Port = 0` 是推荐默认值，由操作系统为每个进程分配独立端口。多个应用或测试实例可以同时运行。连接方必须使用 `tooling.BaseAddress`，不能假设固定端口。
+`Port = 0` 是推荐默认值，由操作系统为每个进程分配独立端口。多个应用或测试实例可以同时运行。连接方必须使用 `devTools.BaseAddress`，不能假设固定端口。
 
-固定端口只用于外部系统要求稳定地址的场景；端口被占用时启动会失败，不会自动递增到其他端口。完整规则、认证和 HTTP API 见 [`Tooling.md`](Tooling.md)。
+固定端口只用于外部系统要求稳定地址的场景；端口被占用时启动会失败，不会自动递增到其他端口。完整规则、认证和 HTTP API 见 [`DevTools.md`](DevTools.md)。
 
 ---
 

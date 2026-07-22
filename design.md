@@ -85,7 +85,7 @@ Backend + Platform host (Software/Win32/X11/...)
 | `Square.Hosting` | 桌面应用组合层 | `DesktopApplication`、`RenderMode`、`RenderDecision`、`RenderDiagnostics` |
 | `Square.Router` | 内存路由与导航控件 | Route matcher、nested branch、history、Link、路由指令 |
 | `Square.Extensions` | 可选扩展模块 | Markdown 渲染扩展，基于 Markdig |
-| `Square.Tooling` | 本地 HTTP 调试与自动化 | localhost + token；renderer PNG 截图；指针、键盘、文本、滚轮输入注入 |
+| `Square.DevTools` | 本地 HTTP 调试与自动化 | localhost + token；renderer PNG 截图；指针、键盘、文本、滚轮输入注入 |
 | `Square.Text` | 文本、字体、选择与测量基础 | Font manager、FontFaceSet、文本测量、caret/selection/hit test 基础 |
 
 依赖方向遵循：核心抽象向下游开放，平台/后端/扩展在边缘注册；核心层不得反向依赖具体平台和具体图形库。

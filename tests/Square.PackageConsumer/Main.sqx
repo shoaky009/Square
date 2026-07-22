@@ -1,0 +1,7 @@
+<template>
+  <View>
+    <Text>Package consumer</Text>
+  </View>
+</template>
+<script lang="csharp" namespace="Square.PackageConsumer">
+</script>

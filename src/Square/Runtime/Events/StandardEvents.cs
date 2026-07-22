@@ -33,6 +33,8 @@ public static class StandardEvents
     public const string Click = "click";
     /// <summary>值变更。</summary>
     public const string Change = "change";
+    /// <summary>选择集合变更。</summary>
+    public const string SelectionChange = "selectionchange";
     /// <summary>输入过程中的值变化。</summary>
     public const string Input = "input";
     /// <summary>请求动画帧（Square 扩展，非标准 DOM）。</summary>
@@ -54,6 +56,7 @@ public static class StandardEvents
         [Blur] = None(),
         [Click] = BubblingCancelable(),
         [Change] = Bubbling(),
+        [SelectionChange] = Bubbling(),
         [Input] = Bubbling(),
         [RequestFrame] = Bubbling(),
     };
@@ -90,6 +93,8 @@ public static class StandardEvents
     public static Event CreateClick() => Create(Click);
     /// <summary>创建 change 事件。</summary>
     public static Event CreateChange() => Create(Change);
+    /// <summary>创建 selectionchange 事件。</summary>
+    public static Event CreateSelectionChange() => Create(SelectionChange);
     /// <summary>创建 input 事件。</summary>
     public static Event CreateInput() => Create(Input);
     /// <summary>创建 focus 事件（不冒泡）。</summary>

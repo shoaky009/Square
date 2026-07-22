@@ -17,6 +17,9 @@ obj/
 artifacts/
 publish/
 [Bb]uild/
+nupkgs/
+.tmp_*
+*_screenshot.png
 *.dll
 *.pdb
 *.exe

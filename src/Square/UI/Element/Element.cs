@@ -579,6 +579,9 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     /// <summary>卸载完成钩子。</summary>
     protected virtual void OnDetachedCore() { }
 
+    /// <summary>生成代码专用的卸载清理钩子，在用户卸载钩子之前执行。</summary>
+    protected virtual void OnGeneratedDetachedCore() { }
+
     void IComponentLifecycle.OnPropChanged(string name) => OnPropChanged(name);
 
     void IComponentLifecycle.OnAttached()
@@ -593,6 +596,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     {
         if (!IsAttached) return;
         foreach (var child in Children) ((IComponentLifecycle)child).OnDetached();
+        OnGeneratedDetachedCore();
         OnDetachedCore();
         IsAttached = false;
     }

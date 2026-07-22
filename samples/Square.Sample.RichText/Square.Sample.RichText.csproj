@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <IsPackable>false</IsPackable>
     <OutputType Condition="'$(IsWindowsBuild)' != 'false'">WinExe</OutputType>
     <OutputType Condition="'$(IsWindowsBuild)' == 'false'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -15,7 +16,7 @@
     <ProjectReference Include="..\..\src\Square.Platform.Win32\Square.Platform.Win32.csproj" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <ProjectReference Include="..\..\src\Square.Platform.X11\Square.Platform.X11.csproj" Condition="'$(SquareTargetPlatform)' == 'X11'" />
     <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
-    <ProjectReference Include="..\..\src\Square.Tooling\Square.Tooling.csproj" />
+    <ProjectReference Include="..\..\src\Square.DevTools\Square.DevTools.csproj" />
     <ProjectReference Include="..\..\src\Square.Compiler\Square.Compiler.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
