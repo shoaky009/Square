@@ -1593,6 +1593,91 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void SwitchNodeReactsToObservableBranchCondition()
+    {
+        Reconciler.Current.Reset();
+        var root = new View();
+        var selected = new ObservableValue<bool>(false);
+        var matched = new Square.Controls.Text("matched");
+        var fallback = new Square.Controls.Text("fallback");
+        var node = new SwitchNode();
+        node.AddBranch(selected, () => selected, () => matched);
+        node.AddDefault(() => fallback);
+        node.AttachTo(root);
+        ((IComponentLifecycle)root).OnAttached();
+        Reconciler.Current.Flush();
+
+        Assert.Same(fallback, Assert.Single(root.Children));
+
+        selected.Value = true;
+        Reconciler.Current.Flush();
+        Assert.Same(matched, Assert.Single(root.Children));
+
+        selected.Value = false;
+        Reconciler.Current.Flush();
+        Assert.Same(fallback, Assert.Single(root.Children));
+
+        node.Dispose();
+        selected.Value = true;
+        Reconciler.Current.Flush();
+        Assert.Empty(root.Children);
+    }
+
+    [Fact]
+    public void ShowNodeRendersAndReusesFallback()
+    {
+        var root = new View();
+        var visible = new ObservableValue<bool>(false);
+        var content = new Square.Controls.Text("content");
+        var fallback = new Square.Controls.Text("fallback");
+        var node = new ShowNode(visible, () => content, () => fallback);
+        node.AttachTo(root);
+
+        Assert.Same(fallback, Assert.Single(root.Children));
+        visible.Value = true;
+        Reconciler.Current.Flush();
+        Assert.Same(content, Assert.Single(root.Children));
+        visible.Value = false;
+        Reconciler.Current.Flush();
+        Assert.Same(fallback, Assert.Single(root.Children));
+        node.Dispose();
+    }
+
+    [Fact]
+    public void ForNodeRendersFallbackWhenCollectionIsEmpty()
+    {
+        var root = new View();
+        var items = new ObservableCollection<string>();
+        var fallback = new Square.Controls.Text("empty");
+        var loop = ForNode.Create(items, item => new Square.Controls.Text(item), () => fallback);
+        loop.AttachTo(root);
+
+        Assert.Same(fallback, Assert.Single(root.Children));
+        items.Add("value");
+        Reconciler.Current.Flush();
+        Assert.Equal("value", Assert.IsType<Square.Controls.Text>(Assert.Single(root.Children)).TextContent);
+        items.Clear();
+        Reconciler.Current.Flush();
+        Assert.Same(fallback, Assert.Single(root.Children));
+        loop.Dispose();
+    }
+
+    [Fact]
+    public void ComputedBindingUpdatesFromAllReactiveSources()
+    {
+        var text = new Square.Controls.Text();
+        var first = new ObservableValue<string>("Ada");
+        var last = new ObservableValue<string>("Lovelace");
+        text.BindProperty("TextContent", () => "Hello " + first + " " + last, first, last);
+
+        Assert.Equal("Hello Ada Lovelace", text.TextContent);
+        first.Value = "Grace";
+        Assert.Equal("Hello Grace Lovelace", text.TextContent);
+        last.Value = "Hopper";
+        Assert.Equal("Hello Grace Hopper", text.TextContent);
+    }
+
+    [Fact]
     public void ForNodeIndexedBuildReceivesIndices()
     {
         var root = new View();
@@ -1620,6 +1705,82 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void KeyedForNodePreservesIdentityWhenItemsMove()
+    {
+        var root = new View();
+        var attached = new List<string>();
+        var detached = new List<string>();
+        var first = new KeyedItem(1, "first");
+        var second = new KeyedItem(2, "second");
+        var items = new ObservableCollection<KeyedItem> { first, second };
+        var nodes = new Dictionary<int, TrackingText>();
+        var loop = ForNode.Create(items, item => item.Id, item =>
+            nodes[item.Id] = new TrackingText(item.Name, attached, detached));
+        loop.AttachTo(root);
+        ((IComponentLifecycle)root).OnAttached();
+
+        items.Move(1, 0);
+        Reconciler.Current.Flush();
+
+        Assert.Same(nodes[2], root.Children[0]);
+        Assert.Same(nodes[1], root.Children[1]);
+        Assert.True(nodes[1].IsAttached);
+        Assert.True(nodes[2].IsAttached);
+        Assert.Equal(new[] { "first", "second" }, attached);
+        Assert.Empty(detached);
+        loop.Dispose();
+    }
+
+    [Fact]
+    public void KeyedForNodeRebuildsWhenSameKeyGetsNewItemInstance()
+    {
+        var root = new View();
+        var items = new ObservableCollection<KeyedItem> { new(1, "old") };
+        var loop = ForNode.Create(items, item => item.Id, item => new Square.Controls.Text(item.Name));
+        loop.AttachTo(root);
+        var original = Assert.IsType<Square.Controls.Text>(Assert.Single(root.Children));
+
+        items[0] = new KeyedItem(1, "new");
+        Reconciler.Current.Flush();
+
+        var replacement = Assert.IsType<Square.Controls.Text>(Assert.Single(root.Children));
+        Assert.NotSame(original, replacement);
+        Assert.Equal("new", replacement.TextContent);
+        loop.Dispose();
+    }
+
+    [Fact]
+    public void KeyedForNodeRejectsDuplicateKeys()
+    {
+        var items = new ObservableCollection<KeyedItem>
+        {
+            new(1, "first"),
+            new(1, "duplicate")
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            ForNode.Create(items, item => item.Id, item => new Square.Controls.Text(item.Name)));
+
+        Assert.Contains("Duplicate key", exception.Message);
+    }
+
+    [Fact]
+    public void IndexNodePreservesPositionsAndUpdatesValues()
+    {
+        var root = new View();
+        var items = new ObservableCollection<string> { "a", "b" };
+        var loop = IndexNode.Create(items, (item, index) => new Square.Controls.Text(item + index));
+        loop.AttachTo(root);
+
+        items.Insert(0, "z");
+        Reconciler.Current.Flush();
+
+        Assert.Equal(new[] { "z0", "a1", "b2" },
+            root.QueryAll<Square.Controls.Text>().Select(text => text.TextContent));
+        loop.Dispose();
+    }
+
+    [Fact]
     public void ReconcilerFlushProcessesDirtyWorkScheduledByUpdate()
     {
         Reconciler.Current.Reset();
@@ -1635,6 +1796,17 @@ public class M1IntegrationTests
         Assert.True(child.IsLayoutDirty);
         Assert.True(root.IsLayoutDirty);
         Assert.False(Reconciler.Current.HasWork);
+    }
+
+    private sealed record KeyedItem(int Id, string Name);
+
+    private sealed class TrackingText(
+        string text,
+        List<string> attached,
+        List<string> detached) : Square.Controls.Text(text)
+    {
+        protected override void OnAttachedCore() => attached.Add(TextContent);
+        protected override void OnDetachedCore() => detached.Add(TextContent);
     }
 
     private sealed class TrackingPage(

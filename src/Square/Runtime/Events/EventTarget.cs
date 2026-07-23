@@ -63,6 +63,15 @@ public class EventTarget
     public void AddEventListener(string type, Action<Event>? listener, bool useCapture) =>
         AddEventListener(type, listener, new AddEventListenerOptions { Capture = useCapture });
 
+    /// <summary>注册事件监听器并返回可用于移除该监听器的句柄。</summary>
+    public IDisposable Listen(string type, Action<Event> listener, AddEventListenerOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(listener);
+        options ??= new AddEventListenerOptions();
+        AddEventListener(type, listener, options);
+        return new ListenerSubscription(this, type.Trim(), listener, options.Capture);
+    }
+
     /// <summary>注册无事件参数的监听器（Square 便捷重载）。</summary>
     public void AddEventListener(string type, Action handler, AddEventListenerOptions? options = null)
     {
@@ -168,6 +177,21 @@ public class EventTarget
 
     /// <summary>派发结束后若未 preventDefault，可执行默认行为（扩展点）。</summary>
     protected virtual void OnDefaultAction(Event e) { }
+
+    private sealed class ListenerSubscription(
+        EventTarget target,
+        string type,
+        Action<Event> listener,
+        bool capture) : IDisposable
+    {
+        private EventTarget? _target = target;
+
+        public void Dispose()
+        {
+            _target?.RemoveEventListener(type, listener, capture);
+            _target = null;
+        }
+    }
 
     private bool DispatchCore(Event e, bool isTrusted)
     {

@@ -296,6 +296,18 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Invalidate(PropertyInvalidation.ForProperty(name));
     }
 
+    /// <summary>移除属性值并触发与写入相同的变更通知链。</summary>
+    public bool RemoveProperty(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!Properties.RemoveValue(name)) return false;
+        Properties.UnmarkBound(name);
+        OnPropertyChanged(name);
+        ((IComponentLifecycle)this).OnPropChanged(name);
+        Invalidate(PropertyInvalidation.ForProperty(name));
+        return true;
+    }
+
     /// <summary>用委托取值写入属性（Square 扩展；用于表达式绑定）。</summary>
     public void BindProperty<T>(string name, Func<T> getter)
     {
@@ -305,6 +317,16 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         OnPropertyChanged(name);
         ((IComponentLifecycle)this).OnPropChanged(name);
         Invalidate(PropertyInvalidation.ForProperty(name));
+    }
+
+    public void BindProperty<T>(string name, Func<T> getter, params IReactiveSource[] sources)
+    {
+        ArgumentNullException.ThrowIfNull(getter);
+        Properties.MarkBound(name);
+        void Update() => SetBoundValue(name, getter());
+        Update();
+        foreach (var source in sources.Distinct())
+            _bindings.Add(source.SubscribeChanged(Update, new ReactiveSubscriptionOptions { Dispatcher = Dispatcher }));
     }
 
     /// <summary>订阅 <see cref="ObservableValue{T}"/> 并同步到属性（Square 扩展）。</summary>

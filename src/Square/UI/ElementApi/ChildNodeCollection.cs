@@ -48,6 +48,15 @@ public sealed class ChildNodeCollection : IList<Node>
         Insert(index, newChild);
     }
 
+    internal void Move(int oldIndex, int newIndex)
+    {
+        if (oldIndex == newIndex) return;
+        var item = _list[oldIndex];
+        _list.RemoveAt(oldIndex);
+        _list.Insert(newIndex, item);
+        _owner.InvalidateLayout();
+    }
+
     public bool Remove(Node item)
     {
         var index = _list.IndexOf(item);

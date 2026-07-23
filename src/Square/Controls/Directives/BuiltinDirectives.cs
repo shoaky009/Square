@@ -8,6 +8,9 @@ public static class ShowDirectiveMarker;
 [SqxDirective("For", Pattern = "ControlFlowAttach", RuntimeTypeName = "ForNode", FieldPrefix = "_for", PrimaryAttribute = "each")]
 public static class ForDirectiveMarker;
 
+[SqxDirective("Index", Pattern = "ControlFlowAttach", RuntimeTypeName = "IForNode", FieldPrefix = "_index", PrimaryAttribute = "each")]
+public static class IndexDirectiveMarker;
+
 [SqxDirective("Switch", Pattern = "ControlFlowAttach", RuntimeTypeName = "SwitchNode", FieldPrefix = "_switch", AllowedChildTags = new[] { "Match" })]
 public static class SwitchDirectiveMarker;
 

@@ -14,7 +14,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Square.Backends.Tests" />
+    <InternalsVisibleTo Include="Square.Extensions" />
     <InternalsVisibleTo Include="Square.Images.Tests" />
+    <InternalsVisibleTo Include="Square.Platform.Win32" />
     <InternalsVisibleTo Include="Square.UI.Tests" />
   </ItemGroup>
 

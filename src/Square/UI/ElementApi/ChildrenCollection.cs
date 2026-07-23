@@ -30,6 +30,13 @@ public sealed class ChildrenCollection : IList<Element>
 
     public void InsertBefore(Element newChild, Element refChild) => _nodes.InsertBefore(newChild, refChild);
 
+    public void Move(int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || oldIndex >= Count) throw new ArgumentOutOfRangeException(nameof(oldIndex));
+        if (newIndex < 0 || newIndex >= Count) throw new ArgumentOutOfRangeException(nameof(newIndex));
+        _nodes.Move(ToNodeIndex(oldIndex), ToNodeIndex(newIndex));
+    }
+
     public bool Remove(Element item) => _nodes.Remove(item);
 
     public void RemoveAt(int index) => _nodes.RemoveAt(ToNodeIndex(index));

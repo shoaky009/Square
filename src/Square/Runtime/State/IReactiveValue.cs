@@ -1,6 +1,11 @@
 namespace Square.Runtime.State;
 
-public interface IReactiveValue<T>
+public interface IReactiveSource
+{
+    IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null);
+}
+
+public interface IReactiveValue<T> : IReactiveSource
 {
     T Value { get; }
 

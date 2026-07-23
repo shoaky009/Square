@@ -1,6 +1,8 @@
+using Square.Runtime.State;
+
 namespace Square.Runtime.Binding;
 
-public sealed class ObservableValue<T>
+public sealed class ObservableValue<T> : IReactiveValue<T>
 {
     private T _value;
     private Action<T>? _changed;
@@ -24,6 +26,11 @@ public sealed class ObservableValue<T>
         _changed += handler;
         return new Subscription(() => _changed -= handler);
     }
+
+    public IDisposable Subscribe(Action<T> callback, ReactiveSubscriptionOptions? options = null) => Subscribe(callback);
+
+    public IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null) =>
+        Subscribe(_ => callback());
 
     public void Notify() => _changed?.Invoke(_value);
 

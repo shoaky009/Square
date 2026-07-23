@@ -62,6 +62,9 @@ public sealed class StoreSelector<TState, TValue> : IReactiveValue<TValue>, IDis
         return subscription;
     }
 
+    public IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null) =>
+        Subscribe(_ => callback(), options);
+
     public void Dispose()
     {
         ReactiveSubscription<TValue>[] subscriptions;

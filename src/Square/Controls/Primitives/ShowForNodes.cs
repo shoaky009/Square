@@ -10,9 +10,11 @@ public sealed class ShowNode : IDisposable
     private readonly ObservableValue<bool>? _source;
     private readonly Func<bool> _condition;
     private readonly Func<Element?> _build;
+    private readonly Func<Element?>? _fallbackBuild;
     private IDisposable? _subscription;
     private bool _lastValue;
     private Element? _child;
+    private Element? _fallback;
     private Element? _parent;
     private int _index;
     private bool _disposed;
@@ -24,18 +26,38 @@ public sealed class ShowNode : IDisposable
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    public ShowNode(ObservableValue<bool> source, Func<Element?> build, Func<Element?> fallbackBuild)
+        : this(() => source.Value, build, fallbackBuild)
+    {
+        _source = source;
+        _subscription = source.Subscribe(_ => ScheduleUpdate());
+    }
+
     public ShowNode(IReactiveValue<bool> source, Func<Element?> build)
         : this(() => source.Value, build)
     {
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    public ShowNode(IReactiveValue<bool> source, Func<Element?> build, Func<Element?> fallbackBuild)
+        : this(() => source.Value, build, fallbackBuild)
+    {
+        _subscription = source.Subscribe(_ => ScheduleUpdate());
+    }
+
     public ShowNode(Func<bool> condition, Func<Element?> build)
+        : this(condition, build, null)
+    {
+    }
+
+    public ShowNode(Func<bool> condition, Func<Element?> build, Func<Element?>? fallbackBuild)
     {
         _condition = condition;
         _build = build;
+        _fallbackBuild = fallbackBuild;
         _lastValue = condition();
         if (_lastValue) _child = _build();
+        else if (_fallbackBuild != null) _fallback = _fallbackBuild();
     }
 
     public void AttachTo(Element parent)
@@ -46,6 +68,11 @@ public sealed class ShowNode : IDisposable
         {
             parent.Children.Insert(_index, _child);
             _child.BuildElementTree();
+        }
+        else if (_fallback != null)
+        {
+            parent.Children.Insert(_index, _fallback);
+            _fallback.BuildElementTree();
         }
     }
 
@@ -64,6 +91,7 @@ public sealed class ShowNode : IDisposable
 
         if (val)
         {
+            if (_fallback != null && _parent != null) _parent.Children.Remove(_fallback);
             _child ??= _build();
             if (_child != null && _parent != null)
             {
@@ -74,6 +102,12 @@ public sealed class ShowNode : IDisposable
         else
         {
             if (_child != null && _parent != null) _parent.Children.Remove(_child);
+            _fallback ??= _fallbackBuild?.Invoke();
+            if (_fallback != null && _parent != null)
+            {
+                _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), _fallback);
+                _fallback.BuildElementTree();
+            }
         }
     }
 
@@ -84,7 +118,9 @@ public sealed class ShowNode : IDisposable
         _subscription?.Dispose();
         _subscription = null;
         if (_child != null && _parent != null) _parent.Children.Remove(_child);
+        if (_fallback != null && _parent != null) _parent.Children.Remove(_fallback);
         _child = null;
+        _fallback = null;
         _parent = null;
     }
 }
@@ -100,20 +136,433 @@ public static class ForNode
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source);
 
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new ForNode<T>(() => source, build, source), () => source, fallbackBuild, source);
+
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build) =>
         new ForNode<T>(() => source, build, source);
+
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new ForNode<T>(() => source, build, source), () => source, fallbackBuild, source);
 
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
 
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new ForNode<T>(() => source, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
+
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new ForNode<T>(() => source, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
 
     public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, Element?> build) =>
         new ReactiveForNode<T>(source, build);
 
     public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, Element?> build) =>
         new ReactiveForNode<T>(source, build);
+
+    public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(() => source, keySelector, build, source);
+
+    public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, TKey> keySelector, Func<T, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
+        new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source), () => source, fallbackBuild, source);
+
+    public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
+        new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source), () => source, fallbackBuild, source);
+
+    public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(() => source, keySelector, build, source);
+
+    public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, Func<T, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
+        new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
+        new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T, TKey>(IReactiveValue<IReadOnlyList<T>> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(source, keySelector, build);
+
+    public static IForNode Create<T, TKey>(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
+        new KeyedForNode<T, TKey>(source, keySelector, build);
+}
+
+internal sealed class ForFallbackNode<T> : IForNode
+{
+    private readonly IForNode _inner;
+    private readonly Func<IEnumerable<T>> _source;
+    private readonly Func<Element?> _fallbackBuild;
+    private readonly INotifyCollectionChanged? _observableSource;
+    private Element? _fallback;
+    private Element? _parent;
+    private int _index;
+
+    public ForFallbackNode(IForNode inner, Func<IEnumerable<T>> source, Func<Element?> fallbackBuild, INotifyCollectionChanged? observableSource)
+    {
+        _inner = inner;
+        _source = source;
+        _fallbackBuild = fallbackBuild;
+        _observableSource = observableSource;
+        if (_observableSource != null) _observableSource.CollectionChanged += OnChanged;
+    }
+
+    public void AttachTo(Element parent)
+    {
+        _parent = parent;
+        _index = parent.Children.Count;
+        _inner.AttachTo(parent);
+        UpdateFallback();
+    }
+
+    public void Update()
+    {
+        _inner.Update();
+        UpdateFallback();
+    }
+
+    private void OnChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        (_parent?.Reconciler ?? Reconciler.Current).ScheduleUpdate(UpdateFallback);
+
+    private void UpdateFallback()
+    {
+        if (_parent == null) return;
+        var empty = !_source().Any();
+        if (empty)
+        {
+            _fallback ??= _fallbackBuild();
+            if (_fallback is { Parent: null } fallback)
+            {
+                _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), fallback);
+                fallback.BuildElementTree();
+            }
+        }
+        else if (_fallback?.Parent == _parent)
+        {
+            _parent.Children.Remove(_fallback);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_observableSource != null) _observableSource.CollectionChanged -= OnChanged;
+        if (_fallback != null && _parent != null && _fallback.Parent == _parent) _parent.Children.Remove(_fallback);
+        _inner.Dispose();
+        _fallback = null;
+        _parent = null;
+    }
+}
+
+public static class IndexNode
+{
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
+        new IndexNode<T>(() => source, build, source);
+
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new IndexNode<T>(() => source, build, source), () => source, fallbackBuild, source);
+
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build) =>
+        new IndexNode<T>(() => source, build, source);
+
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
+        new ForFallbackNode<T>(new IndexNode<T>(() => source, build, source), () => source, fallbackBuild, source);
+
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
+        new IndexNode<T>(() => source, build, source as INotifyCollectionChanged);
+
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build) =>
+        new IndexNode<T>(() => source, build, source as INotifyCollectionChanged);
+}
+
+internal sealed class IndexNode<T> : IForNode
+{
+    private readonly Func<IEnumerable<T>> _source;
+    private readonly Func<T, Element?>? _build;
+    private readonly Func<T, int, Element?>? _buildIndexed;
+    private readonly INotifyCollectionChanged? _observableSource;
+    private readonly List<Element?> _nodes = [];
+    private Element? _parent;
+    private int _index;
+    private bool _disposed;
+
+    public IndexNode(Func<IEnumerable<T>> source, Func<T, Element?> build, INotifyCollectionChanged? observableSource)
+    {
+        _source = source;
+        _build = build;
+        _observableSource = observableSource;
+        Reconcile();
+        if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
+    }
+
+    public IndexNode(Func<IEnumerable<T>> source, Func<T, int, Element?> build, INotifyCollectionChanged? observableSource)
+    {
+        _source = source;
+        _buildIndexed = build;
+        _observableSource = observableSource;
+        Reconcile();
+        if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
+    }
+
+    public void AttachTo(Element parent)
+    {
+        _parent = parent;
+        _index = parent.Children.Count;
+        ApplyTree();
+    }
+
+    public void Update() => Reconcile();
+
+    private Element? Build(T item, int index) =>
+        _build != null ? _build(item) : _buildIndexed?.Invoke(item, index);
+
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_disposed) return;
+        (_parent?.Reconciler ?? Reconciler.Current).ScheduleUpdate(Reconcile);
+    }
+
+    private void Reconcile()
+    {
+        if (_disposed) return;
+        var items = _source().ToList();
+        var common = Math.Min(items.Count, _nodes.Count);
+        for (var i = 0; i < common; i++) ReplaceNode(i, Build(items[i], i));
+        while (_nodes.Count > items.Count) RemoveNode(_nodes.Count - 1);
+        for (var i = common; i < items.Count; i++) _nodes.Add(Build(items[i], i));
+        ApplyTree();
+    }
+
+    private void ReplaceNode(int index, Element? replacement)
+    {
+        var previous = _nodes[index];
+        if (previous != null && _parent != null && previous.Parent == _parent) _parent.Children.Remove(previous);
+        _nodes[index] = replacement;
+    }
+
+    private void RemoveNode(int index)
+    {
+        var node = _nodes[index];
+        if (node != null && _parent != null && node.Parent == _parent) _parent.Children.Remove(node);
+        _nodes.RemoveAt(index);
+    }
+
+    private void ApplyTree()
+    {
+        if (_parent == null) return;
+        var childIndex = Math.Min(_index, _parent.Children.Count);
+        foreach (var node in _nodes)
+        {
+            if (node == null) continue;
+            if (node.Parent == null)
+            {
+                _parent.Children.Insert(childIndex, node);
+                node.BuildElementTree();
+            }
+            else if (node.Parent == _parent)
+            {
+                var current = _parent.Children.IndexOf(node);
+                if (current != childIndex) _parent.Children.Move(current, childIndex);
+            }
+            childIndex++;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_observableSource != null) _observableSource.CollectionChanged -= OnCollectionChanged;
+        if (_parent != null)
+            foreach (var node in _nodes)
+                if (node?.Parent == _parent) _parent.Children.Remove(node);
+        _nodes.Clear();
+        _parent = null;
+    }
+}
+
+internal sealed class KeyedForNode<T, TKey> : IForNode where TKey : notnull
+{
+    private readonly Func<IEnumerable<T>> _source;
+    private readonly Func<T, TKey>? _keySelector;
+    private readonly Func<T, int, TKey>? _keySelectorIndexed;
+    private readonly Func<T, Element?>? _build;
+    private readonly Func<T, int, Element?>? _buildIndexed;
+    private readonly INotifyCollectionChanged? _observableSource;
+    private readonly IReactiveValue<IReadOnlyList<T>>? _reactiveSource;
+    private List<Entry> _entries = [];
+    private IDisposable? _subscription;
+    private Element? _parent;
+    private int _index;
+    private bool _disposed;
+
+    internal KeyedForNode(
+        Func<IEnumerable<T>> source,
+        Func<T, TKey> keySelector,
+        Func<T, Element?> build,
+        INotifyCollectionChanged? observableSource)
+    {
+        _source = source;
+        _keySelector = keySelector;
+        _build = build;
+        _observableSource = observableSource;
+        Reconcile();
+        if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
+    }
+
+    internal KeyedForNode(
+        Func<IEnumerable<T>> source,
+        Func<T, int, TKey> keySelector,
+        Func<T, int, Element?> build,
+        INotifyCollectionChanged? observableSource)
+    {
+        _source = source;
+        _keySelectorIndexed = keySelector;
+        _buildIndexed = build;
+        _observableSource = observableSource;
+        Reconcile();
+        if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
+    }
+
+    internal KeyedForNode(IReactiveValue<IReadOnlyList<T>> source, Func<T, TKey> keySelector, Func<T, Element?> build)
+    {
+        _reactiveSource = source;
+        _source = () => source.Value;
+        _keySelector = keySelector;
+        _build = build;
+        Reconcile();
+    }
+
+    internal KeyedForNode(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build)
+    {
+        _reactiveSource = source;
+        _source = () => source.Value;
+        _keySelectorIndexed = keySelector;
+        _buildIndexed = build;
+        Reconcile();
+    }
+
+    public void AttachTo(Element parent)
+    {
+        _parent = parent;
+        _index = parent.Children.Count;
+        ApplyTreeOrder();
+        if (_reactiveSource != null)
+        {
+            _subscription = _reactiveSource.Subscribe(
+                _ => parent.Reconciler.ScheduleUpdate(Reconcile),
+                new ReactiveSubscriptionOptions { Dispatcher = parent.Dispatcher });
+        }
+    }
+
+    public void Update() => Reconcile();
+
+    private TKey SelectKey(T item, int index) =>
+        _keySelector != null ? _keySelector(item) : _keySelectorIndexed!(item, index);
+
+    private Element? Build(T item, int index) =>
+        _build != null ? _build(item) : _buildIndexed?.Invoke(item, index);
+
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_disposed) return;
+        (_parent?.Reconciler ?? Reconciler.Current).ScheduleUpdate(Reconcile);
+    }
+
+    private void Reconcile()
+    {
+        if (_disposed) return;
+
+        var oldByKey = new Dictionary<TKey, Entry>(EqualityComparer<TKey>.Default);
+        foreach (var entry in _entries)
+            oldByKey.Add(entry.Key, entry);
+
+        var next = new List<Entry>();
+        var seen = new HashSet<TKey>(EqualityComparer<TKey>.Default);
+        var index = 0;
+        foreach (var item in _source())
+        {
+            var key = SelectKey(item, index);
+            if (key is null)
+                throw new InvalidOperationException("ForNode keys cannot be null.");
+            if (!seen.Add(key))
+                throw new InvalidOperationException("Duplicate key '" + key + "' in ForNode source.");
+
+            if (oldByKey.TryGetValue(key, out var existing) && SameItem(existing.Item, item))
+                next.Add(existing);
+            else
+                next.Add(new Entry(key, item, Build(item, index)));
+            index++;
+        }
+
+        if (_parent != null)
+        {
+            var retained = new HashSet<Element>(next.Where(entry => entry.Node != null).Select(entry => entry.Node!));
+            foreach (var entry in _entries)
+            {
+                if (entry.Node != null && entry.Node.Parent == _parent && !retained.Contains(entry.Node))
+                    _parent.Children.Remove(entry.Node);
+            }
+        }
+
+        _entries = next;
+        ApplyTreeOrder();
+    }
+
+    private void ApplyTreeOrder()
+    {
+        if (_parent == null) return;
+        var childIndex = Math.Min(_index, _parent.Children.Count);
+        foreach (var entry in _entries)
+        {
+            if (entry.Node == null) continue;
+            if (entry.Node.Parent == null)
+            {
+                _parent.Children.Insert(childIndex, entry.Node);
+                entry.Node.BuildElementTree();
+            }
+            else if (entry.Node.Parent == _parent)
+            {
+                var currentIndex = _parent.Children.IndexOf(entry.Node);
+                if (currentIndex != childIndex)
+                    _parent.Children.Move(currentIndex, childIndex);
+            }
+            childIndex++;
+        }
+    }
+
+    private static bool SameItem(T left, T right) =>
+        typeof(T).IsValueType
+            ? EqualityComparer<T>.Default.Equals(left, right)
+            : ReferenceEquals(left, right);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_observableSource != null) _observableSource.CollectionChanged -= OnCollectionChanged;
+        _subscription?.Dispose();
+        _subscription = null;
+        if (_parent != null)
+        {
+            foreach (var entry in _entries)
+                if (entry.Node?.Parent == _parent) _parent.Children.Remove(entry.Node);
+        }
+        _entries.Clear();
+        _parent = null;
+    }
+
+    private sealed class Entry(TKey key, T item, Element? node)
+    {
+        public TKey Key { get; } = key;
+        public T Item { get; } = item;
+        public Element? Node { get; } = node;
+    }
 }
 
 internal sealed class ReactiveForNode<T> : IForNode
@@ -359,21 +808,43 @@ public sealed class ForNode<T> : IForNode
 
 public sealed class SwitchNode : IDisposable
 {
-    private readonly Func<int> _selector;
     private readonly List<MatchBranch> _branches = [];
     private Element? _parent;
     private int _index;
     private int _activeBranch = -1;
     private bool _disposed;
 
+    public SwitchNode()
+    {
+    }
+
     public SwitchNode(Func<int> selector)
     {
-        _selector = selector;
+        ArgumentNullException.ThrowIfNull(selector);
     }
 
     public void AddBranch(Func<bool> condition, Func<Element?> build)
     {
         _branches.Add(new MatchBranch(condition, build));
+    }
+
+    public void AddBranch(bool initialValue, Func<bool> condition, Func<Element?> build)
+    {
+        _branches.Add(new MatchBranch(condition, build));
+    }
+
+    public void AddBranch(ObservableValue<bool> source, Func<bool> condition, Func<Element?> build)
+    {
+        var branch = new MatchBranch(condition, build);
+        branch.Subscription = source.Subscribe(_ => ScheduleUpdate());
+        _branches.Add(branch);
+    }
+
+    public void AddBranch(IReactiveValue<bool> source, Func<bool> condition, Func<Element?> build)
+    {
+        var branch = new MatchBranch(condition, build);
+        branch.Subscription = source.Subscribe(_ => ScheduleUpdate());
+        _branches.Add(branch);
     }
 
     public void AddDefault(Func<Element?> build)
@@ -391,7 +862,12 @@ public sealed class SwitchNode : IDisposable
     public void Update()
     {
         if (_disposed || _parent == null) return;
-        // 通过 Reconciler 批处理分支切换
+        ScheduleUpdate();
+    }
+
+    private void ScheduleUpdate()
+    {
+        if (_disposed) return;
         (_parent?.Reconciler ?? Square.UI.Reconciler.Current).ScheduleUpdate(UpdateCore);
     }
 
@@ -429,6 +905,7 @@ public sealed class SwitchNode : IDisposable
             foreach (var branch in _branches)
                 if (branch.Child != null) _parent.Children.Remove(branch.Child);
         }
+        foreach (var branch in _branches) branch.Subscription?.Dispose();
         _branches.Clear();
         _parent = null;
     }
@@ -449,5 +926,6 @@ public sealed class SwitchNode : IDisposable
         public Func<bool>? Condition { get; } = condition;
         public Func<Element?> Build { get; } = build;
         public Element? Child { get; set; }
+        public IDisposable? Subscription { get; set; }
     }
 }

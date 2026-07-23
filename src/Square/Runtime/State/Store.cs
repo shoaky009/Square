@@ -126,6 +126,9 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return subscription;
     }
 
+    public IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null) =>
+        Subscribe(_ => callback(), options);
+
     public void Dispose()
     {
         ReactiveSubscription<TState>[] subscriptions;

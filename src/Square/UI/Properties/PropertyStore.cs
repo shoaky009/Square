@@ -31,7 +31,7 @@ public sealed class PropertyStore
     public bool HasValue(string name) => _values?.ContainsKey(name) ?? false;
 
     /// <summary>移除属性值。</summary>
-    public void RemoveValue(string name) => _values?.Remove(name);
+    public bool RemoveValue(string name) => _values?.Remove(name) ?? false;
 
     /// <summary>标记属性来自数据绑定（命令式写入可被后续源更新覆盖）。</summary>
     public void MarkBound(string name)
@@ -39,6 +39,9 @@ public sealed class PropertyStore
         _boundProperties ??= [];
         _boundProperties.Add(name);
     }
+
+    /// <summary>移除数据绑定标记。</summary>
+    public void UnmarkBound(string name) => _boundProperties?.Remove(name);
 
     /// <summary>属性是否已绑定。</summary>
     public bool IsBound(string name) => _boundProperties?.Contains(name) ?? false;
