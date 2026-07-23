@@ -27,6 +27,9 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private readonly List<IDisposable> _bindings = [];
     private int _debugId;
 
+    [ThreadStatic]
+    private static int _invalidationSuppressionDepth;
+
     public static event Action<Element>? StyleInvalidated;
 
     private static int NextDebugId;
@@ -567,6 +570,8 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
 
     public void Invalidate(ElementInvalidation invalidation)
     {
+        if (_invalidationSuppressionDepth > 0) return;
+
         if ((invalidation & ElementInvalidation.Style) != 0)
             StyleInvalidated?.Invoke(this);
 
@@ -577,6 +582,24 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         }
         if ((invalidation & (ElementInvalidation.Paint | ElementInvalidation.Style | ElementInvalidation.DisplayTree)) != 0)
             InvalidatePaint();
+    }
+
+    internal static IDisposable SuppressInvalidation()
+    {
+        _invalidationSuppressionDepth++;
+        return new InvalidationSuppression();
+    }
+
+    private sealed class InvalidationSuppression : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _invalidationSuppressionDepth--;
+        }
     }
 
     /// <summary>

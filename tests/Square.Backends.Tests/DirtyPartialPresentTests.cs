@@ -4,6 +4,7 @@ using Square.Backends;
 using Square.Controls;
 using Square.Graphics;
 using Square.Rendering;
+using Square.Rendering.Tree;
 using Square.UI;
 using System.Numerics;
 using Xunit;
@@ -12,6 +13,19 @@ namespace Square.Backends.Tests;
 
 public class DirtyPartialPresentTests
 {
+    [Fact]
+    public void PaintInvalidationRaisedDuringCommandCollectionIsPreserved()
+    {
+        var element = new ReinvalidatingElement();
+        element.ClearPaintDirty();
+        element.InvalidatePaint();
+        var node = new DisplayNode { Element = element };
+
+        node.RebuildCommands();
+
+        Assert.True(element.NeedsPaint);
+    }
+
     [Fact]
     public void ClearRectOnlyTouchesPixelsInsideRect()
     {
@@ -363,6 +377,11 @@ public class DirtyPartialPresentTests
     private sealed class CountingPaintElement : UIElement
     {
         public override void Paint(IRenderContext ctx) => ctx.FillRect(Geometry, Brush.FromColor(Color.Red));
+    }
+
+    private sealed class ReinvalidatingElement : UIElement
+    {
+        public override void Paint(IRenderContext ctx) => InvalidatePaint();
     }
 
     private sealed class CountingRenderContext : IRenderContext

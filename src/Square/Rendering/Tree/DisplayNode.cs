@@ -67,15 +67,15 @@ public sealed class DisplayNode
         CollectCommands(Element, Commands);
         VisualBounds = DrawCommandBounds.Calculate(Commands, Bounds);
         SortChildrenByZIndex();
-        // 帧循环：Paint 内 RequestAnimationFrame 会再 InvalidatePaint；
-        // Host Tick 在到期时也会 InvalidatePaint。此处清除本轮脏标记即可。
-        Element?.ClearPaintDirty();
+        // Clear before Paint so a frame callback can invalidate/request the next frame
+        // without that new dirty state being erased after command collection.
         IsDirty = false;
     }
 
     private static void CollectCommands(Element? element, List<DrawCommand> commands)
     {
         if (element == null || !element.IsVisible) return;
+        element.ClearPaintDirty();
         var collector = new CommandCollector(commands);
         if (element is not IPopupElement && BoxShadow.TryParse(element.Style.GetPropertyValue("box-shadow"), out var shadow))
             BoxShadowRendering.Draw(collector, element.Geometry, GetCornerRadius(element), shadow);

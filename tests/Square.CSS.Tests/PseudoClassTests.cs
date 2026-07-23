@@ -133,6 +133,100 @@ public class PseudoClassTests
     }
 
     [Fact]
+    public void TextDecorationHoverDoesNotInvalidateLayout()
+    {
+        var sheet = new CssParser(new CssTokenizer("Text:hover { text-decoration: underline; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var root = new Square.Controls.View();
+        var text = new Square.Controls.Text("hover me");
+        root.Children.Add(text);
+        engine.ApplyStylesToTree(root);
+        root.ClearLayoutDirty();
+        text.ClearLayoutDirty();
+
+        text.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("underline", text.Style.Get("text-decoration"));
+        Assert.False(text.IsLayoutDirty);
+        Assert.False(root.IsLayoutDirty);
+        Assert.True(text.NeedsPaint);
+    }
+
+    [Fact]
+    public void ConcurrentScopeFlushesDoNotDropStyleInvalidations()
+    {
+        const int iterations = 100;
+        var failures = 0;
+
+        Parallel.For(0, iterations, _ =>
+        {
+            var sheet = new CssParser(new CssTokenizer("Button:hover { background: blue; }").Tokenize()).Parse();
+            var engine = new CssEngine();
+            engine.LoadStyleSheet(sheet);
+            var button = new Square.Controls.Button();
+            engine.ApplyStylesToTree(button);
+
+            button.SetState(ElementState.Hover, true);
+            CssStyleReconciler.Flush();
+            if (button.Style.Get("background") != "blue")
+                Interlocked.Increment(ref failures);
+        });
+
+        Assert.Equal(0, failures);
+    }
+
+    [Fact]
+    public void HoverWithoutDynamicRulesKeepsLayoutClean()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button { width: 120px; color: red; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var root = new Square.Controls.View();
+        var button = new Square.Controls.Button();
+        root.Children.Add(button);
+        engine.ApplyStylesToTree(root);
+        root.ClearLayoutDirty();
+        button.ClearLayoutDirty();
+
+        button.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("120px", button.Style.Get("width"));
+        Assert.Equal("red", button.Style.Get("color"));
+        Assert.False(button.IsLayoutDirty);
+        Assert.False(root.IsLayoutDirty);
+    }
+
+    [Fact]
+    public void InheritedFontPropertiesWithSameFinalValuesKeepLayoutClean()
+    {
+        var sheet = new CssParser(new CssTokenizer(
+            "View { font-family: Segoe UI; font-size: 16px; } Button:hover { background: blue; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var root = new Square.Controls.View();
+        var componentRoot = new Square.Controls.View();
+        var button = new Square.Controls.Button();
+        root.Children.Add(componentRoot);
+        componentRoot.Children.Add(button);
+        engine.ApplyStylesToTree(componentRoot);
+        root.ClearLayoutDirty();
+        componentRoot.ClearLayoutDirty();
+        button.ClearLayoutDirty();
+
+        button.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("Segoe UI", button.Style.Get("font-family"));
+        Assert.Equal("16px", button.Style.Get("font-size"));
+        Assert.False(button.IsLayoutDirty);
+        Assert.False(componentRoot.IsLayoutDirty);
+        Assert.False(root.IsLayoutDirty);
+    }
+
+    [Fact]
     public void NestedScopePaintOnlyHoverDoesNotDirtyOuterLayoutRoot()
     {
         var sheet = new CssParser(new CssTokenizer("Button:hover { background: blue; }").Tokenize()).Parse();
@@ -155,6 +249,74 @@ public class PseudoClassTests
         Assert.False(btn.IsLayoutDirty);
         Assert.False(componentRoot.IsLayoutDirty);
         Assert.False(outer.IsLayoutDirty);
+    }
+
+    [Fact]
+    public void LeavingNestedComponentPreservesStylesFromBothScopes()
+    {
+        var outerEngine = new CssEngine();
+        outerEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            ".component { display: flex; flex-direction: column; } Button:hover { background: blue; }").Tokenize()).Parse());
+        var innerEngine = new CssEngine();
+        innerEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            ".component { gap: 8px; } .label { font-size: 18px; }").Tokenize()).Parse());
+        var outer = new Square.Controls.View();
+        var component = new Square.Controls.View();
+        component.ClassList.Add("component");
+        var button = new Square.Controls.Button();
+        var label = new Square.Controls.Text("label");
+        label.ClassList.Add("label");
+        outer.Children.Add(component);
+        component.Children.Add(button);
+        component.Children.Add(label);
+        outerEngine.ApplyStylesToTree(outer);
+        innerEngine.ApplyStylesToTree(component);
+
+        button.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+        button.SetState(ElementState.Hover, false);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("flex", component.Style.Get("display"));
+        Assert.Equal("column", component.Style.Get("flex-direction"));
+        Assert.Equal("8px", component.Style.Get("gap"));
+        Assert.Equal("18px", label.Style.Get("font-size"));
+    }
+
+    [Fact]
+    public void HoverReplayDoesNotEraseSiblingComponentScopeStyles()
+    {
+        var outerEngine = new CssEngine();
+        outerEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            "Button:hover { background: blue; }").Tokenize()).Parse());
+        var leftEngine = new CssEngine();
+        leftEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            ".left { display: flex; flex-direction: column; }").Tokenize()).Parse());
+        var rightEngine = new CssEngine();
+        rightEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            ".right { display: flex; gap: 12px; } .label { font-size: 18px; }").Tokenize()).Parse());
+        var root = new Square.Controls.View();
+        var left = new Square.Controls.View();
+        left.ClassList.Add("left");
+        var button = new Square.Controls.Button();
+        left.Children.Add(button);
+        var right = new Square.Controls.View();
+        right.ClassList.Add("right");
+        var label = new Square.Controls.Text("sibling");
+        label.ClassList.Add("label");
+        right.Children.Add(label);
+        root.Children.Add(left);
+        root.Children.Add(right);
+        outerEngine.ApplyStylesToTree(root);
+        leftEngine.ApplyStylesToTree(left);
+        rightEngine.ApplyStylesToTree(right);
+
+        button.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("flex", right.Style.Get("display"));
+        Assert.Equal("12px", right.Style.Get("gap"));
+        Assert.Equal("18px", label.Style.Get("font-size"));
     }
 
     [Fact]

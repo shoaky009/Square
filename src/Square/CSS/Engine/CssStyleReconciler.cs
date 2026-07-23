@@ -6,8 +6,10 @@ namespace Square.CSS.Engine;
 public static class CssStyleReconciler
 {
     private static readonly object Gate = new();
+    private static readonly object ApplyGate = new();
     private static readonly List<StyleScope> Scopes = [];
     private static readonly HashSet<Element> DirtyElements = [];
+    [ThreadStatic]
     private static int _applying;
 
     static CssStyleReconciler()
@@ -36,38 +38,44 @@ public static class CssStyleReconciler
 
     public static void Flush()
     {
-        StyleScope[] scopes;
-        lock (Gate)
+        lock (ApplyGate)
         {
-            if (DirtyElements.Count == 0) return;
-            DirtyElements.Clear();
-            scopes = Scopes.ToArray();
-        }
-
-        _applying++;
-        try
-        {
-            var layoutRoots = new HashSet<Element>();
-            foreach (var scope in scopes)
-                layoutRoots.Add(FindTreeRoot(scope.Root));
-            var layoutSnapshots = layoutRoots.Select(CaptureLayoutSnapshot).ToArray();
-
-            var clearedRoots = new HashSet<Element>();
-            foreach (var scope in scopes)
+            StyleScope[] scopes;
+            lock (Gate)
             {
-                if (!clearedRoots.Add(scope.Root)) continue;
-                ClearCascadedSubtree(scope.Root);
+                if (DirtyElements.Count == 0) return;
+                var dirtyElements = DirtyElements.ToArray();
+                DirtyElements.Clear();
+                var dirtyRoots = dirtyElements.Select(FindTreeRoot).ToHashSet();
+                scopes = Scopes
+                    .Where(scope => dirtyRoots.Contains(FindTreeRoot(scope.Root)))
+                    .ToArray();
             }
 
-            foreach (var scope in scopes)
-                scope.Engine.ApplyStylesToTreeCore(scope.Root);
+            _applying++;
+            try
+            {
+                var styleRoots = new HashSet<Element>();
+                foreach (var scope in scopes)
+                    styleRoots.Add(scope.Root);
+                var styleSnapshots = styleRoots.Select(CaptureStyleSnapshot).ToArray();
 
-            foreach (var snapshot in layoutSnapshots)
-                RestoreLayoutDirtyState(snapshot);
-        }
-        finally
-        {
-            _applying--;
+                using (Element.SuppressInvalidation())
+                {
+                    foreach (var root in styleRoots)
+                        ClearCascadedSubtree(root);
+
+                    foreach (var scope in scopes)
+                        scope.Engine.ApplyStylesToTreeCore(scope.Root);
+                }
+
+                foreach (var snapshot in styleSnapshots)
+                    ApplyStyleDifferences(snapshot);
+            }
+            finally
+            {
+                _applying--;
+            }
         }
     }
 
@@ -92,36 +100,37 @@ public static class CssStyleReconciler
         return element;
     }
 
-    private static LayoutSnapshot CaptureLayoutSnapshot(Element element)
+    private static StyleSnapshot CaptureStyleSnapshot(Element element)
     {
-        var properties = element.Style.GetAll()
-            .Where(pair => (StyleInvalidation.ForProperty(pair.Key) & ElementInvalidation.Layout) != 0)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        var children = element.Children.Select(CaptureLayoutSnapshot).ToArray();
-        return new LayoutSnapshot(element, element.IsLayoutDirty, properties, children);
+        var properties = element.Style.GetAll();
+        var children = element.Children.Select(CaptureStyleSnapshot).ToArray();
+        return new StyleSnapshot(element, properties, children);
     }
 
-    private static bool RestoreLayoutDirtyState(LayoutSnapshot snapshot)
+    private static void ApplyStyleDifferences(StyleSnapshot snapshot)
     {
-        var childNeedsLayout = false;
         foreach (var child in snapshot.Children)
-            childNeedsLayout |= RestoreLayoutDirtyState(child);
+            ApplyStyleDifferences(child);
 
         var current = snapshot.Element.Style.GetAll()
-            .Where(pair => (StyleInvalidation.ForProperty(pair.Key) & ElementInvalidation.Layout) != 0)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        var ownLayoutChanged = snapshot.LayoutProperties.Count != current.Count ||
-            snapshot.LayoutProperties.Any(pair => !current.TryGetValue(pair.Key, out var value) || value != pair.Value);
-        var needsLayout = snapshot.WasLayoutDirty || ownLayoutChanged || childNeedsLayout;
-        if (!needsLayout) snapshot.Element.ClearLayoutDirty();
-        return needsLayout;
+        var invalidation = ElementInvalidation.None;
+        foreach (var property in snapshot.Properties.Keys.Concat(current.Keys).Distinct(StringComparer.Ordinal))
+        {
+            snapshot.Properties.TryGetValue(property, out var previousValue);
+            current.TryGetValue(property, out var currentValue);
+            if (!string.Equals(previousValue, currentValue, StringComparison.Ordinal))
+                invalidation |= StyleInvalidation.ForProperty(property);
+        }
+
+        if (invalidation != ElementInvalidation.None)
+            snapshot.Element.Invalidate(invalidation);
     }
 
-    private sealed record LayoutSnapshot(
+    private sealed record StyleSnapshot(
         Element Element,
-        bool WasLayoutDirty,
-        IReadOnlyDictionary<string, string> LayoutProperties,
-        IReadOnlyList<LayoutSnapshot> Children);
+        IReadOnlyDictionary<string, string> Properties,
+        IReadOnlyList<StyleSnapshot> Children);
 
     private readonly record struct StyleScope(CssEngine Engine, Element Root);
 }

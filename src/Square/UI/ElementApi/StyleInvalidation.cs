@@ -13,7 +13,8 @@ internal static class StyleInvalidation
         return property switch
         {
             "background" or "background-color" or "box-shadow" or "color" or "border-color" or "border-radius" or "caret-color" or
-                "selection-background" or "selection-color" => ElementInvalidation.Paint,
+                "text-decoration" or "text-decoration-color" or "text-decoration-line" or "text-decoration-style" or
+                "opacity" or "selection-background" or "selection-color" => ElementInvalidation.Paint,
 
             "z-index" or "visibility" or "overflow" or "overflow-x" or "overflow-y" or "user-select" or "cursor" =>
                 ElementInvalidation.Paint | ElementInvalidation.DisplayTree | ElementInvalidation.HitTest,

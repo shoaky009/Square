@@ -88,6 +88,43 @@ public sealed class ImageControlTests
     }
 
     [Fact]
+    public void AnimatedSourceRequestsAnotherFrameAfterAdvancingWhileIdle()
+    {
+        ImageSourceRegistration.RegisterDefaults();
+        var palette = new byte[] { 255, 0, 0, 0, 255, 0 };
+        var gif = CodecTestData.GifAnimation(1, 1, palette,
+        [
+            new CodecTestData.GifFrameData(0, 0, 1, 1, [0], Delay: 1),
+            new CodecTestData.GifFrameData(0, 0, 1, 1, [1], Delay: 1)
+        ], repeatCount: 0);
+        var path = WriteTempImage(gif);
+        try
+        {
+            var document = new UIDocument();
+            var image = document.CreateElement<ImageControl>();
+            document.Body.Children.Add(image);
+            var requests = new List<FrameRequestEvent>();
+            document.Body.AddEventListener(StandardEvents.RequestFrame, e => requests.Add((FrameRequestEvent)e));
+            var loaded = false;
+            image.AddEventListener("load", () => loaded = true);
+            image.Source = path;
+
+            ((IComponentLifecycle)document.Body).OnAttached();
+            DrainUntil(document, () => loaded || image.Error != null);
+            Assert.True(loaded, image.Error?.ToString());
+            var initialRequests = requests.Count;
+            Thread.Sleep(30);
+            image.Paint(new RecordingRenderContext());
+
+            Assert.True(requests.Count > initialRequests);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ManualImageContentKeepsSourceAsFallbackTextWithoutLoadingIt()
     {
         var document = new UIDocument();
@@ -279,5 +316,32 @@ public sealed class ImageControlTests
             IsDisposed = true;
             _bitmap.Dispose();
         }
+    }
+
+    private sealed class RecordingRenderContext : IRenderContext
+    {
+        public Size CanvasSize => new(100, 100);
+        public float DpiScale => 1f;
+        public void PushTransform(System.Numerics.Matrix3x2 matrix) { }
+        public void PopTransform() { }
+        public void PushClip(Rect rect) { }
+        public void PushClip(Geometry geometry) { }
+        public void PopClip() { }
+        public void FillRect(Rect rect, Brush brush) { }
+        public void DrawRect(Rect rect, Pen pen) { }
+        public void FillPath(PathGeometry path, Brush brush) { }
+        public void DrawPath(PathGeometry path, Pen pen) { }
+        public void FillGeometry(Geometry geometry, Brush brush) { }
+        public void DrawGeometry(Geometry geometry, Pen pen) { }
+        public void DrawText(TextLayout text, Point origin, Brush brush) { }
+        public void DrawImage(Square.Graphics.Image image, Rect dest, Rect? source = null) { }
+        public void PushLayer(Rect bounds, float opacity) { }
+        public void PopLayer() { }
+        public void Clear(Color color) { }
+        public void Clear(Color color, Rect rect) { }
+        public void Flush() { }
+        public void Present() { }
+        public void Present(IReadOnlyList<Rect>? dirtyRects) { }
+        public void Dispose() { }
     }
 }
