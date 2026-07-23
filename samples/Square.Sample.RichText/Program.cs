@@ -1,5 +1,6 @@
 using Square.Extensions;
 using Square.Hosting;
+using Square.Sample.RichText.Components;
 using Square.Platform;
 using Square.DevTools;
 using Square.UI;

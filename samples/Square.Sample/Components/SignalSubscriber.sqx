@@ -6,6 +6,8 @@
   </View>
 </template>
 <script lang="csharp">
+  using Square.Sample;
+
   public ObservableValue<string> Received = new("Waiting for a signal");
   public ObservableValue<string> DeliveryThread = new("UI dispatcher idle");
   private IDisposable? _subscription;

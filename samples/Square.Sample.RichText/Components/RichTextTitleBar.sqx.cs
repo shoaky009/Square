@@ -1,4 +1,4 @@
-namespace Square.Sample.RichText;
+namespace Square.Sample.RichText.Components;
 
 public partial class RichTextTitleBar
 {

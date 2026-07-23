@@ -5,6 +5,7 @@ using Square.Backends.Vulkan;
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
+using Square.Sample.Components;
 using Square.Platform;
 #if SQUARE_SAMPLE_DEVTOOLS
 using Square.DevTools;

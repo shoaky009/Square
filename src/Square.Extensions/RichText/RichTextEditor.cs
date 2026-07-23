@@ -460,8 +460,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         if (string.IsNullOrWhiteSpace(value) && fallbackProperty != null)
             value = Style.Get(fallbackProperty);
         if (string.IsNullOrWhiteSpace(value)) return defaultColor;
-        try { return Color.Parse(value.Replace(" ", "")); }
-        catch (FormatException) { return defaultColor; }
+        return Color.TryParse(value, out var color) ? color : defaultColor;
     }
 
     private RichTextPosition HitTestPosition(Point point)

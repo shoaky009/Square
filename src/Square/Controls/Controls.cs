@@ -152,7 +152,11 @@ public class Link : UIElement, ITextSelectable
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
     public bool Underline { get => !Properties.HasValue(nameof(Underline)) || GetProperty<bool>(nameof(Underline)); set => SetProperty(nameof(Underline), value); }
 
-    public Link() { _domText = new DomTextContent(this); }
+    public Link()
+    {
+        _domText = new DomTextContent(this);
+        AddEventListener("click", Activate);
+    }
     public Link(string text) : this() { TextContent = text; }
     public Link(string text, string href) : this() { TextContent = text; Href = href; }
 
@@ -189,6 +193,35 @@ public class Link : UIElement, ITextSelectable
         base.OnPropertyChanged(name);
         if (name == nameof(TextContent))
             _domText.Text = TextContent;
+    }
+
+    protected virtual void Activate()
+    {
+        if (!IsEnabled || !TryGetExternalUri(Href, out var uri)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = uri.AbsoluteUri,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+        }
+    }
+
+    private static bool TryGetExternalUri(string href, out Uri uri)
+    {
+        if (Uri.TryCreate(href, UriKind.Absolute, out var candidate) &&
+            candidate.Scheme is "http" or "https" or "mailto")
+        {
+            uri = candidate;
+            return true;
+        }
+
+        uri = null!;
+        return false;
     }
 }
 
@@ -1371,7 +1404,6 @@ internal static class ControlDrawing
             if (!string.IsNullOrWhiteSpace(backgroundColor)) value = backgroundColor;
         }
         if (string.IsNullOrWhiteSpace(value)) return fallback;
-        try { return Color.Parse(value.Replace(" ", "")); }
-        catch (FormatException) { return fallback; }
+        return Color.TryParse(value, out var color) ? color : fallback;
     }
 }

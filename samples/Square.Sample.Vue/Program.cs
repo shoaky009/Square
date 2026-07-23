@@ -1,5 +1,6 @@
 using Square.Hosting;
 using Square.Platform;
+using Square.Sample.Vue.Components;
 using Square.UI;
 
 namespace Square.Sample.Vue;

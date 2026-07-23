@@ -3,6 +3,7 @@ using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Images;
 using Square.Platform;
+using System.Reflection;
 
 var component = new Main();
 component.BuildElementTree();
@@ -12,6 +13,22 @@ if (component.Children.Count != 1)
 
 if (!component.CodeBehindLoaded)
     throw new InvalidOperationException("The SQX code-behind partial class was not compiled.");
+
+var publicFile = Path.Combine(AppContext.BaseDirectory, "site.txt");
+if (!File.Exists(publicFile) || File.ReadAllText(publicFile).Trim() != "Square public file")
+    throw new InvalidOperationException("Public files were not copied to the application output root.");
+
+var assembly = Assembly.GetExecutingAssembly();
+var assetName = assembly.GetManifestResourceNames()
+    .SingleOrDefault(name => name.EndsWith("Assets.theme.txt", StringComparison.Ordinal));
+if (assetName == null)
+    throw new InvalidOperationException("Assets files were not embedded in the application assembly.");
+using (var assetStream = assembly.GetManifestResourceStream(assetName))
+using (var reader = new StreamReader(assetStream ?? throw new InvalidOperationException("Embedded asset stream is missing.")))
+{
+    if (reader.ReadToEnd().Trim() != "Square embedded asset")
+        throw new InvalidOperationException("Embedded asset content was incorrect.");
+}
 
 var platform = PlatformRegistry.Get();
 #if PLATFORM_WIN32

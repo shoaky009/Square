@@ -4,6 +4,7 @@ using Square.Graphics;
 using Square.Rendering;
 using Square.Runtime;
 using Square.Sample;
+using Square.Sample.Components;
 using Square.UI;
 using Xunit;
 

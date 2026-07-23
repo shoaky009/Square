@@ -6,6 +6,8 @@
   </View>
 </template>
 <script lang="csharp">
+  using Square.Sample.Vue;
+
   private int _sequence;
   private CancellationTokenSource? _workerCancellation;
 

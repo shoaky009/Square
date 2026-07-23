@@ -32,6 +32,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     private readonly IntPtr _netWmStateMaximizedVert;
     private readonly IntPtr _netWmMoveresize;
     private readonly IntPtr _textCursor;
+    private readonly IntPtr _handCursor;
     private readonly IntPtr _arrowCursor;
     private readonly uint _frameIntervalMs = 16;
 
@@ -173,6 +174,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         _gc = X11Api.CreateGC(_display, _window, 0, IntPtr.Zero);
 
         _textCursor = X11Api.CreateFontCursor(_display, X11Api.XC_Xterm);
+        _handCursor = X11Api.CreateFontCursor(_display, X11Api.XC_hand2);
         _arrowCursor = X11Api.CreateFontCursor(_display, X11Api.XC_left_ptr);
         ApplyCursor();
 
@@ -915,7 +917,12 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
 
     private void ApplyCursor()
     {
-        var cursor = _cursor == CursorKind.Text ? _textCursor : _arrowCursor;
+        var cursor = _cursor switch
+        {
+            CursorKind.Text => _textCursor,
+            CursorKind.Hand => _handCursor,
+            _ => _arrowCursor
+        };
         X11Api.DefineCursor(_display, _window, cursor);
         X11Api.Flush(_display);
     }
@@ -951,6 +958,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         }
         if (_gc != IntPtr.Zero) X11Api.FreeGC(_display, _gc);
         if (_textCursor != IntPtr.Zero) X11Api.FreeCursor(_display, _textCursor);
+        if (_handCursor != IntPtr.Zero) X11Api.FreeCursor(_display, _handCursor);
         if (_arrowCursor != IntPtr.Zero) X11Api.FreeCursor(_display, _arrowCursor);
         if (_window != IntPtr.Zero) X11Api.DestroyWindow(_display, _window);
         if (_colormap != IntPtr.Zero) X11Api.FreeColormap(_display, _colormap);

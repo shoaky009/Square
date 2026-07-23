@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Square.Graphics;
+using Square.Resources;
 
 namespace Square.Images;
 
@@ -38,11 +39,11 @@ internal sealed class LocalImageSourceLoader : IImageSourceLoader
     public async ValueTask<IImageFrameSource> LoadAsync(string source, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
-        var path = ResolvePath(source);
         var document = await Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var decoded = ImageDecoder.Decode(path);
+            using var stream = OpenSource(source);
+            var decoded = ImageDecoder.Decode(stream);
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -57,15 +58,15 @@ internal sealed class LocalImageSourceLoader : IImageSourceLoader
         return new ImageDocumentFrameSource(document);
     }
 
-    private static string ResolvePath(string source)
+    private static Stream OpenSource(string source)
     {
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri))
         {
             if (!uri.IsFile) throw new NotSupportedException("Only local image file paths are supported.");
-            return uri.LocalPath;
+            return File.OpenRead(uri.LocalPath);
         }
 
-        return Path.GetFullPath(source, Environment.CurrentDirectory);
+        return ApplicationResource.Open(source);
     }
 }
 

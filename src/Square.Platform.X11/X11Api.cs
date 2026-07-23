@@ -463,6 +463,7 @@ internal static partial class X11Api
 
     public const uint XC_Xterm = 152;
     public const uint XC_left_ptr = 68;
+    public const uint XC_hand2 = 60;
 
     [LibraryImport("libX11.so.6", EntryPoint = "XFreeCursor")]
     public static partial int FreeCursor(IntPtr display, IntPtr cursor);

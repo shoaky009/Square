@@ -9,7 +9,6 @@ public sealed class Link : Square.Controls.Link
 {
     public Link()
     {
-        AddEventListener("click", NavigateToTarget);
     }
 
     public string To
@@ -32,7 +31,7 @@ public sealed class Link : Square.Controls.Link
         set => SetProperty(nameof(Replace), value);
     }
 
-    private void NavigateToTarget()
+    protected override void Activate()
     {
         var target = To;
         if (string.IsNullOrEmpty(target)) return;

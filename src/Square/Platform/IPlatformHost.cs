@@ -85,7 +85,8 @@ public enum KeyAction
 public enum CursorKind
 {
     Arrow,
-    Text
+    Text,
+    Hand
 }
 
 public enum AppWindowState

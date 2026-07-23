@@ -49,6 +49,50 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
+    public void RequiredPropResolutionUsesCurrentDirectoryNamespace()
+    {
+        const string required = """
+            <template><View /></template>
+            <script lang="csharp">
+              [Prop(Required = true)]
+              public ObservableValue<string> Title { get; set; } = new("");
+            </script>
+            """;
+
+        var diagnostics = RunGenerator(
+            new InMemoryAdditionalText("Admin/Card.sqv", required),
+            new InMemoryAdditionalText("Store/Card.sqv", "<template><View /></template>"),
+            new InMemoryAdditionalText("Admin/Page.sqv", "<template><Card /></template>"),
+            new InMemoryAdditionalText("Store/Page.sqv", "<template><Card /></template>"));
+
+        Assert.Single(diagnostics, diagnostic => diagnostic.Id == "SQX0003");
+    }
+
+    [Fact]
+    public void RequiredPropResolutionUsesScriptNamespaceImports()
+    {
+        const string required = """
+            <template><View /></template>
+            <script lang="csharp">
+              [Prop(Required = true)]
+              public ObservableValue<string> Title { get; set; } = new("");
+            </script>
+            """;
+        const string usage = """
+            <template><Card /></template>
+            <script lang="csharp">
+              using Square.Sample.Shared;
+            </script>
+            """;
+
+        var diagnostics = RunGenerator(
+            new InMemoryAdditionalText("Shared/Card.sqv", required),
+            new InMemoryAdditionalText("Pages/Page.sqv", usage));
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "SQX0003");
+    }
+
+    [Fact]
     public void ReportsDuplicateRefNamesInSameComponent()
     {
         const string source = "<template><View ref={MyBtn}><Button ref={MyBtn} /></View></template>";

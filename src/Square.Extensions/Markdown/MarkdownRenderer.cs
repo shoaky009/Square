@@ -1,10 +1,9 @@
-using Markdig;
-using Markdig.Helpers;
-using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using Square.UI;
+using Square.Graphics;
+using Square.Graphics.Svg;
+using CheckBoxControl = Square.Controls.CheckBox;
+using ImageControl = Square.Controls.Image;
 using LinkControl = Square.Controls.Link;
-using ListItemControl = Square.Controls.ListItem;
 using TextControl = Square.Controls.Text;
 using ViewControl = Square.Controls.View;
 
@@ -12,151 +11,211 @@ namespace Square.Extensions.Markdown;
 
 internal static class MarkdownRenderer
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .Build();
-
-    public static void Render(string? markdown, Element target)
+    public static void Render(MarkdownDocument document, Element target)
     {
         target.Children.Clear();
-        target.Style.Set("display", "flex");
-        target.Style.Set("flex-direction", "column");
-        target.Style.Set("gap", "8px");
-        target.Style.Set("user-select", "text");
-        if (string.IsNullOrWhiteSpace(markdown)) return;
-
-        var document = Markdig.Markdown.Parse(markdown, Pipeline);
-        foreach (var block in document)
-        {
-            var element = CreateBlock(block);
-            if (element != null) target.Children.Add(element);
-        }
+        foreach (var block in document.Blocks)
+            target.Children.Add(CreateBlock(block));
     }
 
-    private static Element? CreateBlock(Block block) => block switch
+    private static Element CreateBlock(MarkdownBlock block) => block switch
     {
-        HeadingBlock heading => CreateHeading(heading),
-        ParagraphBlock paragraph => CreateParagraph(paragraph),
-        ListBlock list => CreateList(list),
-        QuoteBlock quote => CreateQuote(quote),
-        FencedCodeBlock code => CreateCodeBlock(code),
-        CodeBlock code => CreateCodeBlock(code),
-        ThematicBreakBlock => CreateSeparator(),
-        ContainerBlock container => CreateContainer(container),
-        LeafBlock leaf => CreateText(GetLeafText(leaf), "markdown-paragraph"),
-        _ => null
+        MarkdownHeading heading => CreateInlineBlock(heading.Inlines, $"markdown-heading-{heading.Level}"),
+        MarkdownParagraph paragraph => CreateInlineBlock(paragraph.Inlines, "markdown-paragraph"),
+        MarkdownList list => CreateList(list),
+        MarkdownQuote quote => CreateBlockContainer(quote.Blocks, "markdown-quote"),
+        MarkdownCodeBlock code => CreateCodeBlock(code),
+        MarkdownThematicBreak => CreateView("markdown-separator"),
+        MarkdownTable table => CreateTable(table),
+        MarkdownContainer container => CreateBlockContainer(container.Blocks, "markdown-container"),
+        _ => CreateText(block.PlainText, "markdown-paragraph")
     };
 
-    private static Element CreateHeading(HeadingBlock heading)
+    private static Element CreateInlineBlock(IEnumerable<MarkdownInline> inlines, string className)
     {
-        var text = CreateText(GetInlineText(heading.Inline), $"markdown-heading-{heading.Level}");
-        text.FontSize = heading.Level switch
-        {
-            1 => 28f,
-            2 => 24f,
-            3 => 20f,
-            4 => 18f,
-            5 => 16f,
-            _ => 14f
-        };
-        text.Style.Set("line-height", MathF.Round(text.FontSize * 1.25f).ToString(System.Globalization.CultureInfo.InvariantCulture) + "px");
-        return text;
-    }
-
-    private static Element CreateParagraph(ParagraphBlock paragraph)
-    {
-        var link = TryCreateSingleLink(paragraph.Inline);
-        if (link != null) return link;
-        return CreateText(GetInlineText(paragraph.Inline), "markdown-paragraph");
-    }
-
-    private static Element CreateList(ListBlock list)
-    {
-        var container = CreateView("markdown-list");
-        container.Style.Set("display", "flex");
-        container.Style.Set("flex-direction", "column");
-        container.Style.Set("gap", "4px");
-        var index = int.TryParse(list.OrderedStart, out var start) ? start : 1;
-
-        foreach (var item in list.OfType<ListItemBlock>())
-        {
-            var marker = list.IsOrdered ? index++ + ". " : "- ";
-            var listItem = new ListItemControl
-            {
-                Marker = marker,
-                TextContent = GetContainerText(item)
-            };
-            listItem.ClassList.Add("markdown-list-item");
-            listItem.Style.Set("line-height", "22px");
-            container.Children.Add(listItem);
-        }
-
+        var container = CreateView(className);
+        container.ClassList.Add("markdown-inline-block");
+        foreach (var inline in inlines)
+            AppendInline(container, inline, className, null);
         return container;
     }
 
-    private static Element CreateQuote(QuoteBlock quote)
+    private static Element CreateList(MarkdownList list)
     {
-        var view = CreateView("markdown-quote");
-        view.Style.Set("display", "flex");
-        view.Style.Set("flex-direction", "column");
-        view.Style.Set("gap", "6px");
-        view.Style.Set("background", "#f3f4f6");
-        view.Style.Set("padding", "8px 10px");
-        foreach (var child in quote)
+        var container = CreateView("markdown-list");
+        var index = list.Start;
+        foreach (var item in list.Items)
         {
-            var element = CreateBlock(child);
-            if (element != null) view.Children.Add(element);
+            var row = CreateView("markdown-list-item");
+            row.Children.Add(item.IsTask
+                ? CreateTaskMarker(item)
+                : CreateText(list.IsOrdered ? $"{index++}." : "-", "markdown-list-marker"));
+            if (list.IsOrdered && item.IsTask) index++;
+            row.Children.Add(CreateBlockContainer(item.Blocks, "markdown-list-content"));
+            container.Children.Add(row);
         }
-        return view;
+        return container;
     }
 
-    private static Element CreateCodeBlock(LeafBlock code)
+    private static Element CreateTaskMarker(MarkdownListItem item)
     {
-        var text = GetLeafLinesText(code);
-        return CreateText(text.TrimEnd(), "markdown-code");
-    }
-
-    private static Element CreateSeparator()
-    {
-        var separator = CreateView("markdown-separator");
-        separator.Style.Set("height", "1px");
-        separator.Style.Set("background", "#e5e7eb");
-        return separator;
-    }
-
-    private static Element CreateContainer(ContainerBlock container)
-    {
-        var view = CreateView("markdown-container");
-        foreach (var child in container)
+        var marker = new CheckBoxControl
         {
-            var element = CreateBlock(child);
-            if (element != null) view.Children.Add(element);
-        }
-        return view;
+            IsChecked = item.IsChecked,
+            IsEnabled = false
+        };
+        marker.ClassList.Add("markdown-task-marker");
+        return marker;
     }
 
-    private static LinkControl? TryCreateSingleLink(ContainerInline? inline)
+    private static Element CreateCodeBlock(MarkdownCodeBlock code)
     {
-        if (inline == null || inline.Count() != 1 || inline.FirstChild is not LinkInline linkInline)
-            return null;
+        var container = CreateView("markdown-code");
+        var text = CreateText(code.Code, "markdown-code-text");
+        if (!string.IsNullOrWhiteSpace(code.Language))
+            text.ClassList.Add($"language-{code.Language}");
+        container.Children.Add(text);
+        return container;
+    }
 
-        var link = new LinkControl(GetInlineText(linkInline), linkInline.Url ?? "");
-        link.ClassList.Add("markdown-link");
-        return link;
+    private static Element CreateTable(MarkdownTable table)
+    {
+        var container = CreateView("markdown-table");
+        var columnCount = Math.Max(
+            table.Alignments.Count,
+            table.Rows.Count == 0 ? 0 : table.Rows.Max(row => row.Cells.Sum(cell => cell.ColumnSpan)));
+
+        foreach (var row in table.Rows)
+        {
+            var rowElement = CreateView("markdown-table-row");
+            var column = 0;
+            foreach (var cell in row.Cells)
+            {
+                var element = CreateBlockContainer(
+                    cell.Blocks,
+                    "markdown-table-cell");
+                if (row.IsHeader) element.ClassList.Add("markdown-table-header");
+                if (columnCount > 0)
+                {
+                    var width = cell.ColumnSpan * 100f / columnCount;
+                    element.Style.Set("flex-basis", width.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + "%");
+                    element.Style.Set("max-width", width.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + "%");
+                }
+
+                var alignment = column < table.Alignments.Count
+                    ? table.Alignments[column]
+                    : MarkdownTableAlignment.None;
+                element.ClassList.Add(alignment switch
+                {
+                    MarkdownTableAlignment.Left => "markdown-align-left",
+                    MarkdownTableAlignment.Center => "markdown-align-center",
+                    MarkdownTableAlignment.Right => "markdown-align-right",
+                    _ => "markdown-align-default"
+                });
+                rowElement.Children.Add(element);
+                column += cell.ColumnSpan;
+            }
+            container.Children.Add(rowElement);
+        }
+        return container;
+    }
+
+    private static Element CreateBlockContainer(IEnumerable<MarkdownBlock> blocks, string className)
+    {
+        var container = CreateView(className);
+        foreach (var block in blocks)
+            container.Children.Add(CreateBlock(block));
+        return container;
+    }
+
+    private static void AppendInline(
+        Element container,
+        MarkdownInline inline,
+        string blockClass,
+        string? inheritedClass)
+    {
+        switch (inline)
+        {
+            case MarkdownText text:
+                container.Children.Add(CreateInlineText(text.Text, blockClass, inheritedClass));
+                break;
+            case MarkdownCode code:
+                var codeContainer = CreateView("markdown-inline-code");
+                codeContainer.Children.Add(CreateInlineText(
+                    code.Code,
+                    blockClass,
+                    "markdown-inline-code-text",
+                    inheritedClass));
+                container.Children.Add(codeContainer);
+                break;
+            case MarkdownLink link:
+                var element = new LinkControl(link.PlainText, link.Destination);
+                AddClasses(element, blockClass, "markdown-link", inheritedClass);
+                container.Children.Add(element);
+                break;
+            case MarkdownImage image:
+                var imageElement = CreateImage(image);
+                imageElement.ClassList.Add("markdown-image");
+                container.Children.Add(imageElement);
+                break;
+            case MarkdownEmphasis emphasis:
+                var emphasisClass = emphasis.Kind switch
+                {
+                    MarkdownEmphasisKind.Bold => "markdown-bold",
+                    MarkdownEmphasisKind.Italic => "markdown-italic",
+                    MarkdownEmphasisKind.Strikethrough => "markdown-strikethrough",
+                    _ => null
+                };
+                foreach (var child in emphasis.Inlines)
+                    AppendInline(container, child, blockClass, CombineClasses(inheritedClass, emphasisClass));
+                break;
+            case MarkdownLineBreak:
+                container.Children.Add(CreateInlineText("\n", blockClass, inheritedClass));
+                break;
+        }
+    }
+
+    private static ImageControl CreateImage(MarkdownImage image)
+    {
+        if (TryParseSvgDataUri(image.Source, out var svg))
+            return new ImageControl { ImageContent = SvgImage.Parse(svg) };
+        return new ImageControl { Source = image.Source };
+    }
+
+    private static bool TryParseSvgDataUri(string source, out string svg)
+    {
+        const string prefix = "data:image/svg+xml";
+        svg = "";
+        if (!source.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var comma = source.IndexOf(',');
+        if (comma < 0) return false;
+        try
+        {
+            var metadata = source[prefix.Length..comma];
+            svg = metadata.Contains(";base64", StringComparison.OrdinalIgnoreCase)
+                ? System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(source[(comma + 1)..]))
+                : Uri.UnescapeDataString(source[(comma + 1)..]);
+            return svg.Length > 0;
+        }
+        catch (FormatException)
+        {
+            svg = "";
+            return false;
+        }
+    }
+
+    private static TextControl CreateInlineText(string text, params string?[] classNames)
+    {
+        var element = new TextControl(text);
+        AddClasses(element, classNames);
+        return element;
     }
 
     private static TextControl CreateText(string text, string className)
     {
         var element = new TextControl(text);
         element.ClassList.Add(className);
-        if (className == "markdown-paragraph") element.Style.Set("line-height", "22px");
-        if (className == "markdown-code")
-        {
-            element.Style.Set("background", "#111827");
-            element.Style.Set("color", "#f9fafb");
-            element.Style.Set("padding", "10px");
-            element.Style.Set("line-height", "20px");
-        }
         return element;
     }
 
@@ -167,70 +226,20 @@ internal static class MarkdownRenderer
         return view;
     }
 
-    private static string GetContainerText(ContainerBlock container) =>
-        string.Join(" ", container.Select(GetBlockText).Where(text => !string.IsNullOrWhiteSpace(text)));
-
-    private static string GetBlockText(Block block) => block switch
+    private static void AddClasses(Element element, params string?[] classNames)
     {
-        ParagraphBlock paragraph => GetInlineText(paragraph.Inline),
-        HeadingBlock heading => GetInlineText(heading.Inline),
-        LeafBlock leaf => GetLeafText(leaf),
-        ContainerBlock container => GetContainerText(container),
-        _ => ""
-    };
-
-    private static string GetLeafText(LeafBlock leaf)
-    {
-        if (leaf.Inline != null)
-            return GetInlineText(leaf.Inline);
-        return GetLeafLinesText(leaf);
-    }
-
-    private static string GetLeafLinesText(LeafBlock leaf)
-    {
-        var lines = leaf.Lines.Lines;
-        return lines is { Length: > 0 }
-            ? string.Join("\n", lines.Select(line => GetSliceText(line.Slice)))
-            : "";
-    }
-
-    private static string GetSliceText(StringSlice slice)
-    {
-        if (string.IsNullOrEmpty(slice.Text)) return "";
-        var start = Math.Clamp(slice.Start, 0, slice.Text.Length);
-        var end = Math.Clamp(slice.End, start - 1, slice.Text.Length - 1);
-        return end < start ? "" : slice.Text.Substring(start, end - start + 1);
-    }
-
-    private static string GetInlineText(ContainerInline? inline)
-    {
-        if (inline == null) return "";
-
-        var parts = new List<string>();
-        foreach (var child in inline)
-            AppendInlineText(child, parts);
-        return string.Concat(parts);
-    }
-
-    private static void AppendInlineText(Inline inline, List<string> parts)
-    {
-        switch (inline)
+        foreach (var className in classNames)
         {
-            case LiteralInline literal:
-                parts.Add(literal.Content.ToString());
-                break;
-            case LineBreakInline:
-                parts.Add("\n");
-                break;
-            case CodeInline code:
-                parts.Add(code.Content);
-                break;
-            case LinkInline link:
-                parts.Add(GetInlineText(link));
-                break;
-            case ContainerInline container:
-                parts.Add(GetInlineText(container));
-                break;
+            if (string.IsNullOrWhiteSpace(className)) continue;
+            foreach (var value in className.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                element.ClassList.Add(value);
         }
+    }
+
+    private static string? CombineClasses(string? first, string? second)
+    {
+        if (string.IsNullOrWhiteSpace(first)) return second;
+        if (string.IsNullOrWhiteSpace(second)) return first;
+        return $"{first} {second}";
     }
 }

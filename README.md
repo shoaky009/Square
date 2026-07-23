@@ -25,6 +25,8 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `template`、C# `script`、组件级 `style`
 - 强类型属性和 `ObservableValue<T>` / `ObservableCollection<T>`
 - `.sqx.cs` / `.sqv.cs` 同名代码后置 partial 类，可替代大部分模板内 `<script>` 逻辑
+- 模板默认命名空间由 `RootNamespace + 相对目录` 推导；`Components/Forms/Card.sqv` 生成到 `.Components.Forms`
+- `Public/**` 复制到应用输出根目录，`Assets/**` 作为程序集资源嵌入
 - `Store<TState>`、selector 与 `StoreScope`，支持从任意线程向多个 UI Dispatcher 投递响应式状态
 - 模板可通过 `AppWindow` 操作标题、关闭、最小化、最大化、还原和系统窗口拖动
 - `<Show>`、`<For>`、`<Switch>`、`<Match>` 编译期结构原语
@@ -151,7 +153,14 @@ SQX 不需要 `<sqx>` 文件级根标签。`<template>` 必须且只能有一个
 <Image source="Assets/loading.gif" />
 ```
 
-相对路径按应用当前工作目录解析。当前 `Source` 不支持 HTTP(S)、data URI 或嵌入资源。通过 `Source` 加载的文档由控件拥有；直接设置 `ImageContent` 时资源仍由调用方管理并优先显示，此时 `Source` 只作为替代文本。
+相对资源路径按 `Public > 应用输出根目录 > Assets` 的顺序解析。`Public/**` 在构建和发布后按原相对路径覆盖到输出根目录；`Assets/**` 嵌入入口程序集，仅在同路径文件不存在时回退读取。当前 `Source` 不支持 HTTP(S)；通过 `Source` 加载的文档由控件拥有，直接设置 `ImageContent` 时资源仍由调用方管理并优先显示。
+
+```text
+MyApp/
+├── Components/            -> MyApp.Components 命名空间
+├── Public/images/logo.png -> 输出目录 images/logo.png
+└── Assets/images/logo.png -> 程序集嵌入资源（文件不存在时回退）
+```
 
 也可以通过 `ImageDecoder` 手动解码为 `ImageDocument`。文档拥有其全部 `Bitmap`，图片使用期间必须保持文档未释放：
 

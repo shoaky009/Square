@@ -18,4 +18,8 @@
     <ProjectReference Include="..\..\samples\Square.Sample\Square.Sample.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="resource-priority.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

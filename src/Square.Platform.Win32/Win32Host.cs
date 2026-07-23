@@ -663,7 +663,12 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
 
     private void ApplyCursor()
     {
-        var cursorId = _cursor == CursorKind.Text ? Win32Api.IDC_IBEAM : Win32Api.IDC_ARROW;
+        var cursorId = _cursor switch
+        {
+            CursorKind.Text => Win32Api.IDC_IBEAM,
+            CursorKind.Hand => Win32Api.IDC_HAND,
+            _ => Win32Api.IDC_ARROW
+        };
         Win32Api.SetCursor(Win32Api.LoadCursor(IntPtr.Zero, new IntPtr(cursorId)));
     }
 

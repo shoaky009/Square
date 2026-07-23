@@ -1,7 +1,7 @@
 using Square.Events;
 using Square.Platform;
 
-namespace Square.Sample;
+namespace Square.Sample.Components;
 
 public partial class MyTitleBar
 {

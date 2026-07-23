@@ -4,11 +4,14 @@ using Square.Controls;
 using Square.Controls.Primitives;
 using Square.Events;
 using Square.Graphics;
+using Square.Platform;
 using Square.Rendering;
 using Square.Runtime;
 using Square.Runtime.Binding;
+using Square.Resources;
 using Square.Router;
 using Square.Sample;
+using Square.Sample.Components;
 using Square.UI;
 using Xunit;
 using RouterControl = Square.Router.Router;
@@ -295,6 +298,111 @@ public class M1IntegrationTests
 
         child.Style.Set("user-select", "none");
         Assert.False(child.IsUserSelectText());
+    }
+
+    [Fact]
+    public void DocumentTextSelectionTracksNestedScrollOffsetsAndClip()
+    {
+        var outer = new ScrollViewer { Geometry = new Rect(10, 20, 300, 180) };
+        outer.SetScrollContentSize(new Size(500, 600));
+        outer.ScrollTo(25, 40);
+        var inner = new ScrollViewer { Geometry = new Rect(30, 60, 240, 120) };
+        inner.SetScrollContentSize(new Size(240, 400));
+        inner.ScrollTo(0, 35);
+        var text = new Square.Controls.Text("selected") { Geometry = new Rect(40, 180, 100, 24) };
+        outer.Children.Add(inner);
+        inner.Children.Add(text);
+
+        var offsetMethod = typeof(Square.Hosting.DesktopApplication).GetMethod(
+            "GetTextSelectionVisualOffset",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var clipMethod = typeof(Square.Hosting.DesktopApplication).GetMethod(
+            "GetTextSelectionClip",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        var offset = Assert.IsType<Point>(offsetMethod.Invoke(null, [text]));
+        var clip = Assert.IsType<Rect>(clipMethod.Invoke(null, [text]));
+
+        Assert.Equal(new Point(0, -75), offset);
+        Assert.Equal(new Rect(30, 20, 240, 120), clip);
+    }
+
+    [Fact]
+    public void InvalidCssColorCanBeRejectedWithoutThrowing()
+    {
+        Assert.False(Color.TryParse("inherit", out _));
+        Assert.False(Color.TryParse("not-a-color", out _));
+        Assert.True(Color.TryParse("#369", out var shortColor));
+        Assert.Equal(Color.FromRgb(51, 102, 153), shortColor);
+        Assert.True(Color.TryParse("#212529", out var fullColor));
+        Assert.Equal(Color.FromRgb(33, 37, 41), fullColor);
+    }
+
+    [Fact]
+    public void ApplicationResourcesPreferPublicThenRootThenAssets()
+    {
+        var assembly = typeof(M1IntegrationTests).Assembly;
+
+        var preferred = System.Text.Encoding.UTF8.GetString(
+            ApplicationResource.ReadAllBytes("resource-priority.txt", assembly)).Trim();
+        var embedded = System.Text.Encoding.UTF8.GetString(
+            ApplicationResource.ReadAllBytes("embedded-only.txt", assembly)).Trim();
+
+        Assert.Equal("public", preferred);
+        Assert.Equal("embedded", embedded);
+        Assert.Contains(
+            assembly.GetManifestResourceNames(),
+            name => name.EndsWith("Assets.resource-priority.txt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LinkUsesHandCursorAndDispatchesActivation()
+    {
+        var link = new TrackingLink("Open", "https://example.test");
+        var selectableRoot = new View();
+        selectableRoot.Style.Set("user-select", "text");
+        selectableRoot.Children.Add(link);
+        var resolveCursor = typeof(Square.Hosting.DesktopApplication).GetMethod(
+            "ResolveCursor",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        link.Style.ClearCascaded();
+        var cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link]));
+        link.DispatchEvent(StandardEvents.CreateClick());
+
+        Assert.Equal(CursorKind.Hand, cursor);
+        Assert.Equal(1, link.ActivationCount);
+
+        link.IsEnabled = false;
+        link.Style.ClearCascaded();
+        cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link]));
+        link.DispatchEvent(StandardEvents.CreateClick());
+        Assert.Equal(CursorKind.Arrow, cursor);
+        Assert.Equal(1, link.ActivationCount);
+    }
+
+    [Fact]
+    public void CssCursorOverridesDefaultsAndIsResolvedFromAncestors()
+    {
+        var parent = new View();
+        var child = new Square.Controls.Text("child");
+        parent.Children.Add(child);
+        var resolveCursor = typeof(Square.Hosting.DesktopApplication).GetMethod(
+            "ResolveCursor",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        parent.Style.Set("cursor", "pointer");
+        Assert.Equal(CursorKind.Hand, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+
+        child.Style.Set("cursor", "text");
+        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+
+        child.Style.Set("cursor", "default");
+        Assert.Equal(CursorKind.Arrow, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+
+        var link = new TrackingLink("Open", "https://example.test");
+        link.Style.Set("cursor", "text");
+        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link])));
     }
 
     [Fact]
@@ -1799,6 +1907,17 @@ public class M1IntegrationTests
     }
 
     private sealed record KeyedItem(int Id, string Name);
+
+    private sealed class TrackingLink(string text, string href) : Square.Controls.Link(text, href)
+    {
+        public int ActivationCount { get; private set; }
+
+        protected override void Activate()
+        {
+            if (!IsEnabled) return;
+            ActivationCount++;
+        }
+    }
 
     private sealed class TrackingText(
         string text,

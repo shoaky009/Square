@@ -12,4 +12,18 @@
     <Error Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win-')) and '$(SquareTargetPlatform)' != 'Win32'"
            Text="RuntimeIdentifier '$(RuntimeIdentifier)' requires SquareTargetPlatform=Win32." />
   </Target>
+
+  <Target Name="CopySquarePublicFiles" AfterTargets="CopyFilesToOutputDirectory"
+          Condition="'@(SquarePublicFile)' != ''">
+    <Copy SourceFiles="@(SquarePublicFile)"
+          DestinationFiles="@(SquarePublicFile->'$(TargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishSquarePublicFiles" AfterTargets="Publish"
+          Condition="'@(SquarePublicFile)' != '' and '$(PublishDir)' != ''">
+    <Copy SourceFiles="@(SquarePublicFile)"
+          DestinationFiles="@(SquarePublicFile->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

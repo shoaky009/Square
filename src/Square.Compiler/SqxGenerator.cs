@@ -20,11 +20,18 @@ public sealed class SqxGenerator : IIncrementalGenerator
             .Select((pair, cancellationToken) =>
             {
                 var file = pair.Left;
-                pair.Right.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+                var options = pair.Right;
+                options.GlobalOptions.TryGetValue("build_property.RootNamespace", out var rootNamespace);
+                options.GlobalOptions.TryGetValue("build_property.MSBuildProjectDirectory", out var projectDirectory);
+                options.GetOptions(file).TryGetValue("build_metadata.AdditionalFiles.Link", out var logicalPath);
                 return new SqxInput(
                     file.Path,
                     file.GetText(cancellationToken)?.ToString() ?? "",
-                    rootNamespace ?? "Square.Sample");
+                    GetDefaultNamespace(
+                        rootNamespace ?? "Square.Sample",
+                        file.Path,
+                        projectDirectory,
+                        logicalPath));
             })
             .Collect();
 
@@ -159,8 +166,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
                 }
             }
 
-            if (props.Count > 0)
-                contracts[document.Name] = props.Values.ToArray();
+            contracts[metadataName] = props.Values.ToArray();
         }
         return contracts;
     }
@@ -180,8 +186,73 @@ public sealed class SqxGenerator : IIncrementalGenerator
             : SqxParser.Parse(input.Content, input.Path);
 
     private static bool IsTemplateFile(string path) =>
-        path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase) ||
-        path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase);
+        (path.EndsWith(".sqx", StringComparison.OrdinalIgnoreCase) ||
+         path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase)) &&
+        !IsResourceDirectoryPath(path);
+
+    private static bool IsResourceDirectoryPath(string path)
+    {
+        var normalized = path.Replace('\\', '/');
+        return normalized.StartsWith("Public/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.IndexOf("/Public/", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               normalized.IndexOf("/Assets/", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string GetDefaultNamespace(
+        string rootNamespace,
+        string filePath,
+        string projectDirectory,
+        string logicalPath)
+    {
+        var relativePath = !string.IsNullOrWhiteSpace(logicalPath)
+            ? logicalPath
+            : GetProjectRelativePath(filePath, projectDirectory);
+        var directory = Path.GetDirectoryName(relativePath);
+        if (string.IsNullOrWhiteSpace(directory)) return rootNamespace;
+
+        var segments = directory
+            .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                StringSplitOptions.RemoveEmptyEntries)
+            .Select(SanitizeNamespaceSegment)
+            .Where(segment => segment.Length > 0);
+        var suffix = string.Join(".", segments);
+        return suffix.Length == 0 ? rootNamespace : rootNamespace + "." + suffix;
+    }
+
+    private static string GetProjectRelativePath(string filePath, string projectDirectory)
+    {
+        if (!Path.IsPathRooted(filePath)) return filePath;
+        if (string.IsNullOrWhiteSpace(projectDirectory)) return Path.GetFileName(filePath);
+
+        var projectPath = Path.GetFullPath(projectDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(filePath);
+        return fullPath.StartsWith(projectPath, StringComparison.OrdinalIgnoreCase)
+            ? fullPath.Substring(projectPath.Length)
+            : Path.GetFileName(filePath);
+    }
+
+    private static string SanitizeNamespaceSegment(string segment)
+    {
+        if (string.IsNullOrWhiteSpace(segment)) return "";
+        var builder = new StringBuilder(segment.Length + 1);
+        for (var i = 0; i < segment.Length; i++)
+        {
+            var character = segment[i];
+            var valid = i == 0
+                ? character == '_' || char.IsLetter(character)
+                : character == '_' || char.IsLetterOrDigit(character);
+            builder.Append(valid ? character : '_');
+        }
+
+        var value = builder.ToString();
+        if (value.Length == 0 || !(value[0] == '_' || char.IsLetter(value[0]))) value = "_" + value;
+        return Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(value) !=
+               Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+            ? "_" + value
+            : value;
+    }
 
     private static string ExtractScript(string source)
     {
@@ -199,9 +270,18 @@ public sealed class SqxGenerator : IIncrementalGenerator
         SqxDocument document,
         IReadOnlyDictionary<string, PropContract[]> contracts)
     {
+        var currentNamespace = string.IsNullOrWhiteSpace(document.Namespace)
+            ? input.Namespace
+            : document.Namespace;
+        var scriptUsings = ExtractNamespaceUsings(document.ScriptCode);
         foreach (var element in EnumerateElements(document.Template.Roots))
         {
-            if (!contracts.TryGetValue(element.TagName, out var props)) continue;
+            var contractName = ResolveContractName(
+                element.TagName,
+                currentNamespace,
+                scriptUsings,
+                contracts.Keys);
+            if (contractName == null || !contracts.TryGetValue(contractName, out var props)) continue;
             foreach (var prop in props)
             {
                 var attr = element.Attributes.FirstOrDefault(a =>
@@ -227,6 +307,46 @@ public sealed class SqxGenerator : IIncrementalGenerator
                 }
             }
         }
+    }
+
+    private static string ResolveContractName(
+        string tagName,
+        string currentNamespace,
+        IReadOnlyList<string> scriptUsings,
+        IEnumerable<string> contractNames)
+    {
+        var names = contractNames as ICollection<string> ?? contractNames.ToArray();
+        var normalizedTag = tagName.StartsWith("global::", StringComparison.Ordinal)
+            ? tagName.Substring("global::".Length)
+            : tagName;
+        if (normalizedTag.Contains('.') && names.Contains(normalizedTag)) return normalizedTag;
+
+        var currentName = string.IsNullOrWhiteSpace(currentNamespace)
+            ? normalizedTag
+            : currentNamespace + "." + normalizedTag;
+        if (names.Contains(currentName)) return currentName;
+
+        foreach (var namespaceName in scriptUsings)
+        {
+            var importedName = namespaceName + "." + normalizedTag;
+            if (names.Contains(importedName)) return importedName;
+        }
+
+        var suffix = "." + normalizedTag;
+        var matches = names.Where(name => name == normalizedTag || name.EndsWith(suffix, StringComparison.Ordinal)).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
+    }
+
+    private static IReadOnlyList<string> ExtractNamespaceUsings(string scriptCode)
+    {
+        if (string.IsNullOrWhiteSpace(scriptCode)) return Array.Empty<string>();
+
+        var result = new List<string>();
+        foreach (Match match in Regex.Matches(
+                     scriptCode,
+                     @"(?m)^\s*using\s+(?!static\b)(?<namespace>[A-Za-z_][A-Za-z0-9_.]*)\s*;"))
+            result.Add(match.Groups["namespace"].Value);
+        return result;
     }
 
     private static string ExtractInnerType(string typeName)

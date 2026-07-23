@@ -2190,6 +2190,8 @@ public sealed class MarkdownViewer : UIElement
 {
     [Prop] public string Content { get; set; }   // Markdown 文本
     [Prop] public string Markdown { get; set; }  // Content 的别名
+    [Prop] public MarkdownDocument? SourceDocument { get; set; }
+    public MarkdownDocument Document { get; }   // 当前解析后的文档模型
 }
 ```
 
@@ -2197,8 +2199,19 @@ public sealed class MarkdownViewer : UIElement
 |---|---|
 | `Content` | Markdown 源文本；设置后自动重建子元素 |
 | `Markdown` | `Content` 的语义别名，二者同步 |
+| `SourceDocument` | 可选的预解析文档；非空时优先于 `Content`，不会再次经过 Markdig |
+| `Document` | 当前解析后的只读 Markdown 文档模型；不暴露 Markdig 类型 |
 
-基于 Markdig 解析 Markdown，渲染为 Square 元素树（标题 H1–H6、段落、有序/无序列表、引用、围栏代码块、分隔线、链接与行内格式）。容器默认 `display:flex; flex-direction:column; gap:8px`，各块带 `markdown-*` class 可在 `<style>` 中定制。挂载（`OnAttached`）或 Prop 变化时自动重新渲染。
+`MarkdownDocument.Parse(string?)` 将源文本解析为 `Square.Extensions.Markdown` 自有的块和行内模型。Markdig 仅作为 `Square.Extensions` 内部解析器，不会出现在公开模型或核心 `Square` 项目的依赖中。
+
+`MarkdownViewer` 将该模型渲染为 Square 元素树（标题 H1–H6、段落、嵌套有序/无序列表、任务列表、引用、代码块、分隔线、表格、图片、链接、强调与行内代码）。容器默认 `display:flex; flex-direction:column; gap:8px`，各块带 `markdown-*` class，可在 `<style>` 中定制。挂载（`OnAttached`）或 Prop 变化时自动重新渲染。
+
+需要复用解析结果时可直接传入文档：
+
+```csharp
+var document = MarkdownDocument.Parse(source);
+var viewer = new MarkdownViewer { SourceDocument = document };
+```
 
 ---
 

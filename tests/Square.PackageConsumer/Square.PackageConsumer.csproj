@@ -12,4 +12,7 @@
     <PackageReference Include="Square.Platform.Win32" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <PackageReference Include="Square.Platform.X11" Condition="'$(SquareTargetPlatform)' == 'X11'" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="site.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

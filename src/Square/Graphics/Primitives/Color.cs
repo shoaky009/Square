@@ -23,24 +23,70 @@ public readonly struct Color : IEquatable<Color>
 
     public static Color Parse(string hex)
     {
-        var s = hex.TrimStart('#');
-        return s.Length switch
+        if (TryParse(hex, out var color)) return color;
+        throw new FormatException($"Invalid color hex: {hex}");
+    }
+
+    public static bool TryParse(string? value, out Color color)
+    {
+        color = default;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var span = value.AsSpan().Trim();
+        if (!span.IsEmpty && span[0] == '#') span = span[1..];
+        switch (span.Length)
         {
-            3 => new(
-                (byte)(Convert.ToByte(s[0..1], 16) * 17),
-                (byte)(Convert.ToByte(s[1..2], 16) * 17),
-                (byte)(Convert.ToByte(s[2..3], 16) * 17), 255),
-            6 => new(
-                Convert.ToByte(s[0..2], 16),
-                Convert.ToByte(s[2..4], 16),
-                Convert.ToByte(s[4..6], 16), 255),
-            8 => new(
-                Convert.ToByte(s[2..4], 16),
-                Convert.ToByte(s[4..6], 16),
-                Convert.ToByte(s[6..8], 16),
-                Convert.ToByte(s[0..2], 16)),
-            _ => throw new FormatException($"Invalid color hex: {hex}")
-        };
+            case 3:
+                if (!TryHex(span[0], out var r) ||
+                    !TryHex(span[1], out var g) ||
+                    !TryHex(span[2], out var b)) return false;
+                color = new Color((byte)(r * 17), (byte)(g * 17), (byte)(b * 17));
+                return true;
+            case 6:
+                if (!TryHexByte(span, 0, out var red) ||
+                    !TryHexByte(span, 2, out var green) ||
+                    !TryHexByte(span, 4, out var blue)) return false;
+                color = new Color(red, green, blue);
+                return true;
+            case 8:
+                if (!TryHexByte(span, 0, out var alpha) ||
+                    !TryHexByte(span, 2, out red) ||
+                    !TryHexByte(span, 4, out green) ||
+                    !TryHexByte(span, 6, out blue)) return false;
+                color = new Color(red, green, blue, alpha);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryHexByte(ReadOnlySpan<char> value, int index, out byte result)
+    {
+        result = 0;
+        if (!TryHex(value[index], out var high) || !TryHex(value[index + 1], out var low)) return false;
+        result = (byte)(high * 16 + low);
+        return true;
+    }
+
+    private static bool TryHex(char value, out byte result)
+    {
+        if (value is >= '0' and <= '9')
+        {
+            result = (byte)(value - '0');
+            return true;
+        }
+        if (value is >= 'a' and <= 'f')
+        {
+            result = (byte)(value - 'a' + 10);
+            return true;
+        }
+        if (value is >= 'A' and <= 'F')
+        {
+            result = (byte)(value - 'A' + 10);
+            return true;
+        }
+        result = 0;
+        return false;
     }
 
     public bool Equals(Color other) => R == other.R && G == other.G && B == other.B && A == other.A;

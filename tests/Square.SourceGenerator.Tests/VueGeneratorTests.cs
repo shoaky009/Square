@@ -34,6 +34,123 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvScriptUsingsAreEmittedOutsideTheGeneratedClass()
+    {
+        const string source = """
+            <template>
+              <MarkdownViewer />
+            </template>
+            <script lang="csharp">
+              using Square.Extensions.Markdown;
+
+              public string Title = "Markdown";
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("MarkdownCard.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Empty(result.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        Assert.Contains("using Square.Extensions.Markdown;", generated);
+        Assert.True(
+            generated.IndexOf("using Square.Extensions.Markdown;", StringComparison.Ordinal) <
+            generated.IndexOf("partial class MarkdownCard", StringComparison.Ordinal));
+        Assert.Contains("new MarkdownViewer()", generated);
+        Assert.Contains("public string Title = \"Markdown\";", generated);
+    }
+
+    [Fact]
+    public void TemplateDirectoryContributesToDefaultNamespace()
+    {
+        const string source = "<template><View /></template>";
+
+        var generated = Assert.Single(RunGenerator(
+            new InMemoryAdditionalText("Components/Forms/LoginCard.sqv", source)).GeneratedTrees)
+            .GetText().ToString();
+
+        Assert.Contains("namespace Square.Sample.Components.Forms;", generated);
+        Assert.Contains("partial class LoginCard", generated);
+    }
+
+    [Fact]
+    public void ExplicitScriptNamespaceOverridesTemplateDirectory()
+    {
+        const string source = """
+            <template><View /></template>
+            <script namespace="Custom.Components"></script>
+            """;
+
+        var generated = Assert.Single(RunGenerator(
+            new InMemoryAdditionalText("Components/Forms/LoginCard.sqv", source)).GeneratedTrees)
+            .GetText().ToString();
+
+        Assert.Contains("namespace Custom.Components;", generated);
+        Assert.DoesNotContain("namespace Square.Sample.Components.Forms;", generated);
+    }
+
+    [Fact]
+    public void TemplateDirectorySegmentsAreValidCSharpIdentifiers()
+    {
+        const string source = "<template><View /></template>";
+
+        var generated = Assert.Single(RunGenerator(
+            new InMemoryAdditionalText("feature-pages/class/LoginCard.sqv", source)).GeneratedTrees)
+            .GetText().ToString();
+
+        Assert.Contains("namespace Square.Sample.feature_pages._class;", generated);
+    }
+
+    [Fact]
+    public void ComponentsInDifferentDirectoriesCanShareAName()
+    {
+        const string source = "<template><View /></template>";
+
+        var result = RunGenerator(
+            new InMemoryAdditionalText("Admin/Card.sqv", source),
+            new InMemoryAdditionalText("Store/Card.sqv", source));
+        var generated = result.GeneratedTrees.Select(tree => tree.GetText().ToString()).ToArray();
+
+        Assert.Equal(2, generated.Length);
+        Assert.Contains(generated, code => code.Contains("namespace Square.Sample.Admin;", StringComparison.Ordinal));
+        Assert.Contains(generated, code => code.Contains("namespace Square.Sample.Store;", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CrossDirectoryComponentCanBeImportedFromScript()
+    {
+        const string card = "<template><View /></template>";
+        const string page = """
+            <template><Card /></template>
+            <script lang="csharp">
+              using Square.Sample.Shared;
+            </script>
+            """;
+
+        var result = RunGenerator(
+            new InMemoryAdditionalText("Shared/Card.sqv", card),
+            new InMemoryAdditionalText("Pages/Page.sqv", page));
+        var pageCode = result.GeneratedTrees
+            .Select(tree => tree.GetText().ToString())
+            .Single(code => code.Contains("partial class Page", StringComparison.Ordinal));
+
+        Assert.Contains("using Square.Sample.Shared;", pageCode);
+        Assert.Contains("namespace Square.Sample.Pages;", pageCode);
+        Assert.Contains("new Card()", pageCode);
+    }
+
+    [Fact]
+    public void TemplatesUnderResourceDirectoriesAreIgnored()
+    {
+        const string source = "<template><View /></template>";
+
+        var result = RunGenerator(
+            new InMemoryAdditionalText("Public/Static.sqv", source),
+            new InMemoryAdditionalText("Assets/Embedded.sqv", source));
+
+        Assert.Empty(result.GeneratedTrees);
+    }
+
+    [Fact]
     public void SqvBindingsAndEventsUseExistingEmitterSemantics()
     {
         const string source = """

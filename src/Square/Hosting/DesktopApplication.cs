@@ -575,7 +575,8 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             RequestRender();
         if (action == MouseAction.Move)
         {
-            var needsRender = UpdateHoverPath(hit);
+            var isSelectingDocumentText = _textSelection is { IsSelecting: true };
+            var needsRender = isSelectingDocumentText ? false : UpdateHoverPath(hit);
             _host.Cursor = ResolveCursor(hit);
             if (_isSelectingText && _focusedEditor != null)
             {
@@ -635,6 +636,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
                 selection.PreserveWordSelectionUntilDrag = false;
                 selection.IsSelecting = false;
                 SyncDocumentSelection(selection);
+                UpdateHoverPath(hit);
             }
 
             if (_pointerDownTarget != null && hit == _pointerDownTarget)
@@ -744,9 +746,33 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         return null;
     }
 
-    private static CursorKind ResolveCursor(Element? hit) => hit is ITextEditor || FindUserSelectRoot(hit) != null
-        ? CursorKind.Text
-        : CursorKind.Arrow;
+    private static CursorKind ResolveCursor(Element? hit)
+    {
+        for (var current = hit; current != null; current = current.Parent)
+        {
+            var value = current.Style.Get("cursor")?.Trim();
+            if (!string.IsNullOrEmpty(value))
+            {
+                var cursor = value.ToLowerInvariant() switch
+                {
+                    "pointer" or "hand" => CursorKind.Hand,
+                    "text" => CursorKind.Text,
+                    "default" => CursorKind.Arrow,
+                    "auto" => (CursorKind?)null,
+                    _ => null
+                };
+                if (cursor.HasValue) return cursor.Value;
+            }
+        }
+
+        for (var current = hit; current != null; current = current.Parent)
+        {
+            if (current is Link link) return link.IsEnabled ? CursorKind.Hand : CursorKind.Arrow;
+            if (current is ITextEditor) return CursorKind.Text;
+        }
+
+        return FindUserSelectRoot(hit) != null ? CursorKind.Text : CursorKind.Arrow;
+    }
 
     private static bool IsInteractiveTitleBarElement(Element? hit)
     {
@@ -1041,14 +1067,15 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         for (var current = hit; current != null; current = current.Parent)
         {
             var direct = selection.Items.FindLastIndex(item =>
-                ReferenceEquals(item.Element, current) && !item.Bounds.IsEmpty && item.Bounds.Contains(point));
+                ReferenceEquals(item.Element, current) && GetVisualTextBounds(item).Contains(point));
             if (direct >= 0) return CreateSelectionPoint(selection.Items[direct], direct, point);
         }
 
         var containing = selection.Items
             .Select((item, index) => (item, index))
-            .Where(pair => !pair.item.Bounds.IsEmpty && pair.item.Bounds.Contains(point))
-            .OrderBy(pair => pair.item.Bounds.Width * pair.item.Bounds.Height)
+            .Select(pair => (pair.item, pair.index, bounds: GetVisualTextBounds(pair.item)))
+            .Where(pair => !pair.bounds.IsEmpty && pair.bounds.Contains(point))
+            .OrderBy(pair => pair.bounds.Width * pair.bounds.Height)
             .Select(pair => pair.index)
             .FirstOrDefault(-1);
         if (containing >= 0) return CreateSelectionPoint(selection.Items[containing], containing, point);
@@ -1058,7 +1085,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         var bestDistance = float.MaxValue;
         for (var i = 0; i < selection.Items.Count; i++)
         {
-            var bounds = selection.Items[i].Bounds;
+            var bounds = GetVisualTextBounds(selection.Items[i]);
             var dy = point.Y < bounds.Top ? bounds.Top - point.Y :
                 point.Y > bounds.Bottom ? point.Y - bounds.Bottom : 0;
             var dx = point.X < bounds.Left ? bounds.Left - point.X :
@@ -1076,10 +1103,12 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
 
     private static TextSelectionPoint CreateSelectionPoint(TextSelectionItem item, int index, Point point)
     {
+        var offset = GetTextSelectionVisualOffset(item.Element);
+        var contentPoint = new Point(point.X - offset.X, point.Y - offset.Y);
         if (item.Fragment != null)
-            return new TextSelectionPoint(index, item.Fragment.HitTestOffset(point));
+            return new TextSelectionPoint(index, item.Fragment.HitTestOffset(contentPoint));
         var midpoint = item.Bounds.X + item.Bounds.Width / 2f;
-        return new TextSelectionPoint(index, point.X < midpoint ? 0 : item.Text.Length);
+        return new TextSelectionPoint(index, contentPoint.X < midpoint ? 0 : item.Text.Length);
     }
 
     private string GetSelectedUserText()
@@ -1160,9 +1189,14 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             var foreground = ResolveSelectionColor(item.Element, foreground: true);
             var backgroundBrush = new SolidColorBrush(background);
             var foregroundBrush = new SolidColorBrush(foreground);
+            var visualOffset = GetTextSelectionVisualOffset(item.Element);
+            var clip = GetTextSelectionClip(item.Element);
+            if (clip is { IsEmpty: true }) continue;
+            if (clip is { } clipRect) context.PushClip(clipRect);
             if (item.Fragment == null)
             {
-                context.FillRect(item.Bounds, backgroundBrush);
+                context.FillRect(Translate(item.Bounds, visualOffset), backgroundBrush);
+                if (clip != null) context.PopClip();
                 continue;
             }
 
@@ -1172,7 +1206,9 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
                 startOffset,
                 endOffset,
                 backgroundBrush,
-                foregroundBrush);
+                foregroundBrush,
+                visualOffset);
+            if (clip != null) context.PopClip();
         }
     }
 
@@ -1215,16 +1251,19 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
 
             if (item.Fragment == null)
             {
-                bounds = bounds.IsEmpty ? item.Bounds : Rect.Union(bounds, item.Bounds);
+                var itemBounds = GetVisualTextBounds(item);
+                bounds = bounds.IsEmpty ? itemBounds : Rect.Union(bounds, itemBounds);
                 continue;
             }
 
+            var visualOffset = GetTextSelectionVisualOffset(item.Element);
             foreach (var character in item.Fragment.Characters)
             {
                 if (character.EndOffset <= startOffset || character.StartOffset >= endOffset) continue;
+                var characterBounds = Translate(character.SelectionBounds, visualOffset);
                 bounds = bounds.IsEmpty
-                    ? character.SelectionBounds
-                    : Rect.Union(bounds, character.SelectionBounds);
+                    ? characterBounds
+                    : Rect.Union(bounds, characterBounds);
             }
         }
 
@@ -1237,7 +1276,8 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         int startOffset,
         int endOffset,
         Brush background,
-        Brush foreground)
+        Brush foreground,
+        Point visualOffset)
     {
         var characters = fragment.Characters;
         var index = 0;
@@ -1251,8 +1291,8 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             var first = characters[index];
             var runStart = first.StartOffset;
             var runEnd = first.EndOffset;
-            var bounds = first.SelectionBounds;
-            var origin = first.Bounds.Position;
+            var bounds = Translate(first.SelectionBounds, visualOffset);
+            var origin = new Point(first.Bounds.X + visualOffset.X, first.Bounds.Y + visualOffset.Y);
             var lineY = first.Bounds.Y;
             index++;
 
@@ -1263,7 +1303,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
                     Math.Abs(character.Bounds.Y - lineY) > 0.01f || character.StartOffset != runEnd)
                     break;
                 runEnd = character.EndOffset;
-                bounds = Rect.Union(bounds, character.SelectionBounds);
+                bounds = Rect.Union(bounds, Translate(character.SelectionBounds, visualOffset));
                 index++;
             }
 
@@ -1275,22 +1315,45 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         }
     }
 
+    private static Rect GetVisualTextBounds(TextSelectionItem item) =>
+        Translate(item.Bounds, GetTextSelectionVisualOffset(item.Element));
+
+    private static Point GetTextSelectionVisualOffset(Element element)
+    {
+        var x = 0f;
+        var y = 0f;
+        for (var current = element.Parent; current != null; current = current.Parent)
+        {
+            if (!current.MapsScrollOffsetForChildren()) continue;
+            x -= current.ScrollLeft;
+            y -= current.ScrollTop;
+        }
+        return new Point(x, y);
+    }
+
+    private static Rect? GetTextSelectionClip(Element element)
+    {
+        Rect? clip = null;
+        for (var current = element.Parent; current != null; current = current.Parent)
+        {
+            var currentClip = current.GetOverflowClipRect();
+            if (currentClip.IsEmpty) continue;
+            currentClip = Translate(currentClip, GetTextSelectionVisualOffset(current));
+            clip = clip == null ? currentClip : Rect.Intersect(clip.Value, currentClip);
+        }
+        return clip;
+    }
+
+    private static Rect Translate(Rect rect, Point offset) =>
+        new(rect.X + offset.X, rect.Y + offset.Y, rect.Width, rect.Height);
+
     private static Color ResolveSelectionColor(Element element, bool foreground)
     {
         var value = foreground
             ? FindStyleInPath(element, "selection-color")
             : FindStyleInPath(element, "selection-background") ??
               FindStyleInPath(element, "selection-background-color");
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            try
-            {
-                return Color.Parse(value.Replace(" ", ""));
-            }
-            catch (FormatException)
-            {
-            }
-        }
+        if (Color.TryParse(value, out var color)) return color;
 
         return foreground ? DefaultSelectionForeground : DefaultSelectionBackground;
     }

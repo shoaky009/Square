@@ -70,6 +70,7 @@ internal static partial class Win32Api
     public const int SC_MOVE = 0xF010;
     public const int IDC_ARROW = 32512;
     public const int IDC_IBEAM = 32513;
+    public const int IDC_HAND = 32649;
     public const int SM_CXSIZEFRAME = 32;
     public const int SM_CXPADDEDBORDER = 92;
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
