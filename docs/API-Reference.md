@@ -63,6 +63,59 @@ public enum RenderMode
 
 `Sample.Vue` 等示例通过 `--render-mode=DirtyRegion` 或 `SQUARE_RENDER_MODE=DirtyRegion` 切换。
 
+### AppWindow 文件选择
+
+```csharp
+namespace Square.Hosting;
+
+public sealed class AppWindow
+{
+    public Task<IReadOnlyList<string>> OpenFilesAsync(OpenFilePickerOptions? options = null);
+}
+
+namespace Square.Platform;
+
+public sealed class OpenFilePickerOptions
+{
+    public string? Title { get; set; }
+    public string? InitialDirectory { get; set; }
+    public bool AllowMultiple { get; set; }
+    public IReadOnlyList<FilePickerFilter> Filters { get; set; }
+}
+
+public sealed class FilePickerFilter
+{
+    public FilePickerFilter(string name, IEnumerable<string> patterns);
+    public string Name { get; }
+    public IReadOnlyList<string> Patterns { get; }
+}
+```
+
+文件弹窗实现位于可选的 `Square.Extensions` 程序集。应用必须引用该程序集，并在 `app.Run()` 前注册：
+
+```csharp
+ExtensionRegistration.RegisterDefaults();
+
+var files = await window.OpenFilesAsync(new OpenFilePickerOptions
+{
+    Title = "选择图片",
+    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+    AllowMultiple = true,
+    Filters =
+    [
+        new FilePickerFilter("图片", ["*.png", "*.jpg", "*.jpeg"]),
+        new FilePickerFilter("所有文件", ["*.*"])
+    ]
+});
+```
+
+- 用户取消时返回空列表。
+- `Filters` 为空时使用“所有文件”。单个 pattern 不得包含分号；多个扩展名应分别传入。
+- `InitialDirectory` 非空时必须是已存在目录。
+- Win32 使用当前 `AppWindow` 作为原生对话框 owner，支持单选和多选。
+- X11 首版抛出 `PlatformNotSupportedException`。
+- 未注册 `Square.Extensions` provider、窗口尚未运行或窗口已关闭时抛出明确异常。
+
 ---
 
 ## 1.1. Square.DevTools — 本地调试与自动化服务

@@ -72,6 +72,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Platform` | 平台宿主抽象 | `IPlatformHost`、`IPlatformFactory`、`PlatformRegistry` 与跨平台截图入口 |
 | `Square.Platform.Win32` | Windows 平台实现 | Win32 窗口、消息循环、输入、IME、剪贴板与窗口截图 |
 | `Square.Platform.X11` | Linux 平台实现 | X11 窗口、事件循环、输入、IME、剪贴板与窗口截图 |
+| `Square.Extensions` | 可选扩展 | Markdown、RichText 与文件弹窗；由应用显式注册，不被核心反向依赖 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
 | `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |
 

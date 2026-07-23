@@ -248,7 +248,7 @@ SVG 标签使用与浏览器一致的小写名称。模板编译器将它们直�
 - 类型为 `ObservableValue<T>`
 - 默认值用 C# 初始化器
 - `[Prop(Required = true)]` 标记必填
-- 生成器辅助包装：开发者也可直接写 `string`，生成器自动包装为 `ObservableValue<string>`
+- 标量 Prop 与 `ObservableValue<T>` Prop 均可声明；响应式传播要求源值实现 `ObservableValue<T>` 或 `IReactiveValue<T>`
 
 ### 3.2 传值
 
@@ -375,7 +375,7 @@ private void OnClick(Event e) { }
 ### 5.6 实现约束
 
 - 绑定后端**必须**用 `ObservableValue<T>`（强类型、委托驱动、零反射、AOT 安全）
-- `{expr}` 在编译期解析成员引用并生成订阅代码
+- `{expr}` 在编译期校验为合法 C# 表达式。直接响应值和混合文本中的直接响应成员会生成订阅；任意复合表达式的完整依赖分析仍由后续语义绑定阶段扩展
 - 运行时零解析
 
 ### 5.7 跨组件信号
@@ -471,7 +471,7 @@ Tabs 组合模式、SignalHub 和前后台线程投递的完整示例见 `Compos
 ### 6.6 阶段
 
 - M1：`<Show>`/`<For>` 基础形态
-- M2：`<Switch>`/`<Match>`/`<Index>` + keyed 复用 ✅ 已实现
+- M2：`<Switch>`/`<Match>`/`<Index>` + keyed 复用 ✅ 已实现。原生 keyed `For` 使用 `key={(it) => it.Id}`；`Index` 按位置保持槽位，集合项替换或移动时重建受影响位置的内容
 
 ---
 

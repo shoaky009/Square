@@ -332,13 +332,12 @@ Card
 - `v-model`（含 `.trim` / `.number` / `.lazy`）：按 `Input`/`TextArea`/`CheckBox`/`Radio`/`Select` 选择目标属性与事件。
 - `v-for` 支持 `in` 与 `of` 分隔符。
 
-当前静默忽略（不生成、不报错），留待后续里程碑：
+当前不生成并输出明确诊断，留待后续里程碑：
 
 - 动态参数（`:[name]`、`@[event]`、`#[name]`）。
-- `v-bind="obj"`、`v-on="obj"` 对象绑定。
 - `v-html`、`v-pre`、`v-once`、`v-memo`、`v-cloak`。
 - 作用域插槽属性。
-- `:key`（由 `ForNode` 运行时接管，模板层暂不处理）。
+- 自定义组件 `v-model`、未知 `v-*` 指令，以及尚未实现的事件和 `v-model` 修饰符。
 
 ## 示例
 
@@ -385,11 +384,13 @@ Card
 - `v-model`（`Input`/`TextArea`/`CheckBox`/`Radio`/`Select`）。
 - `.trim`/`.number`/`.lazy` 修饰符。
 
-### 里程碑 E：动态参数与对象绑定（待定）
+### 里程碑 E：动态参数与对象绑定（部分完成）
 
 - `:[name]`、`@[event]`、`#[name]` 动态参数。
-- `v-bind="obj"`、`v-on="obj"` 对象绑定。
-- 需要运行时协议设计。
+- `v-bind="obj"` 已支持 `IReadOnlyDictionary<string, object?>`，并支持 `ObservableValue<TMap>` / `IReactiveValue<TMap>` 响应式更新。
+- `v-on="obj"` 已支持 `IReadOnlyDictionary<string, Action<Event>>`，并支持响应式事件表替换和监听器清理。
+- 对象协议不使用反射；匿名对象、`dynamic` 和任意 `Delegate` 字典不在支持范围内。
+- 动态参数仍需要运行时协议设计。
 
 ### 里程碑 F：内置组件与高级特性（待定）
 
@@ -397,11 +398,32 @@ Card
 - 作用域插槽属性。
 - `:key` 循环键。
 
-### 里程碑 G：诊断与清理（待定）
+### 里程碑 G：诊断与清理（基本完成）
 
-- 为不支持的特性输出 `SQV0001`-`SQV0009` 诊断，而非静默忽略。
+- 已实现 `SQV0001`-`SQV0009`，覆盖模板语法错误、不支持指令、无效 `v-for`、孤立条件分支、重复绑定、动态参数、Vue 内置组件、作用域插槽属性和非法 C# 表达式。
+- 已校验结束标签配对、未闭合插值/字符串/注释和 `<script lang>`。
+- 已在最终 AST 上检查重复属性/事件，包括 `v-model` 展开后与显式 `value` / `input` 绑定形成的冲突。
+- 已使用 Roslyn 对插值、绑定、事件、`v-if` 和 `v-for` 表达式进行 C# 语法验证；成员存在性等语义验证仍待后续处理。
 - 新增 `docs/Sqv-Spec.md`。
 - 更新 `README.md`、`docs/Architecture.md`、`docs/Generator.md`。
+
+### ✅ 里程碑 H：循环键化复用
+
+- `:key` / `v-bind:key` 在 `v-for` 元素上提升为 `SqvForDirective.KeyExpression`。
+- 生成 keyed `ForNode.Create(source, keySelector, build)` 调用，支持普通和带 index 的循环。
+- keyed `ForNode` 支持 `ObservableCollection<T>`、`IEnumerable<T>` 和 reactive list。
+- 列表重排按 key 保持节点身份，并通过 `Children.Move` 避免重复 detach / attach。
+- 同 key 替换为不同 item 实例时重建节点，避免循环局部表达式保留旧 item 数据。
+- null key 和运行时重复 key 会失败；模板中的重复 `:key` 报告 `SQV0005`。
+
+### ✅ 里程碑 I：对象属性与事件绑定
+
+- `v-bind="obj"` 使用 AOT-safe 的 `IReadOnlyDictionary<string, object?>` 协议。
+- `v-on="obj"` 使用 `IReadOnlyDictionary<string, Action<Event>>` 协议。
+- `SqvObjectBinding` 对响应式字典执行增量属性更新、缺失键删除和事件监听器替换。
+- `null` 属性值移除对应属性；事件名统一为小写，映射后重复键会失败。
+- 对象绑定句柄由生成组件记录，并在 `OnGeneratedDetachedCore` 中统一释放。
+- 属性名通过 `SqvPropertyNames` 映射到 Square 控件和 SVG 属性名。
 
 ## 测试计划
 
@@ -437,6 +459,8 @@ Card
 - 源码区间（行/列）保留测试。
 - 不支持特性的诊断测试（里程碑 G）。
 
+已新增生成器级错误模板与诊断回归测试，以及 `SqvLexer` / `SqvTemplateParser` 的 token、源码位置、指令重写和嵌套重复绑定测试；更完整的词法与源码区间矩阵仍待补充。
+
 命令：
 
 ```powershell
@@ -449,6 +473,6 @@ dotnet test
 
 - `.sqv` 表达式是否要求对 `ObservableValue<T>` 显式使用 `.Value`，还是生成器应尽可能沿用当前 SQX 的简写行为？
 - 当前条件链用独立 `ShowNode` 实现互斥，是否应改用 `SwitchNode`/`Match` 以获得更精确的运行时语义？
-- `:key` 是否应由 `ForNode` 运行时支持键化复用，还是仅作模板层提示？
-- 不支持的 Vue 特性应静默忽略（当前行为）还是输出 `SQV0001`-`SQV0009` 诊断？
+- `:key` 已由 `ForNode` 运行时支持键化复用；后续可增加同 key item scope 更新能力，以支持 immutable item 替换时继续复用节点。
+- 不支持的 Vue 特性当前输出诊断；后续需要确定各特性的严重级别以及是否提供可配置降级策略。
 - `v-model` 对非内置控件（自定义组件）如何确定目标属性与事件？
