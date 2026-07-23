@@ -1446,59 +1446,59 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     private void RenderSystemText(TextLayout textLayout, Point origin, Color color)
     {
-        var x = origin.X;
-        var y = origin.Y;
-        var lineStart = x;
         var lineHeight = Math.Max(1, textLayout.Font.Size * textLayout.LineHeight * _dpiScale);
         var maxWidth = textLayout.MaxSize.Width * _dpiScale;
-        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
         var physicalFont = textLayout.Font.WithSize(textLayout.Font.Size * _dpiScale);
-
-        foreach (var character in textLayout.Text)
+        var glyphs = new Dictionary<int, RasterizedGlyph?>();
+        var advances = new Dictionary<int, float>();
+        var lines = TextWrapping.Wrap(textLayout.Text, maxWidth, (offset, rune) =>
         {
-            if (character == '\n')
-            {
-                x = lineStart;
-                y += lineHeight;
-                continue;
-            }
-
+            if (!rune.IsBmp) return TextLayout.MeasureRuneAdvance(rune, textLayout.Font) * _dpiScale;
+            var character = (char)rune.Value;
             var glyph = _glyphRasterizer.Rasterize(physicalFont, character);
-            var advance = Rune.TryCreate(character, out var rune)
-                ? TextLayout.MeasureRuneAdvance(rune, textLayout.Font) * _dpiScale
-                : glyph?.AdvanceX ?? Math.Max(1, textLayout.Font.Size * 0.5f * _dpiScale);
-            if (constrainWidth && x > lineStart && x - lineStart + advance > maxWidth)
-            {
-                x = lineStart;
-                y += lineHeight;
-            }
-            if (glyph == null)
-            {
-                x += advance;
-                continue;
-            }
+            var advance = TextLayout.MeasureRuneAdvance(rune, textLayout.Font) * _dpiScale;
+            glyphs[offset] = glyph;
+            advances[offset] = advance;
+            return advance;
+        });
 
-            var glyphX = (int)MathF.Round(x);
-            var glyphY = (int)MathF.Round(y);
-
-            for (var row = 0; row < glyph.Height; row++)
+        for (var lineIndex = 0; lineIndex < lines.Count; lineIndex++)
+        {
+            var line = lines[lineIndex];
+            var x = origin.X;
+            var y = origin.Y + lineIndex * lineHeight;
+            for (var offset = line.StartOffset; offset < line.EndOffset;)
             {
-                for (var column = 0; column < glyph.Width; column++)
+                var status = Rune.DecodeFromUtf16(textLayout.Text.AsSpan(offset), out var rune, out var consumed);
+                if (status != System.Buffers.OperationStatus.Done) break;
+                var advance = advances.TryGetValue(offset, out var measured)
+                    ? measured
+                    : TextLayout.MeasureRuneAdvance(rune, textLayout.Font) * _dpiScale;
+                var glyph = rune.IsBmp && glyphs.TryGetValue(offset, out var cached) ? cached : null;
+                if (glyph != null)
                 {
-                    var coverageIndex = row * glyph.Stride + column;
-                    if (coverageIndex >= glyph.Coverage.Length) continue;
-                    var coverage = glyph.Coverage[coverageIndex];
-                    if (coverage == 0) continue;
-                    // Coverage is normalized to 0..255 (Win32 Gray8 converted at rasterize time; STB is already 0..255).
-                    var alpha = (byte)(color.A * coverage / 255);
-                    BlendPixel(
-                        glyphX + glyph.OffsetX + column,
-                        glyphY + glyph.OffsetY + row,
-                        new Color(color.R, color.G, color.B, alpha));
-                }
-            }
+                    var glyphX = (int)MathF.Round(x);
+                    var glyphY = (int)MathF.Round(y);
 
-            x += advance;
+                    for (var row = 0; row < glyph.Height; row++)
+                    {
+                        for (var column = 0; column < glyph.Width; column++)
+                        {
+                            var coverageIndex = row * glyph.Stride + column;
+                            if (coverageIndex >= glyph.Coverage.Length) continue;
+                            var coverage = glyph.Coverage[coverageIndex];
+                            if (coverage == 0) continue;
+                            var alpha = (byte)(color.A * coverage / 255);
+                            BlendPixel(
+                                glyphX + glyph.OffsetX + column,
+                                glyphY + glyph.OffsetY + row,
+                                new Color(color.R, color.G, color.B, alpha));
+                        }
+                    }
+                }
+                x += advance;
+                offset += consumed;
+            }
         }
     }
 

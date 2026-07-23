@@ -1395,6 +1395,26 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void MenuItemMeasureKeepsLabelAndShortcutSeparated()
+    {
+        var item = new MenuItem
+        {
+            TextContent = "Clear document",
+            ShortcutText = "Ctrl+Shift+Delete"
+        };
+        var label = new Square.Graphics.TextLayout(
+            item.TextContent,
+            new Square.Graphics.Font("Segoe UI", 14)).Measure();
+        var shortcut = new Square.Graphics.TextLayout(
+            item.ShortcutText,
+            new Square.Graphics.Font("Segoe UI", 12)).Measure();
+
+        var measured = item.Measure(new Size(1000, 32));
+
+        Assert.True(measured.Width >= 54 + label.Width + 20 + shortcut.Width);
+    }
+
+    [Fact]
     public void MenuKeyboardNavigationSkipsDisabledItemsAndActivatesSelection()
     {
         var menu = new Menu { Geometry = new Rect(0, 0, 220, 120) };

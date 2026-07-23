@@ -61,35 +61,11 @@ public sealed class TextLayout
 
         var lineHeight = Font.Size * LineHeight;
         var maxWidth = MaxSize.Width;
-        var constrainWidth = !float.IsNaN(maxWidth) && !float.IsInfinity(maxWidth) && maxWidth > 0;
-        var widestLine = 0f;
-        var lineCount = 1;
-        var currentWidth = 0f;
-        var wrapped = false;
-
-        foreach (var rune in Text.EnumerateRunes())
-        {
-            if (rune.Value == '\n')
-            {
-                widestLine = Math.Max(widestLine, currentWidth);
-                currentWidth = 0;
-                lineCount++;
-                continue;
-            }
-
-            var advance = MeasureRuneAdvance(rune, Font);
-            if (constrainWidth && currentWidth > 0 && currentWidth + advance > maxWidth)
-            {
-                widestLine = Math.Max(widestLine, currentWidth);
-                currentWidth = 0;
-                lineCount++;
-                wrapped = true;
-            }
-            currentWidth += advance;
-        }
-
-        widestLine = Math.Max(widestLine, currentWidth);
-        return new Size(constrainWidth ? wrapped ? maxWidth : Math.Min(maxWidth, widestLine) : widestLine, lineCount * lineHeight);
+        var lines = TextWrapping.Wrap(Text, maxWidth, (_, rune) => MeasureRuneAdvance(rune, Font));
+        var widestLine = lines.Count == 0 ? 0 : lines.Max(line => line.Width);
+        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
+        var wrapped = lines.Count > Text.Count(character => character == '\n') + 1;
+        return new Size(constrainWidth && wrapped ? maxWidth : widestLine, lines.Count * lineHeight);
     }
 
     public static float MeasureRuneAdvance(Rune rune, float fontSize)
@@ -126,4 +102,115 @@ public sealed class TextLayout
             >= 0x1f300 and <= 0x1faff or
             >= 0x20000 and <= 0x3fffd;
     }
+}
+
+public readonly record struct TextLineRange(int StartOffset, int EndOffset, float Width);
+
+public static class TextWrapping
+{
+    public static IReadOnlyList<TextLineRange> Wrap(
+        string text,
+        float maxWidth,
+        Func<int, Rune, float> measureAdvance)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(measureAdvance);
+        if (text.Length == 0) return [];
+
+        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
+        var lines = new List<TextLineRange>();
+        var tokens = new List<Token>();
+        var paragraphStart = 0;
+        for (var offset = 0; offset < text.Length;)
+        {
+            var status = Rune.DecodeFromUtf16(text.AsSpan(offset), out var rune, out var consumed);
+            if (status != System.Buffers.OperationStatus.Done) break;
+            var end = offset + consumed;
+            if (rune.Value == '\n')
+            {
+                WrapParagraph(tokens, paragraphStart, maxWidth, constrainWidth, lines);
+                tokens.Clear();
+                paragraphStart = end;
+            }
+            else
+            {
+                tokens.Add(new Token(offset, end, rune, Math.Max(0, measureAdvance(offset, rune))));
+            }
+            offset = end;
+        }
+        WrapParagraph(tokens, paragraphStart, maxWidth, constrainWidth, lines);
+        return lines;
+    }
+
+    private static void WrapParagraph(
+        List<Token> tokens,
+        int paragraphStart,
+        float maxWidth,
+        bool constrainWidth,
+        List<TextLineRange> lines)
+    {
+        if (tokens.Count == 0)
+        {
+            lines.Add(new TextLineRange(paragraphStart, paragraphStart, 0));
+            return;
+        }
+
+        var lineStart = 0;
+        while (lineStart < tokens.Count)
+        {
+            var width = 0f;
+            var lastBreak = -1;
+            var widthAtBreak = 0f;
+            var wrapped = false;
+            for (var index = lineStart; index < tokens.Count; index++)
+            {
+                if (index > lineStart && CanBreakBetween(tokens[index - 1].Rune, tokens[index].Rune))
+                {
+                    lastBreak = index;
+                    widthAtBreak = width;
+                }
+
+                var advance = tokens[index].Advance;
+                if (constrainWidth && width > 0 && width + advance > maxWidth)
+                {
+                    var lineEnd = lastBreak > lineStart ? lastBreak : index;
+                    var lineWidth = lastBreak > lineStart ? widthAtBreak : width;
+                    lines.Add(new TextLineRange(tokens[lineStart].Start, tokens[lineEnd - 1].End, lineWidth));
+                    lineStart = lineEnd;
+                    wrapped = true;
+                    break;
+                }
+                width += advance;
+            }
+
+            if (wrapped) continue;
+            lines.Add(new TextLineRange(tokens[lineStart].Start, tokens[^1].End, width));
+            break;
+        }
+    }
+
+    private static bool CanBreakBetween(Rune previous, Rune current)
+    {
+        if (previous.Value == 0x200b) return true;
+        if (Rune.IsWhiteSpace(previous)) return true;
+        if (previous.Value is '-' or '/' or '\\') return true;
+        if (!IsCjk(previous) && !IsCjk(current)) return false;
+        return !IsOpeningPunctuation(previous.Value) && !IsClosingPunctuation(current.Value);
+    }
+
+    private static bool IsCjk(Rune rune) => rune.Value is
+        >= 0x2e80 and <= 0x9fff or
+        >= 0xac00 and <= 0xd7af or
+        >= 0xf900 and <= 0xfaff or
+        >= 0xff01 and <= 0xff60 or
+        >= 0x20000 and <= 0x3fffd;
+
+    private static bool IsOpeningPunctuation(int value) => value is
+        '(' or '[' or '{' or 0x2018 or 0x201c or 0x3008 or 0x300a or 0x300c or 0x300e or 0x3010 or 0x3014 or 0xff08 or 0xff3b;
+
+    private static bool IsClosingPunctuation(int value) => value is
+        ')' or ']' or '}' or ',' or '.' or '!' or '?' or ':' or ';' or
+        0x2019 or 0x201d or 0x3001 or 0x3002 or 0x3009 or 0x300b or 0x300d or 0x300f or 0x3011 or 0x3015 or 0xff09 or 0xff0c or 0xff0e or 0xff01 or 0xff1f;
+
+    private readonly record struct Token(int Start, int End, Rune Rune, float Advance);
 }

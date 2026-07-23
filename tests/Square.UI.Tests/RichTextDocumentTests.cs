@@ -287,6 +287,27 @@ public class RichTextDocumentTests
     }
 
     [Fact]
+    public void ForegroundRunSplitsDoNotChangeRichTextLayout()
+    {
+        var font = new Square.Graphics.Font("sans-serif", 16);
+        var plain = RichTextBlock.Paragraph(new RichTextRun("Select any text and apply formatting from the title-bar menus."));
+        var colored = RichTextBlock.Paragraph(
+            new RichTextRun("Select any text and apply "),
+            new RichTextRun("formatting", new RichTextMarks(Foreground: "#b42318")),
+            new RichTextRun(" from the title-bar menus."));
+
+        var plainLayout = RichTextLayoutEngine.LayoutBlock(
+            plain, font, Square.Graphics.Point.Zero, 420, 20);
+        var coloredLayout = RichTextLayoutEngine.LayoutBlock(
+            colored, font, Square.Graphics.Point.Zero, 420, 20);
+
+        Assert.Equal(plainLayout.Bounds, coloredLayout.Bounds);
+        Assert.Equal(
+            plainLayout.Lines.Select(line => line.Bounds).ToArray(),
+            coloredLayout.Lines.Select(line => line.Bounds).ToArray());
+    }
+
+    [Fact]
     public void RichTextLayoutWrapsAndProducesSelectionRects()
     {
         var block = RichTextBlock.Paragraph(new RichTextRun("abcdef"));
@@ -308,6 +329,51 @@ public class RichTextDocumentTests
         Assert.Equal(20, selectionRects[1].Width);
         Assert.Equal(1, layout.HitTestOffset(new Square.Graphics.Point(12, 5)));
         Assert.Equal(4, layout.HitTestOffset(new Square.Graphics.Point(12, 29)));
+    }
+
+    [Fact]
+    public void RichTextLayoutWrapsAtWordBoundariesAcrossStyledRuns()
+    {
+        var block = RichTextBlock.Paragraph(
+            new RichTextRun("alpha be"),
+            new RichTextRun("ta", new RichTextMarks(Foreground: "#b42318")),
+            new RichTextRun(" gamma"));
+        var font = new Square.Graphics.Font("sans-serif", 16);
+        var alphaBetaWidth = new Square.Graphics.TextLayout("alpha beta", font).Measure().Width;
+        var layout = RichTextLayoutEngine.LayoutBlock(
+            block,
+            font,
+            Square.Graphics.Point.Zero,
+            alphaBetaWidth - 1,
+            20);
+
+        Assert.Equal(3, layout.Lines.Count);
+        Assert.Equal("alpha ", block.PlainText[layout.Lines[0].StartOffset..layout.Lines[0].EndOffset]);
+        Assert.Equal("beta ", block.PlainText[layout.Lines[1].StartOffset..layout.Lines[1].EndOffset]);
+        Assert.Equal("gamma", block.PlainText[layout.Lines[2].StartOffset..layout.Lines[2].EndOffset]);
+    }
+
+    [Fact]
+    public void RichTextLayoutAllowsCjkBreaksAndSplitsOversizedWords()
+    {
+        var font = new Square.Graphics.Font("sans-serif", 16);
+        var cjk = RichTextLayoutEngine.LayoutBlock(
+            RichTextBlock.Paragraph(new RichTextRun("中文混排")),
+            font,
+            Square.Graphics.Point.Zero,
+            new Square.Graphics.TextLayout("中文", font).Measure().Width,
+            20);
+        var oversized = RichTextLayoutEngine.LayoutBlock(
+            RichTextBlock.Paragraph(new RichTextRun("abcdefgh")),
+            font,
+            Square.Graphics.Point.Zero,
+            new Square.Graphics.TextLayout("abc", font).Measure().Width,
+            20);
+
+        Assert.Equal(2, cjk.Lines.Count);
+        Assert.True(oversized.Lines.Count > 1);
+        var maxWidth = new Square.Graphics.TextLayout("abc", font).Measure().Width;
+        Assert.All(oversized.Lines, line => Assert.True(line.Bounds.Width <= maxWidth));
     }
 
     [Fact]
@@ -350,6 +416,24 @@ public class RichTextDocumentTests
         editor.SelectWordAt(new Square.Graphics.Point(20, 10));
 
         Assert.Equal("bold", editor.SelectedText);
+    }
+
+    [Fact]
+    public void RichTextPointerSelectionDispatchesSelectionChange()
+    {
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("select text"))
+        {
+            Geometry = new Square.Graphics.Rect(0, 0, 240, 80)
+        };
+        var changes = 0;
+        editor.AddEventListener(Square.Events.StandardEvents.SelectionChange, () => changes++);
+
+        editor.HandlePointerDown(new Square.Graphics.Point(8, 8));
+        editor.HandlePointerMove(new Square.Graphics.Point(60, 8));
+        editor.HandlePointerUp(new Square.Graphics.Point(60, 8));
+
+        Assert.True(editor.SelectionLength > 0);
+        Assert.True(changes >= 1);
     }
 
     [Fact]
@@ -462,6 +546,82 @@ public class RichTextDocumentTests
             font.Size * Square.Graphics.TextLayout.DefaultLineHeight).Bounds.Width;
 
         Assert.Equal(expectedTextWidth + 36, measured.Width);
+    }
+
+    [Fact]
+    public void FlexedRichTextEditorContentDoesNotResizeSiblingPanes()
+    {
+        var root = new Square.Controls.View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "row");
+        root.Style.Set("width", "800px");
+        root.Style.Set("height", "400px");
+
+        var editorPane = new Square.Controls.View();
+        editorPane.Style.Set("display", "flex");
+        editorPane.Style.Set("flex-direction", "column");
+        editorPane.Style.Set("flex", "2 1 0");
+        editorPane.Style.Set("min-width", "0");
+        var editor = new RichTextEditor(RichTextDocument.FromPlainText("short"));
+        editor.Style.Set("min-width", "0");
+        editor.Style.Set("min-height", "0");
+        editor.Style.Set("flex-grow", "1");
+        editor.Style.Set("flex-shrink", "1");
+        editorPane.Children.Add(editor);
+
+        var previewPane = new Square.Controls.View();
+        previewPane.Style.Set("flex", "1 1 0");
+        previewPane.Style.Set("min-width", "0");
+        root.Children.Add(editorPane);
+        root.Children.Add(previewPane);
+
+        var layout = new Square.Rendering.LayoutEngine();
+        layout.Measure(root, new Square.Graphics.Size(800, 400));
+        layout.Arrange(root, new Square.Graphics.Rect(0, 0, 800, 400));
+        var editorPaneBefore = editorPane.Geometry;
+        var previewPaneBefore = previewPane.Geometry;
+
+        editor.PlainText = new string('W', 500);
+        layout.Measure(root, new Square.Graphics.Size(800, 400));
+        layout.Arrange(root, new Square.Graphics.Rect(0, 0, 800, 400));
+
+        Assert.Equal(editorPaneBefore, editorPane.Geometry);
+        Assert.Equal(previewPaneBefore, previewPane.Geometry);
+    }
+
+    [Fact]
+    public void StatusTextChangesDoNotResizeWorkspace()
+    {
+        var root = new Square.Controls.View();
+        root.Style.Set("display", "flex");
+        root.Style.Set("flex-direction", "column");
+        root.Style.Set("width", "800px");
+        root.Style.Set("height", "500px");
+
+        var statusRow = new Square.Controls.View();
+        statusRow.Style.Set("display", "flex");
+        statusRow.Style.Set("flex-direction", "row");
+        statusRow.Style.Set("height", "43px");
+        statusRow.Style.Set("flex-shrink", "0");
+        var status = new Square.Controls.Text("Ready");
+        statusRow.Children.Add(status);
+
+        var workspace = new Square.Controls.View();
+        workspace.Style.Set("flex-grow", "1");
+        workspace.Style.Set("min-height", "0");
+        root.Children.Add(statusRow);
+        root.Children.Add(workspace);
+
+        var layout = new Square.Rendering.LayoutEngine();
+        layout.Measure(root, new Square.Graphics.Size(800, 500));
+        layout.Arrange(root, new Square.Graphics.Rect(0, 0, 800, 500));
+        var workspaceBefore = workspace.Geometry;
+
+        status.TextContent = "Document changed";
+        layout.Measure(root, new Square.Graphics.Size(800, 500));
+        layout.Arrange(root, new Square.Graphics.Rect(0, 0, 800, 500));
+
+        Assert.Equal(workspaceBefore, workspace.Geometry);
     }
 
     [Fact]

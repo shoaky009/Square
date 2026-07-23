@@ -14,7 +14,7 @@
           <Text class="pane-label" text="DOCUMENT" />
           <Text class="pane-hint" text="Select text, then use the title-bar menus" />
         </View>
-        <RichTextEditor ref={Editor} class="rich-editor" onInput={OnEditorInput} />
+        <RichTextEditor ref={Editor} class="rich-editor" onInput={OnEditorInput} onSelectionChange={RefreshSelectionInspector} />
       </View>
       <View class="preview-pane">
         <View class="pane-heading">
@@ -35,8 +35,15 @@
   protected override void OnAttachedCore()
   {
     base.OnAttachedCore();
+    OwnerDocument?.AddEventListener(StandardEvents.SelectionChange, RefreshSelectionInspector);
     LoadSample();
     SetStatus("Ready");
+  }
+
+  protected override void OnDetachedCore()
+  {
+    OwnerDocument?.RemoveEventListener(StandardEvents.SelectionChange, RefreshSelectionInspector);
+    base.OnDetachedCore();
   }
 
   internal void OnUndo()
@@ -150,9 +157,16 @@
   private void RefreshInspector()
   {
     PreviewText.TextContent = Editor.PlainText;
-    SelectionText.TextContent = Editor.SelectionLength == 0
+    RefreshSelectionInspector();
+  }
+
+  private void RefreshSelectionInspector()
+  {
+    var documentLength = OwnerDocument?.GetSelection().ToString().Length ?? 0;
+    var length = documentLength > 0 ? documentLength : Editor.SelectionLength;
+    SelectionText.TextContent = length == 0
       ? "Selection: none"
-      : "Selection: " + Editor.SelectionLength + " characters";
+      : "Selection: " + length + " characters";
   }
 
   private void SetStatus(string text)
@@ -162,7 +176,7 @@
 </script>
 <style>
   .app-shell { display: flex; flex-direction: column; width: 100%; height: 100%; gap: 14px; padding: 22px; background: #e8edf4; overflow: hidden; }
-  .status-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+  .status-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; height: 43px; flex-shrink: 0; }
   .page-heading { display: flex; flex-direction: column; gap: 3px; }
   .eyebrow { color: #2563a8; font-size: 11px; font-weight: 700; }
   .app-subtitle { color: #344054; font-size: 18px; font-weight: 700; }
@@ -173,7 +187,7 @@
   .pane-heading { display: flex; flex-direction: column; gap: 2px; }
   .pane-label { color: #172033; font-size: 12px; font-weight: 700; }
   .pane-hint { color: #7b8798; font-size: 11px; }
-  .rich-editor { min-height: 180px; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-size: 16px; color: #101828; background: #ffffff; border: 1px solid #d7dee8; padding: 18px; }
+  .rich-editor { min-width: 0; min-height: 180px; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-size: 16px; color: #101828; background: #ffffff; border: 1px solid #d7dee8; padding: 18px; }
   .rich-editor::selection { background: #3390ff; color: #ffffff; }
   .preview-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; align-self: stretch; overflow-y: auto; overflow-x: hidden; }
   .preview-text { min-width: 0; align-self: stretch; color: #3d4b5f; font-size: 14px; line-height: 23px; user-select: text; }

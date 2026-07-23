@@ -1140,8 +1140,11 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
     private void SyncDocumentSelection(TextSelectionState selection)
     {
         var documentSelection = _document.GetSelection();
-        documentSelection.RemoveAllRanges();
-        if (selection.Items.Count == 0) return;
+        if (selection.Items.Count == 0)
+        {
+            documentSelection.RemoveAllRanges();
+            return;
+        }
 
         var (startPoint, endPoint) = GetOrderedSelectionPoints(selection);
         var start = startPoint.Index;
@@ -1165,7 +1168,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             range.SetEnd(endElement, endElement.ChildNodes.Count);
         }
 
-        documentSelection.AddRange(range);
+        documentSelection.SetRange(range);
     }
 
     private static Square.UI.Text? FindTextNode(Element element, string text)

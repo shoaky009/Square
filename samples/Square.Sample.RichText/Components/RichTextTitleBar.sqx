@@ -97,7 +97,7 @@
   }
 
   .rich-menu-bar Menu {
-    width: 248px;
+    min-width: 248px;
     background: #f8fafc;
   }
 

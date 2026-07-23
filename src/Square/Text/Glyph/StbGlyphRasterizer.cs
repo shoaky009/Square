@@ -208,9 +208,9 @@ internal sealed class FontCollection
             var norm = Normalize(family);
             _byFamily[norm] = entry;
             _customFamilies.Add(norm);
-            // 自定义面插到 fallback 前端，提高命中率
+            // Custom faces are selected only by family name. They must not become
+            // fallbacks for normal text, especially for private-use icon fonts.
             _fallbacks.RemoveAll(e => Normalize(e.Family) == norm);
-            _fallbacks.Insert(0, entry);
             HasAnyFont = true;
         }
     }

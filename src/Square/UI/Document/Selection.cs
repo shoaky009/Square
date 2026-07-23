@@ -1,3 +1,5 @@
+using Square.Events;
+
 namespace Square.UI;
 
 /// <summary>
@@ -5,7 +7,10 @@ namespace Square.UI;
 /// </summary>
 public sealed class Selection
 {
+    private readonly Document _document;
     private readonly List<Range> _ranges = [];
+
+    internal Selection(Document document) => _document = document;
 
     public int RangeCount => _ranges.Count;
     public bool IsCollapsed => _ranges.Count == 0 || _ranges[0].Collapsed;
@@ -19,11 +24,22 @@ public sealed class Selection
     public void AddRange(Range range)
     {
         ArgumentNullException.ThrowIfNull(range);
-        _ranges.Clear();
-        _ranges.Add(range);
+        SetRange(range);
     }
 
-    public void RemoveAllRanges() => _ranges.Clear();
+    internal void SetRange(Range range)
+    {
+        _ranges.Clear();
+        _ranges.Add(range);
+        _document.DispatchEvent(StandardEvents.CreateSelectionChange());
+    }
+
+    public void RemoveAllRanges()
+    {
+        if (_ranges.Count == 0) return;
+        _ranges.Clear();
+        _document.DispatchEvent(StandardEvents.CreateSelectionChange());
+    }
 
     public override string ToString() => _ranges.Count == 0 ? string.Empty : _ranges[0].ToString();
 }

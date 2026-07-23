@@ -261,6 +261,27 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void DisplayTreeTextFragmentsWrapWholeWords()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 180, 100) };
+        var text = new Square.Controls.Text("alpha beta")
+        {
+            FontSize = 20,
+            Geometry = new Rect(2, 2, 70, 80)
+        };
+        root.Children.Add(text);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+
+        var fragment = Assert.Single(tree.CollectTextFragments(root));
+        var betaStart = fragment.Characters.Single(character => character.StartOffset == 6);
+
+        Assert.True(betaStart.Bounds.Y > fragment.Characters[0].Bounds.Y);
+        Assert.All(fragment.Characters.Where(character => character.StartOffset >= 6),
+            character => Assert.Equal(betaStart.Bounds.Y, character.Bounds.Y));
+    }
+
+    [Fact]
     public void DrawTextUsesReadableSeparatedGlyphs()
     {
         var context = CreateContext(180, 40);

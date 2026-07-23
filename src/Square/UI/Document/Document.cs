@@ -40,7 +40,7 @@ public abstract class Document : Node
     }
 
     /// <summary>当前文档选择（对齐 <c>getSelection()</c>）。</summary>
-    public Selection Selection => _selection ??= new Selection();
+    public Selection Selection => _selection ??= new Selection(this);
 
     /// <inheritdoc />
     public override NodeType NodeTypeValue => NodeType.Document;

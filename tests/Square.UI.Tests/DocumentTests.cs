@@ -1,5 +1,6 @@
 using System;
 using Square.Controls;
+using Square.Events;
 using Square.Hosting;
 using Square.Platform;
 using Square.Runtime.State;
@@ -198,6 +199,9 @@ public class DocumentTests
             Assert.NotNull(new Square.Text.Glyph.SystemGlyphRasterizer().Rasterize(
                 new Square.Graphics.Font("Square Iconfont", 16), icon.TextContent[0]));
         });
+        Assert.NotEqual(
+            "Square Iconfont",
+            Square.Text.Glyph.FontCollection.Shared.Resolve("Missing family", 'A')?.Family);
     }
 
     [Fact]
@@ -215,6 +219,24 @@ public class DocumentTests
 
         document.Context.Dispatcher.Run();
         Assert.Equal("updated", text.TextContent);
+    }
+
+    [Fact]
+    public void DocumentSelectionDispatchesSelectionChange()
+    {
+        var document = new UIDocument();
+        var text = new Square.UI.Text("hello");
+        document.Body.ChildNodes.Add(text);
+        var changes = 0;
+        document.AddEventListener(StandardEvents.SelectionChange, () => changes++);
+        var range = document.CreateRange();
+        range.SetStart(text, 1);
+        range.SetEnd(text, 4);
+
+        document.GetSelection().AddRange(range);
+        document.GetSelection().RemoveAllRanges();
+
+        Assert.Equal(2, changes);
     }
 
     [Fact]

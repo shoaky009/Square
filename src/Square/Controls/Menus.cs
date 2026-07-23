@@ -69,7 +69,7 @@ public class Menu : Popup
         ConstrainToViewport = true;
         Style.SetCascaded("display", "flex", int.MinValue);
         Style.SetCascaded("flex-direction", "column", int.MinValue);
-        Style.SetCascaded("width", "240px", int.MinValue);
+        Style.SetCascaded("min-width", "240px", int.MinValue);
         Style.SetCascaded("background", "#ffffff", int.MinValue);
     }
 
@@ -317,7 +317,8 @@ public class MenuItem : UIElement, ITextSelectable
         var shortcut = string.IsNullOrEmpty(ShortcutText)
             ? Size.Zero
             : ControlDrawing.MeasureText(this, ShortcutText, 12);
-        return new Size(Math.Max(180, 52 + label.Width + shortcut.Width), 32);
+        var shortcutWidth = shortcut.Width > 0 ? shortcut.Width + 20 : 0;
+        return new Size(Math.Max(180, 54 + label.Width + shortcutWidth), 32);
     }
 
     public override void Paint(IRenderContext context)
@@ -335,8 +336,9 @@ public class MenuItem : UIElement, ITextSelectable
             : Color.FromRgb(150, 154, 160);
         var isBarItem = Parent is MenuBar;
         var labelX = Geometry.X + (isBarItem ? 12 : 30);
+        var labelSize = ControlDrawing.MeasureText(this, TextContent, 14);
         ControlDrawing.DrawText(context, this, TextContent,
-            new Point(labelX, Geometry.Y + (Geometry.Height - 17) / 2f), foreground, 14);
+            new Point(labelX, Geometry.Y + (Geometry.Height - labelSize.Height) / 2f), foreground, 14);
 
         if (isBarItem) return;
         DrawSelectionMark(context, foreground);
@@ -344,7 +346,7 @@ public class MenuItem : UIElement, ITextSelectable
         {
             var size = ControlDrawing.MeasureText(this, ShortcutText, 12);
             ControlDrawing.DrawText(context, this, ShortcutText,
-                new Point(Geometry.Right - size.Width - 24, Geometry.Y + (Geometry.Height - 15) / 2f), foreground, 12);
+                new Point(Geometry.Right - size.Width - 24, Geometry.Y + (Geometry.Height - size.Height) / 2f), foreground, 12);
         }
         if (Submenu != null)
         {

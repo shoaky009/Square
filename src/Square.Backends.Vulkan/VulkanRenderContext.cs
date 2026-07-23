@@ -430,46 +430,54 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
             return;
         }
 
-        var x = origin.X;
-        var y = origin.Y;
         var lineHeight = text.Font.Size * text.LineHeight;
-
-        foreach (var rune in text.Text.EnumerateRunes())
+        var advances = new Dictionary<int, float>();
+        var lines = TextWrapping.Wrap(text.Text, text.MaxSize.Width, (offset, rune) =>
         {
-            if (rune.Value == '\n')
-            {
-                x = origin.X;
-                y += lineHeight;
-                continue;
-            }
             var advance = TextLayout.MeasureRuneAdvance(rune, text.Font);
-            if (!rune.IsBmp) { x += advance; continue; }
+            advances[offset] = advance;
+            return advance;
+        });
 
-            var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
-            if (glyph is not { } resolvedGlyph) { x += advance; continue; }
-
-            if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
+        for (var lineIndex = 0; lineIndex < lines.Count; lineIndex++)
+        {
+            var line = lines[lineIndex];
+            var x = origin.X;
+            var y = origin.Y + lineIndex * lineHeight;
+            for (var offset = line.StartOffset; offset < line.EndOffset;)
             {
-                var gx = x + resolvedGlyph.OffsetX;
-                var gy = y + resolvedGlyph.OffsetY;
-                var (u0, v0, u1, v1) = _atlas.GetUV(resolvedGlyph.AtlasX, resolvedGlyph.AtlasY, resolvedGlyph.AtlasW, resolvedGlyph.AtlasH);
+                var status = Rune.DecodeFromUtf16(text.Text.AsSpan(offset), out var rune, out var consumed);
+                if (status != System.Buffers.OperationStatus.Done) break;
+                var advance = advances[offset];
+                if (!rune.IsBmp) { x += advance; offset += consumed; continue; }
 
-                var tl = TransformPoint(new Point(gx, gy));
-                var tr = TransformPoint(new Point(gx + resolvedGlyph.DrawWidth, gy));
-                var br = TransformPoint(new Point(gx + resolvedGlyph.DrawWidth, gy + resolvedGlyph.DrawHeight));
-                var bl = TransformPoint(new Point(gx, gy + resolvedGlyph.DrawHeight));
+                var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
+                if (glyph is not { } resolvedGlyph) { x += advance; offset += consumed; continue; }
 
-                Span<Vertex2D> verts =
-                [
-                    new(tl.X, tl.Y, u0, v0, packed),
-                    new(tr.X, tr.Y, u1, v0, packed),
-                    new(br.X, br.Y, u1, v1, packed),
-                    new(bl.X, bl.Y, u0, v1, packed)
-                ];
-                ReadOnlySpan<uint> idx = [0, 1, 2, 0, 2, 3];
-                AddBatch(verts, idx);
+                if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
+                {
+                    var gx = x + resolvedGlyph.OffsetX;
+                    var gy = y + resolvedGlyph.OffsetY;
+                    var (u0, v0, u1, v1) = _atlas.GetUV(resolvedGlyph.AtlasX, resolvedGlyph.AtlasY, resolvedGlyph.AtlasW, resolvedGlyph.AtlasH);
+
+                    var tl = TransformPoint(new Point(gx, gy));
+                    var tr = TransformPoint(new Point(gx + resolvedGlyph.DrawWidth, gy));
+                    var br = TransformPoint(new Point(gx + resolvedGlyph.DrawWidth, gy + resolvedGlyph.DrawHeight));
+                    var bl = TransformPoint(new Point(gx, gy + resolvedGlyph.DrawHeight));
+
+                    Span<Vertex2D> verts =
+                    [
+                        new(tl.X, tl.Y, u0, v0, packed),
+                        new(tr.X, tr.Y, u1, v0, packed),
+                        new(br.X, br.Y, u1, v1, packed),
+                        new(bl.X, bl.Y, u0, v1, packed)
+                    ];
+                    ReadOnlySpan<uint> idx = [0, 1, 2, 0, 2, 3];
+                    AddBatch(verts, idx);
+                }
+                x += advance;
+                offset += consumed;
             }
-            x += advance;
         }
     }
 
@@ -613,51 +621,59 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private void DrawPixelAlignedText(TextLayout text, Point origin, uint packed)
     {
         var physicalOrigin = TransformPoint(origin);
-        var lineStart = physicalOrigin.X;
-        var x = lineStart;
-        var y = physicalOrigin.Y;
         var lineHeight = Math.Max(1, text.Font.Size * text.LineHeight * DpiScale);
-
-        foreach (var rune in text.Text.EnumerateRunes())
+        var advances = new Dictionary<int, float>();
+        var lines = TextWrapping.Wrap(text.Text, text.MaxSize.Width * DpiScale, (offset, rune) =>
         {
-            if (rune.Value == '\n')
-            {
-                x = lineStart;
-                y += lineHeight;
-                continue;
-            }
             var advance = TextLayout.MeasureRuneAdvance(rune, text.Font) * DpiScale;
-            if (!rune.IsBmp) { x += advance; continue; }
+            advances[offset] = advance;
+            return advance;
+        });
 
-            var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
-            if (glyph is not { } resolvedGlyph)
+        for (var lineIndex = 0; lineIndex < lines.Count; lineIndex++)
+        {
+            var line = lines[lineIndex];
+            var x = physicalOrigin.X;
+            var y = physicalOrigin.Y + lineIndex * lineHeight;
+            for (var offset = line.StartOffset; offset < line.EndOffset;)
             {
+                var status = Rune.DecodeFromUtf16(text.Text.AsSpan(offset), out var rune, out var consumed);
+                if (status != System.Buffers.OperationStatus.Done) break;
+                var advance = advances[offset];
+                if (!rune.IsBmp) { x += advance; offset += consumed; continue; }
+
+                var glyph = GetOrRasterizeGlyph(text.Font, (char)rune.Value);
+                if (glyph is not { } resolvedGlyph)
+                {
+                    x += advance;
+                    offset += consumed;
+                    continue;
+                }
+
+                if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
+                {
+                    var glyphX = MathF.Round(x);
+                    var glyphY = MathF.Round(y);
+                    var left = glyphX + resolvedGlyph.PhysicalOffsetX - resolvedGlyph.FilterBorder;
+                    var top = glyphY + resolvedGlyph.PhysicalOffsetY - resolvedGlyph.FilterBorder;
+                    var right = left + resolvedGlyph.AtlasW;
+                    var bottom = top + resolvedGlyph.AtlasH;
+                    var (u0, v0, u1, v1) = _atlas.GetUV(
+                        resolvedGlyph.AtlasX, resolvedGlyph.AtlasY, resolvedGlyph.AtlasW, resolvedGlyph.AtlasH);
+
+                    Span<Vertex2D> vertices =
+                    [
+                        new(left, top, u0, v0, packed),
+                        new(right, top, u1, v0, packed),
+                        new(right, bottom, u1, v1, packed),
+                        new(left, bottom, u0, v1, packed)
+                    ];
+                    ReadOnlySpan<uint> indices = [0, 1, 2, 0, 2, 3];
+                    AddBatch(vertices, indices);
+                }
                 x += advance;
-                continue;
+                offset += consumed;
             }
-
-            if (resolvedGlyph.AtlasW > 0 && resolvedGlyph.AtlasH > 0)
-            {
-                var glyphX = MathF.Round(x);
-                var glyphY = MathF.Round(y);
-                var left = glyphX + resolvedGlyph.PhysicalOffsetX - resolvedGlyph.FilterBorder;
-                var top = glyphY + resolvedGlyph.PhysicalOffsetY - resolvedGlyph.FilterBorder;
-                var right = left + resolvedGlyph.AtlasW;
-                var bottom = top + resolvedGlyph.AtlasH;
-                var (u0, v0, u1, v1) = _atlas.GetUV(
-                    resolvedGlyph.AtlasX, resolvedGlyph.AtlasY, resolvedGlyph.AtlasW, resolvedGlyph.AtlasH);
-
-                Span<Vertex2D> vertices =
-                [
-                    new(left, top, u0, v0, packed),
-                    new(right, top, u1, v0, packed),
-                    new(right, bottom, u1, v1, packed),
-                    new(left, bottom, u0, v1, packed)
-                ];
-                ReadOnlySpan<uint> indices = [0, 1, 2, 0, 2, 3];
-                AddBatch(vertices, indices);
-            }
-            x += advance;
         }
     }
 

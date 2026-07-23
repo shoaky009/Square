@@ -309,42 +309,37 @@ public sealed class DisplayTree
         if (string.IsNullOrEmpty(text)) return null;
 
         var lineHeight = command.Text.Font.Size * command.Text.LineHeight;
-        var x = command.Origin.X;
-        var y = command.Origin.Y;
-        var maxRight = x;
         var maxWidth = command.Text.MaxSize.Width;
-        var constrainWidth = float.IsFinite(maxWidth) && maxWidth > 0;
         var characters = new List<TextCharacterFragment>();
-
-        for (var offset = 0; offset < text.Length;)
+        var advances = new Dictionary<int, float>();
+        var lines = TextWrapping.Wrap(text, maxWidth, (offset, rune) =>
         {
-            var status = Rune.DecodeFromUtf16(text.AsSpan(offset), out var rune, out var consumed);
-            if (status != System.Buffers.OperationStatus.Done) break;
-            var startOffset = offset;
-            offset += consumed;
-
-            if (rune.Value == '\n')
-            {
-                maxRight = Math.Max(maxRight, x);
-                x = command.Origin.X;
-                y += lineHeight;
-                continue;
-            }
-
             var advance = MeasureRenderedAdvance(command.Text.Font, rune);
-            if (constrainWidth && x > command.Origin.X && x - command.Origin.X + advance > maxWidth)
+            advances[offset] = advance;
+            return advance;
+        });
+        var maxRight = command.Origin.X;
+
+        for (var lineIndex = 0; lineIndex < lines.Count; lineIndex++)
+        {
+            var line = lines[lineIndex];
+            var x = command.Origin.X;
+            var y = command.Origin.Y + lineIndex * lineHeight;
+            for (var offset = line.StartOffset; offset < line.EndOffset;)
             {
-                maxRight = Math.Max(maxRight, x);
-                x = command.Origin.X;
-                y += lineHeight;
+                var status = Rune.DecodeFromUtf16(text.AsSpan(offset), out var rune, out var consumed);
+                if (status != System.Buffers.OperationStatus.Done) break;
+                var startOffset = offset;
+                var advance = advances[offset];
+                offset += consumed;
+                var glyphBounds = MeasureRenderedGlyphBounds(command.Text.Font, rune);
+                var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBounds.Bottom));
+                var selectionLeft = Math.Min(x, x + glyphBounds.Left);
+                var selectionRight = Math.Max(x + advance, x + glyphBounds.Right);
+                var selectionBounds = new Rect(selectionLeft, y, selectionRight - selectionLeft, bounds.Height);
+                characters.Add(new TextCharacterFragment(startOffset, offset, bounds, selectionBounds));
+                x += advance;
             }
-            var glyphBounds = MeasureRenderedGlyphBounds(command.Text.Font, rune);
-            var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBounds.Bottom));
-            var selectionLeft = Math.Min(x, x + glyphBounds.Left);
-            var selectionRight = Math.Max(x + advance, x + glyphBounds.Right);
-            var selectionBounds = new Rect(selectionLeft, y, selectionRight - selectionLeft, bounds.Height);
-            characters.Add(new TextCharacterFragment(startOffset, offset, bounds, selectionBounds));
-            x += advance;
             maxRight = Math.Max(maxRight, x);
         }
 

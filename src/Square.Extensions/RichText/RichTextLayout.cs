@@ -170,49 +170,8 @@ public static class RichTextLayoutEngine
         maxWidth = float.IsFinite(maxWidth) && maxWidth > 0 ? maxWidth : float.PositiveInfinity;
         lineHeight = lineHeight > 0 ? lineHeight : baseFont.Size * TextLayout.DefaultLineHeight;
 
-        var lines = new List<RichTextLayoutLine>();
-        var fragments = new List<RichTextLayoutFragment>();
-        var lineStart = 0;
-        var lineOffset = 0;
-        var lineX = origin.X;
-        var lineY = origin.Y;
-        var fragmentStart = 0;
-        var fragmentX = lineX;
-        RichTextRun? activeRun = null;
-        Font? activeFont = null;
-        var activeText = new StringBuilder();
-
-        void FlushFragment()
-        {
-            if (activeRun == null || activeFont == null || activeText.Length == 0) return;
-            var text = activeText.ToString();
-            var width = RichTextBlockLayout.MeasureText(text, activeFont);
-            fragments.Add(new RichTextLayoutFragment(
-                new RichTextRun(text, activeRun.Marks),
-                fragmentStart,
-                fragmentStart + text.Length,
-                activeFont,
-                new Rect(fragmentX, lineY, width, lineHeight)));
-            activeText.Clear();
-        }
-
-        void FlushLine()
-        {
-            FlushFragment();
-            lines.Add(new RichTextLayoutLine(
-                lineStart,
-                lineOffset,
-                new Rect(origin.X, lineY, Math.Max(0, lineX - origin.X), lineHeight),
-                fragments.ToArray()));
-            fragments.Clear();
-            lineStart = lineOffset;
-            lineX = origin.X;
-            lineY += lineHeight;
-            activeRun = null;
-            activeFont = null;
-            activeText.Clear();
-        }
-
+        var tokens = new List<LayoutToken>();
+        var offset = 0;
         foreach (var inline in block.Inlines)
         {
             if (inline is not RichTextRun run) continue;
@@ -220,25 +179,51 @@ public static class RichTextLayoutEngine
             foreach (var rune in run.Text.EnumerateRunes())
             {
                 var advance = RichTextBlockLayout.MeasureAdvance(font, rune);
-                if (lineX > origin.X && lineX - origin.X + advance > maxWidth)
-                    FlushLine();
-
-                if (!ReferenceEquals(activeRun, run) || activeFont?.Weight != font.Weight || activeFont?.Style != font.Style)
-                {
-                    FlushFragment();
-                    activeRun = run;
-                    activeFont = font;
-                    fragmentStart = lineOffset;
-                    fragmentX = lineX;
-                }
-
-                activeText.Append(rune.ToString());
-                lineX += advance;
-                lineOffset += rune.Utf16SequenceLength;
+                tokens.Add(new LayoutToken(offset, offset + rune.Utf16SequenceLength, rune, run, font, advance));
+                offset += rune.Utf16SequenceLength;
             }
         }
 
-        FlushLine();
+        var tokenByOffset = tokens.ToDictionary(token => token.StartOffset);
+        var ranges = TextWrapping.Wrap(block.PlainText, maxWidth,
+            (runeOffset, rune) => tokenByOffset.TryGetValue(runeOffset, out var token)
+                ? token.Advance
+                : RichTextBlockLayout.MeasureAdvance(baseFont, rune));
+        var lines = new List<RichTextLayoutLine>(ranges.Count);
+        for (var lineIndex = 0; lineIndex < ranges.Count; lineIndex++)
+        {
+            var range = ranges[lineIndex];
+            var lineY = origin.Y + lineIndex * lineHeight;
+            var lineX = origin.X;
+            var fragments = new List<RichTextLayoutFragment>();
+            var lineTokens = tokens.Where(token => token.StartOffset >= range.StartOffset && token.EndOffset <= range.EndOffset).ToArray();
+            for (var index = 0; index < lineTokens.Length;)
+            {
+                var first = lineTokens[index];
+                var fragmentStart = first.StartOffset;
+                var fragmentWidth = 0f;
+                var text = new StringBuilder();
+                while (index < lineTokens.Length && ReferenceEquals(lineTokens[index].Run, first.Run))
+                {
+                    text.Append(lineTokens[index].Rune.ToString());
+                    fragmentWidth += lineTokens[index].Advance;
+                    index++;
+                }
+                var fragmentEnd = lineTokens[index - 1].EndOffset;
+                fragments.Add(new RichTextLayoutFragment(
+                    new RichTextRun(text.ToString(), first.Run.Marks),
+                    fragmentStart,
+                    fragmentEnd,
+                    first.Font,
+                    new Rect(lineX, lineY, fragmentWidth, lineHeight)));
+                lineX += fragmentWidth;
+            }
+            lines.Add(new RichTextLayoutLine(
+                range.StartOffset,
+                range.EndOffset,
+                new Rect(origin.X, lineY, range.Width, lineHeight),
+                fragments));
+        }
         var width = lines.Count == 0 ? 0 : lines.Max(line => line.Bounds.Width);
         var bounds = new Rect(origin.X, origin.Y, width, lines.Count * lineHeight);
         return new RichTextBlockLayout(block, bounds, lines);
@@ -249,4 +234,12 @@ public static class RichTextLayoutEngine
         baseFont.Size,
         marks.Bold ? FontWeight.Bold : baseFont.Weight,
         marks.Italic ? FontStyle.Italic : baseFont.Style);
+
+    private readonly record struct LayoutToken(
+        int StartOffset,
+        int EndOffset,
+        Rune Rune,
+        RichTextRun Run,
+        Font Font,
+        float Advance);
 }

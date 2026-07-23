@@ -229,26 +229,23 @@ public sealed class RichTextEditor : UIElement, ITextEditor
     public void HandlePointerDown(Point point, bool extendSelection = false)
     {
         var position = HitTestPosition(point);
-        _state.SetSelection(extendSelection
+        SetSelection(extendSelection
             ? new RichTextSelection(_state.Selection.Anchor, position)
             : RichTextSelection.Collapsed(position));
         _isDragging = true;
-        InvalidatePaint();
     }
 
     public void HandlePointerMove(Point point)
     {
         if (!_isDragging) return;
-        _state.SetSelection(new RichTextSelection(_state.Selection.Anchor, HitTestPosition(point)));
-        InvalidatePaint();
+        SetSelection(new RichTextSelection(_state.Selection.Anchor, HitTestPosition(point)));
     }
 
     public void HandlePointerUp(Point point)
     {
         if (!_isDragging) return;
         _isDragging = false;
-        _state.SetSelection(new RichTextSelection(_state.Selection.Anchor, HitTestPosition(point)));
-        InvalidatePaint();
+        SetSelection(new RichTextSelection(_state.Selection.Anchor, HitTestPosition(point)));
     }
 
     public void SelectWordAt(Point point)
@@ -256,28 +253,25 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         var position = HitTestPosition(point);
         var text = Document.Blocks[position.BlockIndex].PlainText;
         var (start, end) = RichTextBoundaries.WordAt(text, position.Offset);
-        _state.SetSelection(new RichTextSelection(
+        SetSelection(new RichTextSelection(
             new RichTextPosition(position.BlockIndex, start),
             new RichTextPosition(position.BlockIndex, end)));
         _isDragging = false;
-        InvalidatePaint();
     }
 
     public void SelectAll()
     {
         var lastBlockIndex = Document.Blocks.Count - 1;
-        _state.SetSelection(new RichTextSelection(
+        SetSelection(new RichTextSelection(
             new RichTextPosition(0, 0),
             new RichTextPosition(lastBlockIndex, Document.Blocks[lastBlockIndex].PlainText.Length)));
-        InvalidatePaint();
     }
 
     public void CollapseSelectionToEnd()
     {
         var end = _state.Selection.End;
-        _state.SetSelection(RichTextSelection.Collapsed(end));
+        SetSelection(RichTextSelection.Collapsed(end));
         _isDragging = false;
-        InvalidatePaint();
     }
 
     public bool DeleteSelection()
@@ -316,8 +310,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
                 ? RichTextBoundaries.PreviousTextElement(PlainText, offset)
                 : RichTextBoundaries.NextTextElement(PlainText, offset);
         var next = FromLinearOffset(nextOffset);
-        _state.SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
-        InvalidatePaint();
+        SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
     }
 
     private void MoveLineBoundary(bool toStart, bool extend)
@@ -334,8 +327,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         var blockLayout = layouts[position.BlockIndex];
         var line = blockLayout.Lines[blockLayout.GetLineIndex(position.Offset)];
         var next = new RichTextPosition(position.BlockIndex, toStart ? line.StartOffset : line.EndOffset);
-        _state.SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
-        InvalidatePaint();
+        SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
     }
 
     private void MoveVertical(int direction, bool extend)
@@ -373,7 +365,14 @@ public sealed class RichTextEditor : UIElement, ITextEditor
             next = new RichTextPosition(blockIndex, targetLayout.HitTestOffset(new Point(caret.X, target.Bounds.Y + target.Bounds.Height / 2f)));
         }
 
-        _state.SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
+        SetSelection(extend ? new RichTextSelection(_state.Selection.Anchor, next) : RichTextSelection.Collapsed(next));
+    }
+
+    private void SetSelection(RichTextSelection selection)
+    {
+        if (_state.Selection == selection) return;
+        _state.SetSelection(selection);
+        DispatchEvent(StandardEvents.CreateSelectionChange());
         InvalidatePaint();
     }
 
