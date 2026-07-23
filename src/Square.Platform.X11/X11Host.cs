@@ -4,7 +4,7 @@ using Square.Hosting;
 
 namespace Square.Platform.X11;
 
-internal sealed unsafe class X11Host : IPlatformHost
+internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
 {
     private string _title;
     private readonly int _width;
@@ -129,6 +129,8 @@ internal sealed unsafe class X11Host : IPlatformHost
             SetWindowManagerDecorations(info.BorderStyle);
 
         X11Api.StoreName(_display, _window, _title);
+        if (info.OwnerHandle != IntPtr.Zero)
+            X11Api.SetTransientForHint(_display, _window, info.OwnerHandle);
         SetProcessIdProperty();
 
         _wmDeleteWindow = X11Api.InternAtom(_display, "WM_DELETE_WINDOW", false);
@@ -144,6 +146,16 @@ internal sealed unsafe class X11Host : IPlatformHost
         _netWmStateMaximizedHorz = X11Api.InternAtom(_display, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
         _netWmStateMaximizedVert = X11Api.InternAtom(_display, "_NET_WM_STATE_MAXIMIZED_VERT", false);
         _netWmMoveresize = X11Api.InternAtom(_display, "_NET_WM_MOVERESIZE", false);
+        if (info.IsModal)
+        {
+            var modal = X11Api.InternAtom(_display, "_NET_WM_STATE_MODAL", false);
+            var atom = X11Api.InternAtom(_display, "ATOM", false);
+            var modalValue = IntPtr.Size == sizeof(long)
+                ? BitConverter.GetBytes(modal.ToInt64())
+                : BitConverter.GetBytes(modal.ToInt32());
+            X11Api.ChangeProperty(_display, _window, _netWmState, atom, 32,
+                X11Api.PropModeReplace, modalValue, 1);
+        }
 
         var protocols = new[] { _wmDeleteWindow };
         X11Api.SetWMProtocols(_display, _window, protocols, protocols.Length);
@@ -944,5 +956,7 @@ internal sealed unsafe class X11Host : IPlatformHost
         if (_colormap != IntPtr.Zero) X11Api.FreeColormap(_display, _colormap);
         if (_display != IntPtr.Zero) X11Api.CloseDisplay(_display);
     }
+
+    IntPtr IPlatformNativeWindow.Handle => _window;
 
 }

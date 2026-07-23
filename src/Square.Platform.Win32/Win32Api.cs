@@ -127,6 +127,10 @@ internal static partial class Win32Api
     public static partial IntPtr SetActiveWindow(IntPtr hWnd);
 
     [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("user32.dll", EntryPoint = "EnableWindow")]
+    public static partial bool EnableWindow(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool enable);
+
+    [return: MarshalAs(UnmanagedType.Bool)]
     [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
     public static partial bool DestroyWindow(IntPtr hWnd);
 

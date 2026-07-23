@@ -15,6 +15,8 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     private readonly string _renderBackend;
     private readonly TitleStyle _titleStyle;
     private readonly BorderStyle _borderStyle;
+    private readonly IntPtr _ownerHandle;
+    private readonly bool _isModal;
     private Size _clientSize;
     private Size _physicalClientSize;
     private float _dpiScale = 1f;
@@ -29,7 +31,10 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
 
     private const uint FrameTimerIntervalMs = 16;
 
-    private static Win32Host? s_current;
+    private static readonly Dictionary<IntPtr, Win32Host> Hosts = [];
+    private static readonly object HostsGate = new();
+    [ThreadStatic]
+    private static Win32Host? s_creating;
     private static WndProcDelegate? s_wndProc;
     private static bool s_classRegistered;
     private static bool s_dpiAwarenessInitialized;
@@ -91,7 +96,8 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
         _renderBackend = info.RenderBackend;
         _titleStyle = info.TitleStyle;
         _borderStyle = info.BorderStyle;
-        s_current = this;
+        _ownerHandle = info.OwnerHandle;
+        _isModal = info.IsModal;
     }
 
     public void Show()
@@ -123,17 +129,28 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
             s_classRegistered = true;
         }
 
-        _hwnd = Win32Api.CreateWindowEx(
-            0, "SquareWindow", _title,
-            CreateWindowStyle(),
-            100, 100, _width, _height,
-            IntPtr.Zero, IntPtr.Zero, Win32Api.GetModuleHandle(null), IntPtr.Zero);
+        s_creating = this;
+        try
+        {
+            _hwnd = Win32Api.CreateWindowEx(
+                0, "SquareWindow", _title,
+                CreateWindowStyle(),
+                100, 100, _width, _height,
+                _ownerHandle, IntPtr.Zero, Win32Api.GetModuleHandle(null), IntPtr.Zero);
+        }
+        finally
+        {
+            s_creating = null;
+        }
 
         if (_hwnd == IntPtr.Zero)
         {
             var err = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
             throw new InvalidOperationException($"CreateWindowEx failed: {err}");
         }
+
+        lock (HostsGate) Hosts[_hwnd] = this;
+        if (_isModal && _ownerHandle != IntPtr.Zero) Win32Api.EnableWindow(_ownerHandle, false);
 
         UpdateWindowFrameAppearance(AppWindowState.Normal);
 
@@ -334,7 +351,13 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
 
     private static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
-        var host = s_current;
+        Win32Host? host;
+        lock (HostsGate) Hosts.TryGetValue(hWnd, out host);
+        if (host == null && s_creating != null)
+        {
+            host = s_creating;
+            lock (HostsGate) Hosts[hWnd] = host;
+        }
         if (host == null) return Win32Api.DefWindowProc(hWnd, msg, wParam, lParam);
 
         switch (msg)
@@ -489,6 +512,8 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
                 host.ReleasePresentResources();
                 host._hwnd = IntPtr.Zero;
                 host._running = false;
+                lock (HostsGate) Hosts.Remove(hWnd);
+                host.RestoreOwner();
                 host.SignalClosed();
                 Win32Api.PostQuitMessage(0);
                 break;
@@ -703,6 +728,13 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
         Closed?.Invoke();
     }
 
+    private void RestoreOwner()
+    {
+        if (!_isModal || _ownerHandle == IntPtr.Zero) return;
+        Win32Api.EnableWindow(_ownerHandle, true);
+        Win32Api.SetActiveWindow(_ownerHandle);
+    }
+
     // Reused across presents to avoid per-frame struct setup cost
     private Win32Api.BITMAPINFO _presentInfo;
     private bool _presentInfoReady;
@@ -724,11 +756,13 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
         Closed = null;
         if (_hwnd != IntPtr.Zero)
         {
+            var handle = _hwnd;
             Win32Api.DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
+            lock (HostsGate) Hosts.Remove(handle);
         }
 
         _running = false;
-        if (ReferenceEquals(s_current, this)) s_current = null;
+        RestoreOwner();
     }
 }

@@ -2,6 +2,7 @@ namespace Square.Runtime;
 
 public abstract class Application
 {
+    [ThreadStatic]
     private static Application? _current;
     public static Application Current => _current ?? throw new InvalidOperationException("Application not started");
 

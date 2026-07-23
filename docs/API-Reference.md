@@ -63,58 +63,60 @@ public enum RenderMode
 
 `Sample.Vue` 等示例通过 `--render-mode=DirtyRegion` 或 `SQUARE_RENDER_MODE=DirtyRegion` 切换。
 
-### AppWindow 文件选择
+### AppWindow 模态与非模态窗口
 
 ```csharp
 namespace Square.Hosting;
 
 public sealed class AppWindow
 {
-    public Task<IReadOnlyList<string>> OpenFilesAsync(OpenFilePickerOptions? options = null);
-}
-
-namespace Square.Platform;
-
-public sealed class OpenFilePickerOptions
-{
-    public string? Title { get; set; }
-    public string? InitialDirectory { get; set; }
-    public bool AllowMultiple { get; set; }
-    public IReadOnlyList<FilePickerFilter> Filters { get; set; }
-}
-
-public sealed class FilePickerFilter
-{
-    public FilePickerFilter(string name, IEnumerable<string> patterns);
-    public string Name { get; }
-    public IReadOnlyList<string> Patterns { get; }
+    public IntPtr NativeWindow { get; }
+    public void Open(Element content, Size? size = null);
+    public Task<object?> OpenDialog(Element content, Size? size = null);
+    public Task<T?> OpenDialog<T>(Element content, Size? size = null);
+    public void CloseDialog<T>(T result);
 }
 ```
 
-文件弹窗实现位于可选的 `Square.Extensions` 程序集。应用必须引用该程序集，并在 `app.Run()` 前注册：
+`NativeWindow` 返回当前原生窗口标识：Win32 为 `HWND`，X11 为 `Window`。原生窗口尚未创建或已经释放时返回 `IntPtr.Zero`。该属性只读，不转移句柄所有权，调用方不得释放或销毁它。
+
+非模态窗口立即返回，没有结果值：
 
 ```csharp
-ExtensionRegistration.RegisterDefaults();
-
-var files = await window.OpenFilesAsync(new OpenFilePickerOptions
-{
-    Title = "选择图片",
-    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-    AllowMultiple = true,
-    Filters =
-    [
-        new FilePickerFilter("图片", ["*.png", "*.jpg", "*.jpeg"]),
-        new FilePickerFilter("所有文件", ["*.*"])
-    ]
-});
+AppWindow.Open(
+    new MyFileDialog(properties),
+    new Size(720, 480));
 ```
 
-- 用户取消时返回空列表。
-- `Filters` 为空时使用“所有文件”。单个 pattern 不得包含分号；多个扩展名应分别传入。
-- `InitialDirectory` 非空时必须是已存在目录。
-- Win32 使用当前 `AppWindow` 作为原生对话框 owner，支持单选和多选。
-- X11 首版抛出 `PlatformNotSupportedException`。
-- 未注册 `Square.Extensions` provider、窗口尚未运行或窗口已关闭时抛出明确异常。
+模态窗口返回一个在窗口关闭后完成的 `Task`：
+
+```csharp
+var result = await AppWindow.OpenDialog<MyFileResult>(
+    new MyFileDialog(properties),
+    new Size(720, 480));
+```
+
+对话框内容通过所属子窗口返回结果并关闭：
+
+```csharp
+private void Confirm()
+{
+    AppWindow?.CloseDialog(new MyFileResult(SelectedPath));
+}
+
+private void Cancel()
+{
+    AppWindow?.Close();
+}
+```
+
+- `Open` 创建非模态原生子窗口并立即返回。
+- `OpenDialog` 创建模态原生子窗口；Win32 会禁用 owner，X11 设置 transient/modal 窗口管理器提示。
+- 用户直接关闭模态窗口时结果为 `null`/`default`。
+- `CloseDialog(result)` 只能在通过 `OpenDialog` 打开的窗口中调用。
+- `size` 省略时默认使用 `480 x 320`；宽高必须大于零。
+- 子窗口继承 owner 的渲染后端、背景、渲染模式、标题栏样式和边框样式。
+- 每个子窗口拥有独立 `UIDocument`、Dispatcher、渲染上下文和原生消息线程。
 
 ---
 
@@ -2169,7 +2171,7 @@ public static class ExtensionRegistration
 
 | 成员 | 说明 |
 |---|---|
-| `RegisterDefaults()` | 注册扩展控件标签（当前为 `MarkdownViewer`）。幂等，重复调用安全 |
+| `RegisterDefaults()` | 注册 `MarkdownViewer`、`RichTextEditor` 等扩展标签。幂等，重复调用安全 |
 
 应用启动时调用一次即可让扩展控件在 `.sqx` / `.sqv` 中按标签使用：
 
@@ -2223,7 +2225,7 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 | `PlatformRegistry` | `Register(new Win32PlatformFactory())` 或 `Register(new X11PlatformFactory())` | 应用在 `Run()` 前显式调用 |
 | `ExtensionRegistration` | `RegisterDefaults()` | 手动调用（引用 `Square.Extensions` 后） |
 
-应用代码通常不需要手动调用 `BackendRegistration`，但必须显式注册所引用的平台工厂。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展控件标签。
+应用代码通常不需要手动调用 `BackendRegistration`，但必须显式注册所引用的平台工厂。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展标签。
 
 ---
 

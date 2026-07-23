@@ -433,6 +433,9 @@ internal static partial class X11Api
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetWMProtocols(IntPtr display, IntPtr window, IntPtr[] protocols, int count);
 
+    [LibraryImport("libX11.so.6", EntryPoint = "XSetTransientForHint")]
+    public static partial int SetTransientForHint(IntPtr display, IntPtr window, IntPtr owner);
+
     [LibraryImport("libX11.so.6", EntryPoint = "XGrabPointer")]
     public static partial int GrabPointer(IntPtr display, IntPtr window,
         [MarshalAs(UnmanagedType.Bool)] bool ownerEvents, uint eventMask,

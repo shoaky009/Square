@@ -123,4 +123,6 @@ public sealed class PlatformHostCreateInfo
     public string RenderBackend { get; set; } = "Software";
     public TitleStyle TitleStyle { get; set; } = TitleStyle.System;
     public BorderStyle BorderStyle { get; set; } = BorderStyle.Resizable;
+    public IntPtr OwnerHandle { get; set; }
+    public bool IsModal { get; set; }
 }

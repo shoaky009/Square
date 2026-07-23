@@ -24,6 +24,9 @@ public sealed class AppWindow : IRenderBackendApplication
     private AppWindowState _state;
     private bool _isClosed;
     private bool _closeRequested;
+    private Action<object?>? _dialogCompletion;
+    private object? _dialogResult;
+    private bool _hasDialogResult;
 
     public AppWindow(string title, int width = 800, int height = 600)
     {
@@ -66,6 +69,10 @@ public sealed class AppWindow : IRenderBackendApplication
     public TitleStyle TitleStyle { get; set; } = TitleStyle.System;
 
     public BorderStyle BorderStyle { get; set; } = BorderStyle.Resizable;
+
+    internal IntPtr OwnerHandle { get; set; }
+
+    internal bool IsModal { get; set; }
 
     public string RenderBackend { get; set; } = "Software";
 
@@ -120,6 +127,15 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    public IntPtr NativeWindow
+    {
+        get
+        {
+            lock (_gate)
+                return _host is IPlatformNativeWindow nativeWindow ? nativeWindow.Handle : IntPtr.Zero;
+        }
+    }
+
     public event Action<Size>? SizeChanged;
     public event Action<AppWindowState>? StateChanged;
     public event Action? Closed;
@@ -170,11 +186,41 @@ public sealed class AppWindow : IRenderBackendApplication
 
     public Task BeginMoveAsync() => InvokeAsync(static host => host.BeginMove());
 
-    public Task<IReadOnlyList<string>> OpenFilesAsync(OpenFilePickerOptions? options = null)
+    public void Open(Element content, Size? size = null)
     {
-        options ??= new OpenFilePickerOptions();
-        options.Validate();
-        return InvokeAsync(host => FilePickerProvider.OpenFiles(host, options));
+        var child = CreateChildWindow(content, size, isModal: false);
+        StartChildWindow(child, failure: null);
+    }
+
+    public Task<object?> OpenDialog(Element content, Size? size = null)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        var child = CreateChildWindow(content, size, isModal: true);
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        child._dialogCompletion = value => completion.TrySetResult(value);
+        StartChildWindow(child, exception => completion.TrySetException(exception));
+        return completion.Task;
+    }
+
+    public async Task<T?> OpenDialog<T>(Element content, Size? size = null)
+    {
+        var result = await OpenDialog(content, size).ConfigureAwait(false);
+        if (result == null) return default;
+        if (result is T typedResult) return typedResult;
+        throw new InvalidOperationException(
+            $"The dialog result is '{result.GetType().FullName}', not '{typeof(T).FullName}'.");
+    }
+
+    public void CloseDialog<T>(T result)
+    {
+        lock (_gate)
+        {
+            if (_dialogCompletion == null)
+                throw new InvalidOperationException("This window was not opened as a modal dialog.");
+            _dialogResult = result;
+            _hasDialogResult = true;
+        }
+        Close();
     }
 
     public void Minimize() => Post(static host => host.Minimize());
@@ -219,8 +265,68 @@ public sealed class AppWindow : IRenderBackendApplication
         Height = _initialHeight,
         RenderBackend = RenderBackend,
         TitleStyle = TitleStyle,
-        BorderStyle = BorderStyle
+        BorderStyle = BorderStyle,
+        OwnerHandle = OwnerHandle,
+        IsModal = IsModal
     };
+
+    private AppWindow CreateChildWindow(Element content, Size? size, bool isModal)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.ParentNode != null)
+            throw new InvalidOperationException("Window content already has a parent.");
+
+        var ownerHost = GetHost() ?? throw new InvalidOperationException(
+            "A child window can only be opened while the owner window is running.");
+        if (ownerHost is not IPlatformNativeWindow { Handle: not 0 } nativeOwner)
+            throw new PlatformNotSupportedException("The current platform host does not expose a native window handle.");
+
+        var requestedSize = size ?? new Size(480, 320);
+        if (requestedSize.Width <= 0 || requestedSize.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(size), "Window width and height must be greater than zero.");
+
+        var child = new AppWindow(content.TagName, checked((int)requestedSize.Width), checked((int)requestedSize.Height))
+        {
+            RenderBackend = RenderBackend,
+            Background = Background,
+            RenderingMode = RenderingMode,
+            TitleStyle = TitleStyle,
+            BorderStyle = BorderStyle,
+            OwnerHandle = nativeOwner.Handle,
+            IsModal = isModal
+        };
+        child.Load(content);
+        return child;
+    }
+
+    private static void StartChildWindow(AppWindow child, Action<Exception>? failure)
+    {
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var application = new DesktopApplication(child);
+                application.Run();
+                Action<object?>? dialogCompletion;
+                lock (child._gate)
+                {
+                    dialogCompletion = child._dialogCompletion;
+                    child._dialogCompletion = null;
+                }
+                dialogCompletion?.Invoke(child._hasDialogResult ? child._dialogResult : null);
+            }
+            catch (Exception exception)
+            {
+                failure?.Invoke(exception);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = $"Square window: {child.Title}"
+        };
+        if (OperatingSystem.IsWindows()) thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
 
     internal void BindApplication(Dispatcher dispatcher, IAppWindowRuntime runtime)
     {

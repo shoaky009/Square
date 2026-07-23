@@ -86,6 +86,7 @@ public class DocumentTests
         Assert.Same(window.Document, second.OwnerDocument);
         Assert.Same(window, second.AppWindow);
         Assert.Equal(new Square.Graphics.Size(640, 480), window.ClientSize);
+        Assert.Equal(IntPtr.Zero, window.NativeWindow);
     }
 
     [Fact]
@@ -127,6 +128,30 @@ public class DocumentTests
 
         Assert.Equal(BorderStyle.Fixed, hostInfo.BorderStyle);
         Assert.Equal(BorderStyle.Resizable, new AppWindow("Default").BorderStyle);
+    }
+
+    [Fact]
+    public void AppWindowPassesOwnerAndModalStateToHost()
+    {
+        var window = new AppWindow("Dialog", 480, 320)
+        {
+            OwnerHandle = new IntPtr(42),
+            IsModal = true
+        };
+
+        var hostInfo = window.CreateHostInfo();
+
+        Assert.Equal(new IntPtr(42), hostInfo.OwnerHandle);
+        Assert.True(hostInfo.IsModal);
+    }
+
+    [Fact]
+    public async Task AppWindowRejectsChildWindowsWithoutRunningOwner()
+    {
+        var window = new AppWindow("Owner");
+
+        Assert.Throws<InvalidOperationException>(() => window.Open(new View()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => window.OpenDialog(new View()));
     }
 
     [Fact]
