@@ -331,6 +331,23 @@ public class DirtyPartialPresentTests
         AssertPixel(bmp, 5, 5, Color.Transparent);
     }
 
+    [Fact]
+    public void DirtyRenderSkipsNodesOutsideDirtyClip()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 200, 100) };
+        var inside = new CountingPaintElement { Geometry = new Rect(10, 10, 20, 20) };
+        var outside = new CountingPaintElement { Geometry = new Rect(150, 10, 20, 20) };
+        root.Children.Add(inside);
+        root.Children.Add(outside);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        using var context = new CountingRenderContext();
+
+        tree.Render(context, new Rect(8, 8, 24, 24));
+
+        Assert.Equal(1, context.FillCount);
+    }
+
     private sealed class PathPaintElement : UIElement
     {
         public override void Paint(IRenderContext ctx)
@@ -341,6 +358,39 @@ public class DirtyPartialPresentTests
                     .LineTo(new Point(90, 30)),
                 Pen.FromColor(Color.Red, 2));
         }
+    }
+
+    private sealed class CountingPaintElement : UIElement
+    {
+        public override void Paint(IRenderContext ctx) => ctx.FillRect(Geometry, Brush.FromColor(Color.Red));
+    }
+
+    private sealed class CountingRenderContext : IRenderContext
+    {
+        public int FillCount { get; private set; }
+        public Size CanvasSize => new(200, 100);
+        public float DpiScale => 1;
+        public void FillRect(Rect rect, Brush brush) => FillCount++;
+        public void PushTransform(Matrix3x2 matrix) { }
+        public void PopTransform() { }
+        public void PushClip(Rect rect) { }
+        public void PushClip(Geometry geometry) { }
+        public void PopClip() { }
+        public void DrawRect(Rect rect, Pen pen) { }
+        public void FillPath(PathGeometry path, Brush brush) { }
+        public void DrawPath(PathGeometry path, Pen pen) { }
+        public void FillGeometry(Geometry geometry, Brush brush) { }
+        public void DrawGeometry(Geometry geometry, Pen pen) { }
+        public void DrawText(TextLayout text, Point origin, Brush brush) { }
+        public void DrawImage(Square.Graphics.Image image, Rect dest, Rect? source = null) { }
+        public void PushLayer(Rect bounds, float opacity) { }
+        public void PopLayer() { }
+        public void Clear(Color color) { }
+        public void Clear(Color color, Rect rect) { }
+        public void Flush() { }
+        public void Present() { }
+        public void Present(IReadOnlyList<Rect>? dirtyRects) { }
+        public void Dispose() { }
     }
 
     private static void AssertPixel(Bitmap bmp, int x, int y, Color color)

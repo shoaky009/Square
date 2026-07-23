@@ -1,8 +1,9 @@
 using Square.Hosting;
+using Square.Images;
 using Square.Platform;
 using Square.Sample.Vue.Components;
 using Square.UI;
-
+using Square.Backends.Vulkan;
 namespace Square.Sample.Vue;
 
 public static class Program
@@ -10,7 +11,10 @@ public static class Program
     public static void Main(string[] args)
     {
         System.Console.WriteLine("Square Vue Template Sample");
+        ImageSourceRegistration.RegisterDefaults();
         var window = new AppWindow("Square Vue Template Sample", 900, 980);
+        window.UseVulkanBackend();
+        //window.RenderingMode = RenderMode.DirtyRegion;
         window.Load(new Main());
         var app = new DesktopApplication(window);
         ConfigureRendering(window, args);

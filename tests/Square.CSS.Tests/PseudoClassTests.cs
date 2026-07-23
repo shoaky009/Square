@@ -115,6 +115,66 @@ public class PseudoClassTests
     }
 
     [Fact]
+    public void PaintOnlyHoverDoesNotInvalidateLayout()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button:hover { background: blue; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var btn = new Square.Controls.Button();
+        engine.ApplyStylesToTree(btn);
+        btn.ClearLayoutDirty();
+
+        btn.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("blue", btn.Style.Get("background"));
+        Assert.False(btn.IsLayoutDirty);
+        Assert.True(btn.NeedsPaint);
+    }
+
+    [Fact]
+    public void NestedScopePaintOnlyHoverDoesNotDirtyOuterLayoutRoot()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button:hover { background: blue; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var outer = new Square.Controls.View();
+        var componentRoot = new Square.Controls.View();
+        var btn = new Square.Controls.Button();
+        outer.Children.Add(componentRoot);
+        componentRoot.Children.Add(btn);
+        engine.ApplyStylesToTree(componentRoot);
+        outer.ClearLayoutDirty();
+        componentRoot.ClearLayoutDirty();
+        btn.ClearLayoutDirty();
+
+        btn.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("blue", btn.Style.Get("background"));
+        Assert.False(btn.IsLayoutDirty);
+        Assert.False(componentRoot.IsLayoutDirty);
+        Assert.False(outer.IsLayoutDirty);
+    }
+
+    [Fact]
+    public void LayoutHoverInvalidatesLayoutOnlyWhenComputedValueChanges()
+    {
+        var sheet = new CssParser(new CssTokenizer("Button { width: 100px; } Button:hover { width: 180px; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var btn = new Square.Controls.Button();
+        engine.ApplyStylesToTree(btn);
+        btn.ClearLayoutDirty();
+
+        btn.SetState(ElementState.Hover, true);
+        CssStyleReconciler.Flush();
+
+        Assert.Equal("180px", btn.Style.Get("width"));
+        Assert.True(btn.IsLayoutDirty);
+    }
+
+    [Fact]
     public void ParseKeyFrames()
     {
         var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }";

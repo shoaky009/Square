@@ -77,7 +77,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     public void PushClip(Rect rect)
     {
         var bounds = TransformRect(rect);
-        PushClipRegion(bounds, (x, y) => bounds.Contains(new Point(x, y)), isRect: true);
+        PushClipRegion(bounds, null, isRect: true);
         UpdateClipCache();
     }
 
@@ -477,21 +477,25 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         return Rect.Intersect(rect, _clipStack.Peek().Bounds);
     }
 
-    private void PushClipRegion(Rect bounds, Func<float, float, bool> contains, bool isRect)
+    private void PushClipRegion(Rect bounds, Func<float, float, bool>? contains, bool isRect)
     {
         if (_clipStack.Count > 0)
         {
             var parent = _clipStack.Peek();
             bounds = Rect.Intersect(parent.Bounds, bounds);
-            var childContains = contains;
-            contains = (x, y) => parent.Contains(x, y) && childContains(x, y);
-            isRect &= parent.IsRect;
+            if (!parent.IsRect || !isRect)
+            {
+                var childContains = contains;
+                contains = (x, y) => parent.ContainsPoint(x, y) &&
+                    (childContains == null || childContains(x, y));
+                isRect = false;
+            }
         }
         _clipStack.Push(new ClipRegion(bounds, contains, isRect));
     }
 
     private bool IsPointVisible(float x, float y)
-        => !_hasClip || _clipStack.Peek().Contains(x, y);
+        => !_hasClip || _clipStack.Peek().ContainsPoint(x, y);
 
     private void BlendBrush(Rect bounds, Brush brush, Matrix3x2 inverse)
         => FillBrushShape(bounds, brush, inverse, static _ => true);
@@ -645,7 +649,12 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         return new Point(transformed.X, transformed.Y);
     }
 
-    private sealed record ClipRegion(Rect Bounds, Func<float, float, bool> Contains, bool IsRect);
+    private sealed record ClipRegion(Rect Bounds, Func<float, float, bool>? Contains, bool IsRect)
+    {
+        public bool ContainsPoint(float x, float y) =>
+            x >= Bounds.Left && x < Bounds.Right && y >= Bounds.Top && y < Bounds.Bottom &&
+            (IsRect || Contains?.Invoke(x, y) == true);
+    }
 
     private Point TransformPoint(Point point)
     {
@@ -1297,19 +1306,27 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         if (dw == sw && dh == sh && TryBlendBitmapUnscaled(src, sx0, sy0, sw, sh, dx0, dy0))
             return;
 
-        for (int dy = 0; dy < dh; dy++)
+        var destBounds = ClipRect(new Rect(dx0, dy0, dw, dh));
+        var startX = Math.Max(0, (int)MathF.Floor(destBounds.Left) - dx0);
+        var startY = Math.Max(0, (int)MathF.Floor(destBounds.Top) - dy0);
+        var endX = Math.Min(dw, (int)MathF.Ceiling(destBounds.Right) - dx0);
+        var endY = Math.Min(dh, (int)MathF.Ceiling(destBounds.Bottom) - dy0);
+        var needsPointClip = _hasClip && !_clipStack.Peek().IsRect;
+
+        for (int dy = startY; dy < endY; dy++)
         {
             var sy = sy0 + dy * sh / dh;
             if (sy < 0 || sy >= src.Height) continue;
             var dstY = dy0 + dy;
             if (dstY < 0 || dstY >= _bitmap.Height) continue;
             var dstSpan = _bitmap.GetRow(dstY);
-            for (int dx = 0; dx < dw; dx++)
+            for (int dx = startX; dx < endX; dx++)
             {
                 var sx = sx0 + dx * sw / dw;
                 if (sx < 0 || sx >= src.Width) continue;
                 var dstX = dx0 + dx;
                 if (dstX < 0 || dstX >= _bitmap.Width) continue;
+                if (needsPointClip && !IsPointVisible(dstX + 0.5f, dstY + 0.5f)) continue;
                 var srcIdx = sy * src.Stride + sx * 4;
                 var di = dstX * 4;
                 var sa = ApplyOpacity(src.Pixels[srcIdx + 3]);

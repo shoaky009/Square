@@ -20,4 +20,8 @@
     <InternalsVisibleTo Include="Square.UI.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Assets\" />
+  </ItemGroup>
+
 </Project>

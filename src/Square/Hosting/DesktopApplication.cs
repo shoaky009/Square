@@ -372,8 +372,8 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
                 {
                     // 局部绘制进软件缓冲
                     _renderContext.Clear(MainWindow.Background, MainWindow.LastRenderDiagnostics.DirtyUnion);
-                    _renderContext.PushClip(MainWindow.LastRenderDiagnostics.DirtyUnion);
                     _displayTree.Render(_renderContext, MainWindow.LastRenderDiagnostics.DirtyUnion);
+                    _renderContext.PushClip(MainWindow.LastRenderDiagnostics.DirtyUnion);
                     RenderTextSelection(_renderContext);
                     _renderContext.PopClip();
                     RenderDiagnosticsOverlay(_renderContext);

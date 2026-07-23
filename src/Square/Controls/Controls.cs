@@ -914,9 +914,18 @@ public class Image : UIElement, ITextSelectable
 
     private Square.Graphics.Image? DisplayImage => _sourceSurface ?? ImageContent;
 
-    public override Size Measure(Size availableSize) => DisplayImage == null
-        ? new Size(160, 96)
-        : new Size(DisplayImage.Width, DisplayImage.Height);
+    public override Size Measure(Size availableSize)
+    {
+        var image = DisplayImage;
+        if (image == null) return new Size(160, 96);
+
+        var scale = 1f;
+        if (availableSize.Width > 0 && float.IsFinite(availableSize.Width))
+            scale = Math.Min(scale, availableSize.Width / image.Width);
+        if (availableSize.Height > 0 && float.IsFinite(availableSize.Height))
+            scale = Math.Min(scale, availableSize.Height / image.Height);
+        return new Size(image.Width * scale, image.Height * scale);
+    }
 
     protected override void OnPropertyChanged(string name)
     {
@@ -1083,23 +1092,37 @@ public class Image : UIElement, ITextSelectable
 
     private void AdvanceAnimationIfDue()
     {
-        if (!_frameScheduled || Stopwatch.GetTimestamp() < _frameDeadline) return;
+        var now = Stopwatch.GetTimestamp();
+        if (!_frameScheduled || now < _frameDeadline) return;
         _frameScheduled = false;
         if (!CanAnimate()) return;
 
-        if (_frameIndex + 1 < _frameSource!.FrameCount)
+        var advanced = false;
+        while (now >= _frameDeadline)
         {
-            _frameIndex++;
-        }
-        else
-        {
-            _completedPlays++;
-            if (_frameSource.PlayCount > 0 && _completedPlays >= _frameSource.PlayCount) return;
-            _frameIndex = 0;
+            if (_frameIndex + 1 < _frameSource!.FrameCount)
+            {
+                _frameIndex++;
+            }
+            else
+            {
+                _completedPlays++;
+                if (_frameSource.PlayCount > 0 && _completedPlays >= _frameSource.PlayCount)
+                {
+                    if (advanced) CopyCurrentFrame();
+                    return;
+                }
+                _frameIndex = 0;
+            }
+
+            advanced = true;
+            _frameDeadline += ToStopwatchTicks(NormalizeFrameDelay(_frameSource.GetFrameDuration(_frameIndex)));
         }
 
-        CopyCurrentFrame();
-        ResumeAnimation();
+        if (advanced) CopyCurrentFrame();
+        _frameScheduled = true;
+        DispatchEvent(StandardEvents.CreateRequestFrame(
+            TimeSpan.FromSeconds(Math.Max(0, _frameDeadline - now) / (double)Stopwatch.Frequency)));
     }
 
     private bool CanAnimate() => IsAttached && IsVisible && _frameSource is { FrameCount: > 1 };

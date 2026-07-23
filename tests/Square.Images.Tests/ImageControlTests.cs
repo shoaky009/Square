@@ -105,6 +105,18 @@ public sealed class ImageControlTests
     }
 
     [Fact]
+    public void MeasureShrinksImageToAvailableSizeWithoutChangingAspectRatio()
+    {
+        using var bitmap = new Bitmap(800, 400);
+        var image = new ImageControl { ImageContent = bitmap };
+
+        Assert.Equal(new Size(800, 400), image.Measure(Size.Empty));
+        Assert.Equal(new Size(600, 300), image.Measure(new Size(600, float.MaxValue)));
+        Assert.Equal(new Size(300, 150), image.Measure(new Size(float.MaxValue, 150)));
+        Assert.Equal(new Size(800, 400), image.Measure(new Size(1200, 600)));
+    }
+
+    [Fact]
     public void ChangingSourceCancelsAndDiscardsThePreviousLoad()
     {
         using var loader = new ControlledImageSourceLoader();

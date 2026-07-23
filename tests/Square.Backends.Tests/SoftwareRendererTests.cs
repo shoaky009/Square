@@ -1698,4 +1698,26 @@ public class SoftwareRendererTests
         Assert.Equal(255, bmp.Pixels[idx + 3]);
         Assert.Equal(255, bmp.Pixels[idx + 2]);
     }
+
+    [Fact]
+    public void DrawImageScaledHonorsRectangularClip()
+    {
+        var ctx = CreateContext(8, 8);
+        ctx.Clear(Color.Black);
+        var src = new Bitmap(2, 2);
+        for (var i = 0; i < src.Pixels.Length; i += 4)
+        {
+            src.Pixels[i + 2] = 255;
+            src.Pixels[i + 3] = 255;
+        }
+
+        ctx.PushClip(new Rect(2, 3, 3, 2));
+        ctx.DrawImage(src, new Rect(0, 0, 8, 8));
+        ctx.PopClip();
+
+        var bitmap = ctx.GetBitmap();
+        Assert.Equal(255, bitmap.Pixels[3 * bitmap.Stride + 2 * 4 + 2]);
+        Assert.Equal(0, bitmap.Pixels[2 * bitmap.Stride + 2 * 4 + 2]);
+        Assert.Equal(0, bitmap.Pixels[3 * bitmap.Stride + 5 * 4 + 2]);
+    }
 }

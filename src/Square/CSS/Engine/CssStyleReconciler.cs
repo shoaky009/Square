@@ -1,4 +1,5 @@
 using Square.UI;
+using Square.UI.ElementApi;
 
 namespace Square.CSS.Engine;
 
@@ -46,6 +47,11 @@ public static class CssStyleReconciler
         _applying++;
         try
         {
+            var layoutRoots = new HashSet<Element>();
+            foreach (var scope in scopes)
+                layoutRoots.Add(FindTreeRoot(scope.Root));
+            var layoutSnapshots = layoutRoots.Select(CaptureLayoutSnapshot).ToArray();
+
             var clearedRoots = new HashSet<Element>();
             foreach (var scope in scopes)
             {
@@ -55,6 +61,9 @@ public static class CssStyleReconciler
 
             foreach (var scope in scopes)
                 scope.Engine.ApplyStylesToTreeCore(scope.Root);
+
+            foreach (var snapshot in layoutSnapshots)
+                RestoreLayoutDirtyState(snapshot);
         }
         finally
         {
@@ -75,6 +84,44 @@ public static class CssStyleReconciler
         foreach (var child in element.Children)
             ClearCascadedSubtree(child);
     }
+
+    private static Element FindTreeRoot(Element element)
+    {
+        while (element.Parent != null)
+            element = element.Parent;
+        return element;
+    }
+
+    private static LayoutSnapshot CaptureLayoutSnapshot(Element element)
+    {
+        var properties = element.Style.GetAll()
+            .Where(pair => (StyleInvalidation.ForProperty(pair.Key) & ElementInvalidation.Layout) != 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var children = element.Children.Select(CaptureLayoutSnapshot).ToArray();
+        return new LayoutSnapshot(element, element.IsLayoutDirty, properties, children);
+    }
+
+    private static bool RestoreLayoutDirtyState(LayoutSnapshot snapshot)
+    {
+        var childNeedsLayout = false;
+        foreach (var child in snapshot.Children)
+            childNeedsLayout |= RestoreLayoutDirtyState(child);
+
+        var current = snapshot.Element.Style.GetAll()
+            .Where(pair => (StyleInvalidation.ForProperty(pair.Key) & ElementInvalidation.Layout) != 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var ownLayoutChanged = snapshot.LayoutProperties.Count != current.Count ||
+            snapshot.LayoutProperties.Any(pair => !current.TryGetValue(pair.Key, out var value) || value != pair.Value);
+        var needsLayout = snapshot.WasLayoutDirty || ownLayoutChanged || childNeedsLayout;
+        if (!needsLayout) snapshot.Element.ClearLayoutDirty();
+        return needsLayout;
+    }
+
+    private sealed record LayoutSnapshot(
+        Element Element,
+        bool WasLayoutDirty,
+        IReadOnlyDictionary<string, string> LayoutProperties,
+        IReadOnlyList<LayoutSnapshot> Children);
 
     private readonly record struct StyleScope(CssEngine Engine, Element Root);
 }

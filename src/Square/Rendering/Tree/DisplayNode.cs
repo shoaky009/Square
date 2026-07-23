@@ -39,8 +39,9 @@ public sealed class DisplayNode
             RebuildCommands();
         }
 
-        // 重放全部命令，避免文本、焦点框、阴影等越过 Geometry 的视觉内容在局部重绘时被跳过。
-        ExecuteCommands(ctx);
+        var visualBounds = VisualBounds.IsEmpty ? Bounds : VisualBounds;
+        if (dirtyClip == null || visualBounds.IntersectsWith(dirtyClip.Value))
+            ExecuteCommands(ctx);
 
         // Popup-hosted children are replayed later by DisplayTree's top-level popup layer.
         if (Element is IPopupElement)

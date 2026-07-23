@@ -162,7 +162,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         else State &= ~flag;
         if (State == previous) return;
         OnStateChanged(flag, on);
-        Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
+        Invalidate(ElementInvalidation.Style);
     }
 
     /// <summary>交互/伪类状态变化扩展点。</summary>

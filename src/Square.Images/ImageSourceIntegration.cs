@@ -70,12 +70,14 @@ internal sealed class LocalImageSourceLoader : IImageSourceLoader
     }
 }
 
-internal static class ImageSourceRegistration
+public static class ImageSourceRegistration
 {
     private static readonly LocalImageSourceLoader Loader = new();
 
+    public static void RegisterDefaults() => ImageSourceLoaderRegistry.Register(Loader);
+
 #pragma warning disable CA2255
     [ModuleInitializer]
-    internal static void Register() => ImageSourceLoaderRegistry.Register(Loader);
+    internal static void Register() => RegisterDefaults();
 #pragma warning restore CA2255
 }
