@@ -12,7 +12,7 @@ internal sealed class DirectiveEmitPipeline
     private readonly StringBuilder _sb;
     private readonly DirectiveCatalog _catalog;
     private readonly Action<List<SqxNode>, string, string, string> _emitNodes;
-    private readonly Action<List<SqxNode>, string, string> _emitFactoryBody;
+        private readonly Action<List<SqxNode>, string, string> _emitFactoryBody;
     private readonly Action<string, SqxAttribute, string, string> _emitAttribute;
     private readonly Func<string> _nextVariable;
     private readonly Dictionary<string, int> _fieldIndex = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -98,15 +98,23 @@ internal sealed class DirectiveEmitPipeline
         {
             var condition = FindAttr(element, descriptor.PrimaryAttribute ?? "when")?.RawValue
                             ?? "new ObservableValue<bool>(false)";
+            var fallback = FindAttr(element, "fallback");
             _sb.AppendLine(indent + field + " = new ShowNode(" + condition + ", () =>");
             _sb.AppendLine(indent + "{");
             _emitFactoryBody(element.Children, indent + "    ", localName);
+            if (fallback?.FragmentNodes != null)
+            {
+                _sb.AppendLine(indent + "}, () =>");
+                _sb.AppendLine(indent + "{");
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+            }
             _sb.AppendLine(indent + "});");
+            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             return;
         }
 
-        if (tag == "For")
+        if (tag == "For" || tag == "Index")
         {
             var source = FindAttr(element, descriptor.PrimaryAttribute ?? "each")?.RawValue
                          ?? "System.Array.Empty<object>()";
@@ -118,17 +126,28 @@ internal sealed class DirectiveEmitPipeline
             var lambda = hasIndex
                 ? itemLocal + ", " + indexLocal
                 : itemLocal;
-            _sb.AppendLine(indent + field + " = ForNode.Create(" + source + ", " + lambda + " =>");
+            var key = FindAttr(element, "key")?.RawValue;
+            var fallback = FindAttr(element, "fallback");
+            var create = tag == "Index" ? "IndexNode.Create" : "ForNode.Create";
+            var keyArgument = tag == "For" && !string.IsNullOrWhiteSpace(key) ? key + ", " : "";
+            _sb.AppendLine(indent + field + " = " + create + "(" + source + ", " + keyArgument + lambda + " =>");
             _sb.AppendLine(indent + "{");
             _emitFactoryBody(element.Children, indent + "    ", itemLocal);
+            if (fallback?.FragmentNodes != null)
+            {
+                _sb.AppendLine(indent + "}, () =>");
+                _sb.AppendLine(indent + "{");
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+            }
             _sb.AppendLine(indent + "});");
+            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             return;
         }
 
         if (tag == "Switch")
         {
-            _sb.AppendLine(indent + field + " = new SwitchNode(() => 0);");
+            _sb.AppendLine(indent + field + " = new SwitchNode();");
             foreach (var child in element.Children)
             {
                 if (child is not SqxElement matchElement) continue;
@@ -138,7 +157,7 @@ internal sealed class DirectiveEmitPipeline
                 var when = FindAttr(matchElement, childDesc.PrimaryAttribute ?? "when")?.RawValue;
                 if (when != null)
                 {
-                    _sb.AppendLine(indent + field + ".AddBranch(() => " + when + ", () =>");
+                    _sb.AppendLine(indent + field + ".AddBranch(" + when + ", () => " + when + ", () =>");
                     _sb.AppendLine(indent + "{");
                     _emitFactoryBody(matchElement.Children, indent + "    ", localName);
                     _sb.AppendLine(indent + "});");
@@ -151,6 +170,15 @@ internal sealed class DirectiveEmitPipeline
                     _sb.AppendLine(indent + "});");
                 }
             }
+            var fallback = FindAttr(element, "fallback");
+            if (fallback?.FragmentNodes != null)
+            {
+                _sb.AppendLine(indent + field + ".AddDefault(() =>");
+                _sb.AppendLine(indent + "{");
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+                _sb.AppendLine(indent + "});");
+            }
+            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
         }
     }

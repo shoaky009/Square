@@ -43,4 +43,7 @@ public static class SqxDiagnostics
 
     public static readonly DiagnosticDescriptor SQXD005_IllegalStandalone = new(
         "SQXD005", "指令出现在非法位置", "结构指令 <{0}> 不能作为独立节点发射（SkipStandalone）", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor SQXD006_InvalidChild = new(
+        "SQXD006", "结构指令子标签不匹配", "结构指令 <{0}> 只允许直接子标签 {1}，实际为 <{2}>", Category, DiagnosticSeverity.Error, true);
 }

@@ -102,6 +102,7 @@ public sealed class SqxParser
     {
         "Show" => SqxNodeKind.Show,
         "For" => SqxNodeKind.For,
+        "Index" => SqxNodeKind.Index,
         "Switch" => SqxNodeKind.Switch,
         "Match" => SqxNodeKind.Match,
         "Slot" or "Outlet" => SqxNodeKind.Slot,

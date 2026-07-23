@@ -17,6 +17,7 @@ namespace Square.Compiler.Parser
         public SqxNodeKind Kind;
         public int Line;
         public int Column;
+        public int Position;
     }
 
     internal class SqxElement : SqxNode
@@ -43,7 +44,10 @@ namespace Square.Compiler.Parser
         public string Name = "";
         public string RawValue;
         public bool IsExpression;
+        public List<SqxNode> FragmentNodes;
         public int Line;
+        public int Position;
+        public bool IsModelEvent;
     }
 
     internal class SqxTemplate
@@ -53,6 +57,7 @@ namespace Square.Compiler.Parser
 
     internal class SqxDocument
     {
+        public string SourcePath = "";
         public string Name = "";
         public SqxTemplate Template = new SqxTemplate();
         public string ScriptCode;

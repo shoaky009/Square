@@ -9,6 +9,8 @@ internal sealed class SqvForDirective : SqxNode
     public string SourceExpression = "";
     public string ItemName = "item";
     public string IndexName;
+    public string KeyExpression;
+    public int KeyPosition;
     public List<SqxNode> Children = new();
 }
 
@@ -25,5 +27,6 @@ internal sealed class SqvIfBranch
 {
     public string Condition;
     public bool IsElse;
+    public int Position;
     public List<SqxNode> Children = new();
 }

@@ -7,6 +7,7 @@ public enum SqxNodeKind
     Expression,
     Show,
     For,
+    Index,
     Switch,
     Match,
     Slot,

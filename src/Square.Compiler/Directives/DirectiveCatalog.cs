@@ -156,6 +156,14 @@ internal sealed class DirectiveCatalog
         });
         catalog.Add(new DirectiveDescriptor
         {
+            TagName = "Index",
+            Pattern = "ControlFlowAttach",
+            RuntimeTypeName = "IForNode",
+            FieldPrefix = "_index",
+            PrimaryAttribute = "each"
+        });
+        catalog.Add(new DirectiveDescriptor
+        {
             TagName = "Switch",
             Pattern = "ControlFlowAttach",
             RuntimeTypeName = "SwitchNode",

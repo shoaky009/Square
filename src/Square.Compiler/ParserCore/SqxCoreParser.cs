@@ -38,6 +38,7 @@ namespace Square.Compiler.ParserCore
             var document = new CoreDocument
             {
                 FileName = string.IsNullOrEmpty(fileName) ? "Component" : Path.GetFileNameWithoutExtension(fileName),
+                SourcePath = fileName ?? "",
                 Template = ParseTemplate(source, templateSection, options.StrictTemplate)
             };
 
@@ -123,12 +124,28 @@ namespace Square.Compiler.ParserCore
             {
                 var tokens = new SqxCoreLexer(section.Content).Tokenize();
                 var roots = new SqxCoreTemplateParser(tokens, strict).ParseRoots();
+                OffsetPositions(roots, section.ContentStart);
                 return new CoreTemplate { Roots = roots, Line = section.ContentLine, Column = 1 };
             }
             catch (CoreParseException exception)
             {
                 var position = Math.Min(source.Length, section.ContentStart + exception.Position);
                 throw Error(source, position, exception.Message);
+            }
+        }
+
+        private static void OffsetPositions(IEnumerable<CoreNode> nodes, int offset)
+        {
+            foreach (var node in nodes)
+            {
+                node.Position += offset;
+                if (node is not CoreElement element) continue;
+                foreach (var attribute in element.Attributes)
+                {
+                    attribute.Position += offset;
+                    if (attribute.FragmentNodes != null) OffsetPositions(attribute.FragmentNodes, offset);
+                }
+                OffsetPositions(element.Children, offset);
             }
         }
 
@@ -294,11 +311,13 @@ namespace Square.Compiler.ParserCore
                     return ParseElement();
                 case CoreTokenType.Text:
                     _index++;
-                    return new CoreText { Text = token.Text.Trim(), Line = token.Line, Column = token.Column };
+                    return new CoreText { Text = token.Text, Line = token.Line, Column = token.Column, Position = token.Offset };
                 case CoreTokenType.OpenBraceExpr:
                     _index++;
-                    return new CoreExpression { Expression = token.Text, Line = token.Line, Column = token.Column };
+                    return new CoreExpression { Expression = token.Text, Line = token.Line, Column = token.Column, Position = token.Offset };
                 default:
+                    if (_strict && token.Type == CoreTokenType.EndTag)
+                        throw Error(token, "Unexpected closing tag </" + token.Text + ">");
                     _index++;
                     return null;
             }
@@ -358,7 +377,8 @@ namespace Square.Compiler.ParserCore
                 Attributes = attributes,
                 Children = children,
                 Line = open.Line,
-                Column = open.Column
+                Column = open.Column,
+                Position = open.Offset
             };
         }
 
@@ -378,7 +398,8 @@ namespace Square.Compiler.ParserCore
                 {
                     Name = nameToken.Text,
                     Line = nameToken.Line,
-                    Column = nameToken.Column
+                    Column = nameToken.Column,
+                    Position = nameToken.Offset
                 };
             }
 
@@ -402,13 +423,25 @@ namespace Square.Compiler.ParserCore
                 throw Error(valueToken, "Expected attribute value");
             }
 
+            List<CoreNode> fragmentNodes = null;
+            if (isExpression && nameToken.Text.Equals("fallback", StringComparison.OrdinalIgnoreCase) &&
+                rawValue != null && rawValue.TrimStart().StartsWith("<", StringComparison.Ordinal))
+            {
+                var fragment = rawValue.Trim();
+                if (fragment.StartsWith("<>", StringComparison.Ordinal) && fragment.EndsWith("</>", StringComparison.Ordinal))
+                    fragment = "<Fragment>" + fragment.Substring(2, fragment.Length - 5) + "</Fragment>";
+                fragmentNodes = new SqxCoreTemplateParser(new SqxCoreLexer(fragment).Tokenize(), true).ParseRoots();
+            }
+
             return new CoreAttribute
             {
                 Name = nameToken.Text,
                 RawValue = rawValue,
                 IsExpression = isExpression,
+                FragmentNodes = fragmentNodes,
                 Line = nameToken.Line,
-                Column = nameToken.Column
+                Column = nameToken.Column,
+                Position = nameToken.Offset
             };
         }
 

@@ -204,4 +204,42 @@ public class SqxParserTests
         Assert.Equal(1, error.Line);
         Assert.Equal(1, error.Column);
     }
+
+    [Fact]
+    public void ParsesTemplateCommentsWithoutAstNodes()
+    {
+        const string source = "<template><!-- before --><View><!-- child --><Text>ok</Text></View></template>";
+
+        var document = new SqxParser().Parse(source, "Comments.sqx");
+
+        var view = Assert.IsType<SqxElement>(Assert.Single(document.Template.Roots));
+        Assert.Equal("View", view.TagName);
+        Assert.IsType<SqxElement>(Assert.Single(view.Children));
+    }
+
+    [Fact]
+    public void PreservesLineNumbersAfterMultilineTemplateComment()
+    {
+        const string source = "<template>\n<!-- first\nsecond -->\n<View />\n</template>";
+
+        var view = Assert.IsType<SqxElement>(Assert.Single(new SqxParser().Parse(source, "Comments.sqx").Template.Roots));
+
+        Assert.Equal(4, view.Line);
+    }
+
+    [Theory]
+    [InlineData("<template><!-- broken<View /></template>")]
+    [InlineData("<template><Text text=\"broken /></template>")]
+    [InlineData("<template><Text text={Name /></template>")]
+    [InlineData("<template><View></></View></template>")]
+    [InlineData("<template><View></ View></template>")]
+    [InlineData("<template><View></View extra></template>")]
+    [InlineData("<template><View></View</template>")]
+    [InlineData("<template><View></View/></template>")]
+    [InlineData("<template></View></template>")]
+    [InlineData("<template><View></Text></template>")]
+    public void RejectsMalformedTemplateSyntax(string source)
+    {
+        Assert.Throws<SqxParseException>(() => new SqxParser().Parse(source, "Malformed.sqx"));
+    }
 }

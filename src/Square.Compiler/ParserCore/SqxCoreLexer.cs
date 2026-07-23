@@ -43,7 +43,11 @@ namespace Square.Compiler.ParserCore
             while (_position < _source.Length)
             {
                 var c = _source[_position];
-                if (c == '<')
+                if (!_inTag && StartsWith("<!--"))
+                {
+                    SkipComment();
+                }
+                else if (c == '<')
                 {
                     var line = _line;
                     var column = _column;
@@ -53,9 +57,13 @@ namespace Square.Compiler.ParserCore
                         AdvanceChar();
                         AdvanceChar();
                         _inTag = true;
+                        if (_position >= _source.Length || !IsIdentifierStart(_source[_position]))
+                            throw Error("Expected closing tag name", offset, line, column);
                         var name = ReadIdentifier();
                         AdvanceWhitespace();
-                        if (_position < _source.Length && _source[_position] == '>') AdvanceChar();
+                        if (_position >= _source.Length || _source[_position] != '>')
+                            throw Error("Expected '>' after closing tag </" + name + ">", offset, line, column);
+                        AdvanceChar();
                         tokens.Add(New(CoreTokenType.EndTag, name, line, column, offset));
                         _inTag = false;
                     }
@@ -117,7 +125,7 @@ namespace Square.Compiler.ParserCore
                     var offset = _position;
                     tokens.Add(New(CoreTokenType.StringLiteral, ReadString(c), line, column, offset));
                 }
-                else if (char.IsWhiteSpace(c))
+                else if (_inTag && char.IsWhiteSpace(c))
                 {
                     AdvanceWhitespace();
                 }
@@ -162,6 +170,9 @@ namespace Square.Compiler.ParserCore
 
         private string ReadString(char quote)
         {
+            var line = _line;
+            var column = _column;
+            var offset = _position;
             AdvanceChar();
             var start = _position;
             while (_position < _source.Length && _source[_position] != quote)
@@ -177,13 +188,18 @@ namespace Square.Compiler.ParserCore
                 }
             }
 
+            if (_position >= _source.Length)
+                throw Error("Unclosed attribute string; expected '" + quote + "'", offset, line, column);
             var result = _source.Substring(start, _position - start);
-            if (_position < _source.Length) AdvanceChar();
+            AdvanceChar();
             return result;
         }
 
         private string ReadUntilBrace()
         {
+            var line = _line;
+            var column = _column - 1;
+            var offset = _position - 1;
             var start = _position;
             var depth = 0;
             while (_position < _source.Length)
@@ -202,7 +218,30 @@ namespace Square.Compiler.ParserCore
                 }
                 AdvanceChar();
             }
-            return _source.Substring(start).Trim();
+            throw Error("Unclosed expression; expected '}'", offset, line, column);
+        }
+
+        private void SkipComment()
+        {
+            var line = _line;
+            var column = _column;
+            var offset = _position;
+            for (var i = 0; i < 4; i++) AdvanceChar();
+            while (_position < _source.Length && !StartsWith("-->")) AdvanceChar();
+            if (_position >= _source.Length)
+                throw Error("Unclosed template comment", offset, line, column);
+            for (var i = 0; i < 3; i++) AdvanceChar();
+        }
+
+        private bool StartsWith(string value)
+        {
+            if (_position + value.Length > _source.Length) return false;
+            return string.CompareOrdinal(_source, _position, value, 0, value.Length) == 0;
+        }
+
+        private static CoreParseException Error(string message, int offset, int line, int column)
+        {
+            return new CoreParseException(message, offset, line, column);
         }
 
         private string ReadText()

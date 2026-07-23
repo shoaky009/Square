@@ -14,15 +14,23 @@ internal static class SqvDocumentParser
         if (!sections.TryGetValue("template", out var templateSection))
             throw new SqxParseException("Missing required <template> section", 0);
 
+        var roots = SqvTemplateParser.Parse(templateSection.Content, templateSection.ContentStart);
+        SqvValidator.Validate(roots);
+
         var document = new SqxDocument
         {
             Name = string.IsNullOrEmpty(fileName) ? "Component" : Path.GetFileNameWithoutExtension(fileName),
-            Template = new SqxTemplate { Roots = SqvTemplateParser.Parse(templateSection.Content) }
+            Template = new SqxTemplate { Roots = roots }
         };
 
         if (sections.TryGetValue("script", out var scriptSection))
         {
             var meta = ParseScriptMetadata(scriptSection.OpeningTag);
+            if (!string.Equals(meta.Language, "csharp", StringComparison.OrdinalIgnoreCase))
+                throw new SqxParseException(
+                    "Unsupported script language '" + meta.Language + "'",
+                    scriptSection.Start,
+                    "SQV0001");
             document.ScriptCode = scriptSection.Content.Trim();
             document.ScriptLang = meta.Language;
             document.Namespace = meta.Namespace;
@@ -74,7 +82,9 @@ internal static class SqvDocumentParser
             var contentStart = openingEnd + 1;
             sections.Add(name, new Section(
                 source.Substring(position, openingEnd - position + 1),
-                source.Substring(contentStart, closeStart - contentStart)));
+                source.Substring(contentStart, closeStart - contentStart),
+                position,
+                contentStart));
             position = closeEnd + 1;
         }
         return sections;
@@ -108,7 +118,9 @@ internal static class SqvDocumentParser
             if (source.Substring(position).StartsWith("<!--", StringComparison.Ordinal))
             {
                 var end = source.IndexOf("-->", position + 4, StringComparison.Ordinal);
-                position = end < 0 ? source.Length : end + 3;
+                if (end < 0)
+                    throw new SqxParseException("Unclosed Vue comment", position, "SQV0001");
+                position = end + 3;
                 continue;
             }
             break;
@@ -174,7 +186,15 @@ internal static class SqvDocumentParser
     {
         public string OpeningTag { get; }
         public string Content { get; }
-        public Section(string openingTag, string content) { OpeningTag = openingTag; Content = content; }
+        public int Start { get; }
+        public int ContentStart { get; }
+        public Section(string openingTag, string content, int start, int contentStart)
+        {
+            OpeningTag = openingTag;
+            Content = content;
+            Start = start;
+            ContentStart = contentStart;
+        }
     }
 
     private sealed class ScriptMetadata

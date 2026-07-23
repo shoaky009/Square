@@ -59,6 +59,61 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvObjectBindingsUseRuntimeBindingProtocol()
+    {
+        const string source = """
+            <template>
+              <Button v-bind="Props" v-on="Listeners">Save</Button>
+            </template>
+            <script lang="csharp">
+              public IReadOnlyDictionary<string, object?> Props = new Dictionary<string, object?>();
+              public IReadOnlyDictionary<string, Action<Event>> Listeners = new Dictionary<string, Action<Event>>();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("ObjectBindings.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("SqvObjectBinding.BindProperties", generated);
+        Assert.Contains("SqvObjectBinding.BindEvents", generated);
+        Assert.Contains("private readonly System.Collections.Generic.List<System.IDisposable> _generatedBindings", generated);
+        Assert.Contains("foreach (var binding in _generatedBindings) binding.Dispose();", generated);
+    }
+
+    [Fact]
+    public void SqvReactiveObjectBindingsGeneratedCodeCompiles()
+    {
+        const string template = """
+            <template><Button v-bind="Props" v-on="Listeners">Save</Button></template>
+            <script namespace="TestApp"></script>
+            """;
+        const string codeBehind = """
+            using System;
+            using System.Collections.Generic;
+            using Square.Events;
+            using Square.Runtime.Binding;
+            namespace TestApp;
+            public partial class ObjectBindings
+            {
+                public ObservableValue<IReadOnlyDictionary<string, object?>> Props =
+                    new(new Dictionary<string, object?> { ["disabled"] = true });
+                public ObservableValue<IReadOnlyDictionary<string, Action<Event>>> Listeners =
+                    new(new Dictionary<string, Action<Event>>());
+            }
+            """;
+
+        var compilation = CreateCompilation(codeBehind);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            [new SqxGenerator().AsSourceGenerator()],
+            [new InMemoryAdditionalText("ObjectBindings.sqv", template)],
+            (CSharpParseOptions?)compilation.SyntaxTrees.First().Options);
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
     public void SqvLowercaseViewTextLowersToBuiltInControls()
     {
         const string source = """
@@ -301,6 +356,27 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvVModelCanHaveAdditionalInputHandler()
+    {
+        const string source = """
+            <template>
+              <Input v-model="Password" @input="OnPasswordChanged" />
+            </template>
+            <script lang="csharp">
+              public ObservableValue<string> Password = new("");
+              private void OnPasswordChanged() { }
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("ModelWithHandler.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "SQV0005");
+        Assert.Contains("Password.Value = ((Square.Controls.Input)e.Target!).Value", generated);
+        Assert.Contains("AddEventListener(\"input\", OnPasswordChanged);", generated);
+    }
+
+    [Fact]
     public void GeneratedCleanupCoexistsWithUserDetachHook()
     {
         const string source = """
@@ -417,8 +493,77 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("IndexedList.sqv", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("ForNode.Create(Items, item, index =>", generated);
+        Assert.Contains("ForNode.Create(Items, (item, index) =>", generated);
         Assert.Contains(".AttachTo(", generated);
+    }
+
+    [Fact]
+    public void SqvVForKeyLowersToKeyedForNode()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text v-for="item in Items" :key="item.Id">{{ item.Name }}</Text>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableCollection<Row> Items = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("KeyedList.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("ForNode.Create(Items, item => item.Id, item =>", generated);
+        Assert.DoesNotContain("SetProperty(\"key\"", generated, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SqvIndexedVForKeyUsesParenthesizedSelectors()
+    {
+        const string source = """
+            <template>
+              <Text v-for="(item, index) in Items" :key="item.Id + index">{{ item.Name }}</Text>
+            </template>
+            <script lang="csharp">
+              public ObservableCollection<Row> Items = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("IndexedKeyedList.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("ForNode.Create(Items, (item, index) => item.Id + index, (item, index) =>", generated);
+    }
+
+    [Fact]
+    public void SqvKeyedVForGeneratedCodeCompiles()
+    {
+        const string template = """
+            <template>
+              <Text v-for="item in Items" :key="item.Id">{{ item.Name }}</Text>
+            </template>
+            <script namespace="TestApp"></script>
+            """;
+        const string codeBehind = """
+            using Square.Runtime.Binding;
+            namespace TestApp;
+            public partial class KeyedList
+            {
+                public ObservableCollection<Row> Items = new();
+            }
+            public sealed record Row(int Id, string Name);
+            """;
+
+        var compilation = CreateCompilation(codeBehind);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            [new SqxGenerator().AsSourceGenerator()],
+            [new InMemoryAdditionalText("KeyedList.sqv", template)],
+            (CSharpParseOptions?)compilation.SyntaxTrees.First().Options);
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     }
 
     [Fact]
@@ -504,6 +649,83 @@ public class VueGeneratorTests
 
         Assert.Contains("ForNode.Create(Rows, row =>", generated);
         Assert.Contains("new ShowNode(row.Active", generated);
+    }
+
+    [Fact]
+    public void SqxControlFlowFallbackAndIndexGenerateExpectedNodes()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Show when={Visible} fallback={<Text text="hidden" />}>
+                  <Text text="shown" />
+                </Show>
+                <For each={Items} fallback={<Text text="empty" />}>{(it)=><Text>{it}</Text>}</For>
+                <Index each={Items} fallback={<Text text="empty index" />}>{(it)=><Text>{it}</Text>}</Index>
+                <Switch fallback={<Text text="unknown" />}>
+                  <Match when={Visible}><Text text="matched" /></Match>
+                </Switch>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableValue<bool> Visible = new(false);
+              public ObservableCollection<string> Items = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Fallbacks.sqx", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new ShowNode(Visible", generated);
+        Assert.Contains("ForNode.Create(Items", generated);
+        Assert.Contains("IndexNode.Create(Items", generated);
+        Assert.Contains("new SwitchNode()", generated);
+        Assert.Contains("hidden", generated);
+        Assert.Contains("empty index", generated);
+        Assert.Contains("unknown", generated);
+    }
+
+    [Fact]
+    public void SqxNestedNativeDirectivesAreEmittedInsideFactories()
+    {
+        const string source = """
+            <template>
+              <Show when={Outer}>
+                <For each={Items}>{(it)=><Show when={Inner}><Text>{it}</Text></Show>}</For>
+              </Show>
+            </template>
+            <script lang="csharp">
+              public ObservableValue<bool> Outer = new(true);
+              public ObservableValue<bool> Inner = new(true);
+              public ObservableCollection<string> Items = new();
+            </script>
+            """;
+
+        var generated = Assert.Single(RunGenerator(new InMemoryAdditionalText("NestedSqx.sqx", source)).GeneratedTrees)
+            .GetText().ToString();
+
+        Assert.Equal(2, generated.Split("new ShowNode(").Length - 1);
+        Assert.Contains("ForNode.Create(Items", generated);
+        Assert.Contains("_generatedDirectives.Add", generated);
+    }
+
+    [Fact]
+    public void SqxMixedTextInterpolationPreservesSpacesAndSubscribesSources()
+    {
+        const string source = """
+            <template><Text>Hello {FirstName} {LastName}</Text></template>
+            <script lang="csharp">
+              public ObservableValue<string> FirstName = new("Ada");
+              public ObservableValue<string> LastName = new("Lovelace");
+            </script>
+            """;
+
+        var generated = Assert.Single(RunGenerator(new InMemoryAdditionalText("MixedText.sqx", source)).GeneratedTrees)
+            .GetText().ToString();
+
+        Assert.Contains("\"Hello \"", generated);
+        Assert.Contains("BindProperty(\"TextContent\", () =>", generated);
+        Assert.Contains(", FirstName, LastName);", generated);
     }
 
     private static GeneratorDriverRunResult RunGenerator(params AdditionalText[] files)

@@ -32,8 +32,7 @@ internal static class DirectiveValidator
         {
             if (node is not SqxElement element) continue;
 
-            if (element.Kind == SqxNodeKind.Directive &&
-                catalog.TryGet(element.TagName, out var descriptor))
+            if (catalog.TryGet(element.TagName, out var descriptor))
             {
                 var id = descriptor.TagName;
 
@@ -73,6 +72,23 @@ internal static class DirectiveValidator
                     }
                 }
 
+                if (!descriptor.AllowedChildTags.IsDefaultOrEmpty)
+                {
+                    foreach (var child in element.Children.OfType<SqxElement>())
+                    {
+                        var childId = child.TagName;
+                        if (catalog.TryGet(child.TagName, out var childDescriptor))
+                            childId = childDescriptor.TagName;
+                        if (descriptor.AllowedChildTags.Any(allowed =>
+                            string.Equals(allowed, childId, StringComparison.Ordinal))) continue;
+                        Report(context, filePath, content, child,
+                            SqxDiagnostics.SQXD006_InvalidChild,
+                            id,
+                            string.Join(", ", descriptor.AllowedChildTags.Select(tag => "<" + tag + ">")),
+                            child.TagName);
+                    }
+                }
+
                 ValidateNodes(context, filePath, content, element.Children, id, catalog);
             }
             else
@@ -83,13 +99,13 @@ internal static class DirectiveValidator
     }
 
     private static bool RequiresPrimaryAttribute(string directiveId) =>
-        directiveId is "Show" or "For"; // Match 的 when 可选（default 分支）
+        directiveId is "Show" or "For" or "Index"; // Match 的 when 可选（default 分支）
 
     private static bool IsKnownPattern(string pattern) =>
-        pattern is "ControlFlowAttach" or "SlotOutlet" or "RouterTree" or "CustomSource";
+        pattern is "ControlFlowAttach" or "SlotOutlet" or "RouterTree";
 
     private static bool IsKnownTagFallback(string id) =>
-        id is "Show" or "For" or "Switch" or "Match" or "Slot" or "Router" or "Route";
+        id is "Show" or "For" or "Index" or "Switch" or "Match" or "Slot" or "Router" or "Route";
 
     /// <summary>
     /// Match → Switch；Route → Router 或 Route（嵌套路由）。

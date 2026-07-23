@@ -32,14 +32,16 @@ internal struct SqvToken
 internal sealed class SqvLexer
 {
     private readonly string _source;
+    private readonly int _baseOffset;
     private int _position;
     private int _line = 1;
     private int _column = 1;
     private bool _inTag;
 
-    public SqvLexer(string source)
+    public SqvLexer(string source, int baseOffset = 0)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
+        _baseOffset = baseOffset;
     }
 
     public List<SqvToken> Tokenize()
@@ -69,7 +71,7 @@ internal sealed class SqvLexer
                     var end = _source.IndexOf("-->", _position + 4, StringComparison.Ordinal);
                     if (end < 0)
                     {
-                        _position = _source.Length;
+                        throw Error("Unclosed Vue comment", offset);
                     }
                     else
                     {
@@ -176,7 +178,7 @@ internal sealed class SqvLexer
             }
             AdvanceChar();
         }
-        return _source.Substring(start).Trim();
+        throw Error("Unclosed interpolation; expected '}}'", start - 2);
     }
 
     private string ReadName()
@@ -203,7 +205,9 @@ internal sealed class SqvLexer
             }
         }
         var result = _source.Substring(start, _position - start);
-        if (_position < _source.Length) AdvanceChar();
+        if (_position >= _source.Length)
+            throw Error("Unclosed attribute string", start - 1);
+        AdvanceChar();
         return result;
     }
 
@@ -248,5 +252,8 @@ internal sealed class SqvLexer
         char.IsLetter(c) || c == '_' || c == ':' || c == '@' || c == '#' || c == '-';
 
     private static bool IsNameChar(char c) =>
-        char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.' || c == ':' || c == '@' || c == '#';
+        char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.' || c == ':' || c == '@' || c == '#' || c == '[' || c == ']';
+
+    private SqxParseException Error(string message, int position) =>
+        new(message, _baseOffset + position, "SQV0001");
 }

@@ -168,6 +168,187 @@ public class GeneratorDiagnosticsTests
         Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "SQX0007");
     }
 
+    [Fact]
+    public void ReportsMismatchedSqvClosingTagAtClosingTag()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text>broken</View>
+              </Text>
+            </template>
+            """;
+
+        var diagnostic = Assert.Single(RunGenerator(new InMemoryAdditionalText("Mismatch.sqv", source))
+            .Where(d => d.Id == "SQV0001"));
+
+        Assert.Contains("does not match", diagnostic.GetMessage(), StringComparison.Ordinal);
+        Assert.Equal(2, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
+    }
+
+    [Fact]
+    public void ReportsInvalidSqvVFor()
+    {
+        const string source = "<template><Text v-for=\"item Items\">x</Text></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("BadFor.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0003");
+    }
+
+    [Theory]
+    [InlineData("v-else")]
+    [InlineData("v-else-if=\"Ready\"")]
+    public void ReportsSqvBranchWithoutPrecedingIf(string directive)
+    {
+        var source = "<template><Text " + directive + ">x</Text></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("OrphanedElse.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0004");
+    }
+
+    [Theory]
+    [InlineData("v-html=\"Markup\"", "SQV0002")]
+    [InlineData(":key=\"Id\"", "SQV0002")]
+    [InlineData("@click.once=\"Handle\"", "SQV0002")]
+    [InlineData("v-model=\"Value\"", "SQV0002")]
+    [InlineData("#header=\"slotProps\"", "SQV0008")]
+    [InlineData("v-custom=\"Value\"", "SQV0002")]
+    [InlineData(":[name]=\"Value\"", "SQV0006")]
+    [InlineData("@[event]=\"Handle\"", "SQV0006")]
+    [InlineData("#[slotName]", "SQV0006")]
+    public void ReportsUnsupportedSqvSyntax(string attribute, string diagnosticId)
+    {
+        var source = "<template><Text " + attribute + ">x</Text></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("Unsupported.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == diagnosticId);
+    }
+
+    [Theory]
+    [InlineData("v-bind=\"Props\" v-bind=\"OtherProps\"")]
+    [InlineData("v-on=\"Listeners\" v-on=\"OtherListeners\"")]
+    public void ReportsDuplicateSqvObjectBindings(string attributes)
+    {
+        var source = "<template><View " + attributes + " /></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("DuplicateObjectBinding.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0005");
+    }
+
+    [Theory]
+    [InlineData("<template><Text>{{ Name</Text></template>")]
+    [InlineData("<template><Text title=\"broken></Text></template>")]
+    [InlineData("<template><Text><!-- broken</Text></template>")]
+    [InlineData("<template><Text /></template><script lang=\"javascript\"></script>")]
+    public void ReportsMalformedSqvAsSqvSyntaxError(string source)
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("Malformed.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0001");
+    }
+
+    [Theory]
+    [InlineData("value=\"a\" value=\"b\"")]
+    [InlineData("value=\"a\" :value=\"Name\"")]
+    [InlineData("@click=\"First\" @click=\"Second\"")]
+    [InlineData(":value=\"Other\" v-model=\"Name\"")]
+    [InlineData("v-for=\"item in Items\" :key=\"item.Id\" v-bind:key=\"item.OtherId\"")]
+    public void ReportsDuplicateSqvBindings(string attributes)
+    {
+        var source = "<template><Input " + attributes + " /></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("DuplicateBinding.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0005");
+    }
+
+    [Theory]
+    [InlineData("component")]
+    [InlineData("Teleport")]
+    [InlineData("Transition")]
+    [InlineData("TransitionGroup")]
+    [InlineData("KeepAlive")]
+    [InlineData("Suspense")]
+    public void ReportsUnsupportedVueBuiltInComponents(string tagName)
+    {
+        var source = "<template><" + tagName + " /></template>";
+
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("BuiltIn.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0007");
+    }
+
+    [Theory]
+    [InlineData("<template><Text>{{ Name + }}</Text></template>")]
+    [InlineData("<template><Text :text=\"Name +\" /></template>")]
+    [InlineData("<template><Text v-if=\"Ready &&\">x</Text></template>")]
+    [InlineData("<template><Text v-for=\"item in Items.\">x</Text></template>")]
+    [InlineData("<template><Button @click=\"Handle(\" /></template>")]
+    public void ReportsInvalidCSharpTemplateExpressions(string source)
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("InvalidExpression.sqv", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQV0009");
+    }
+
+    [Theory]
+    [InlineData("<template><View></Text></template>")]
+    [InlineData("<template><View></template>")]
+    [InlineData("<template><Text text=\"broken /></template>")]
+    [InlineData("<template><Text text={Name /></template>")]
+    [InlineData("<template><!-- broken<View /></template>")]
+    [InlineData("<template></View></template>")]
+    public void ReportsMalformedSqxAsSqxSyntaxError(string source)
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("Malformed.sqx", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQX0001");
+    }
+
+    [Fact]
+    public void ReportsInvalidSwitchChild()
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText(
+            "InvalidSwitch.sqx",
+            "<template><Switch><Text text=\"bad\" /></Switch></template>"));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQXD006");
+    }
+
+    [Fact]
+    public void ReportsInvalidRouterChild()
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText(
+            "InvalidRouter.sqx",
+            "<template><Router><Text text=\"bad\" /></Router></template>"));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQXD006");
+    }
+
+    [Theory]
+    [InlineData("<template><Text>{Name +}</Text></template>")]
+    [InlineData("<template><Text text={Name +} /></template>")]
+    public void ReportsInvalidSqxCSharpExpressions(string source)
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText("InvalidExpression.sqx", source));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQX0001");
+    }
+
+    [Fact]
+    public void ReportsDuplicateSqxAttributes()
+    {
+        var diagnostics = RunGenerator(new InMemoryAdditionalText(
+            "Duplicate.sqx",
+            "<template><Input value={First} value={Second} /></template>"));
+
+        Assert.Contains(diagnostics, d => d.Id == "SQX0001");
+    }
+
     private static ImmutableArray<Diagnostic> RunGenerator(params AdditionalText[] files)
         => RunGeneratorWithSource("public sealed class Placeholder { }", files);
 

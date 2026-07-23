@@ -11,10 +11,12 @@ namespace Square.Compiler.Parser
             {
                 var core = SqxCoreParser.Parse(source, fileName, new SqxCoreParserOptions
                 {
-                    StrictTemplate = false,
-                    CaseSensitiveSectionNames = false
+                    StrictTemplate = true,
+                    CaseSensitiveSectionNames = true
                 });
-                return ConvertDocument(core);
+                var document = ConvertDocument(core);
+                SqxValidator.Validate(document.Template.Roots);
+                return document;
             }
             catch (CoreParseException exception)
             {
@@ -26,10 +28,11 @@ namespace Square.Compiler.Parser
         {
             var document = new SqxDocument
             {
+                SourcePath = core.SourcePath,
                 Name = core.Script != null && core.Script.ComponentName != null
                     ? core.Script.ComponentName
                     : core.FileName,
-                Template = new SqxTemplate { Roots = ConvertNodes(core.Template.Roots) }
+                Template = new SqxTemplate { Roots = ConvertNodes(core.Template.Roots, core.Template.Line - 1) }
             };
             if (core.Script != null)
             {
@@ -42,7 +45,7 @@ namespace Square.Compiler.Parser
             return document;
         }
 
-        private static List<SqxNode> ConvertNodes(List<CoreNode> nodes)
+        private static List<SqxNode> ConvertNodes(List<CoreNode> nodes, int lineOffset)
         {
             var result = new List<SqxNode>(nodes.Count);
             foreach (var node in nodes)
@@ -54,8 +57,9 @@ namespace Square.Compiler.Parser
                     {
                         Text = text.Text,
                         Kind = SqxNodeKind.Text,
-                        Line = text.Line,
-                        Column = text.Column
+                        Line = text.Line + lineOffset,
+                        Column = text.Column,
+                        Position = text.Position
                     });
                     continue;
                 }
@@ -67,8 +71,9 @@ namespace Square.Compiler.Parser
                     {
                         Expression = expression.Expression,
                         Kind = SqxNodeKind.Expression,
-                        Line = expression.Line,
-                        Column = expression.Column
+                        Line = expression.Line + lineOffset,
+                        Column = expression.Column,
+                        Position = expression.Position
                     });
                     continue;
                 }
@@ -86,17 +91,18 @@ namespace Square.Compiler.Parser
                 {
                     TagName = element.TagName,
                     DirectiveId = directiveId,
-                    Attributes = ConvertAttributes(element.Attributes),
-                    Children = ConvertNodes(element.Children),
+                    Attributes = ConvertAttributes(element.Attributes, lineOffset),
+                    Children = ConvertNodes(element.Children, lineOffset),
                     Kind = kind,
-                    Line = element.Line,
-                    Column = element.Column + 1
+                    Line = element.Line + lineOffset,
+                    Column = element.Column + 1,
+                    Position = element.Position
                 });
             }
             return result;
         }
 
-        private static List<SqxAttribute> ConvertAttributes(List<CoreAttribute> attributes)
+        private static List<SqxAttribute> ConvertAttributes(List<CoreAttribute> attributes, int lineOffset)
         {
             var result = new List<SqxAttribute>(attributes.Count);
             foreach (var attribute in attributes)
@@ -106,7 +112,9 @@ namespace Square.Compiler.Parser
                     Name = attribute.Name,
                     RawValue = attribute.RawValue,
                     IsExpression = attribute.IsExpression,
-                    Line = attribute.Line
+                    FragmentNodes = attribute.FragmentNodes == null ? null : ConvertNodes(attribute.FragmentNodes, lineOffset),
+                    Line = attribute.Line + lineOffset,
+                    Position = attribute.Position
                 });
             }
             return result;
@@ -116,6 +124,12 @@ namespace Square.Compiler.Parser
     internal sealed class SqxParseException : Exception
     {
         public int Position { get; }
-        public SqxParseException(string message, int position) : base(message) => Position = position;
+        public string DiagnosticId { get; }
+
+        public SqxParseException(string message, int position, string diagnosticId = null) : base(message)
+        {
+            Position = position;
+            DiagnosticId = diagnosticId;
+        }
     }
 }

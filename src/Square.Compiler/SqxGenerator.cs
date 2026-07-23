@@ -68,7 +68,7 @@ public sealed class SqxGenerator : IIncrementalGenerator
             ValidateRequiredProps(context, input, document, contracts);
             ValidateRefNames(context, input, document);
             DirectiveValidator.Validate(context, input.Path, input.Content, document, catalog);
-            code = new ComponentEmitter(document, input.Namespace).Emit();
+            code = new ComponentEmitter(document, input.Namespace, catalog).Emit();
         }
         catch (SqxParseException exception)
         {
@@ -76,16 +76,22 @@ public sealed class SqxGenerator : IIncrementalGenerator
             var source = SourceText.From(input.Content, Encoding.UTF8);
             var position = Math.Max(0, Math.Min(exception.Position, source.Length));
             var span = new TextSpan(position, 0);
+            var descriptor = input.Path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase)
+                ? Diagnostics.SqvDiagnostics.Get(exception.DiagnosticId)
+                : Diagnostics.SqxDiagnostics.SQX0001_SyntaxError;
             context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.SqxDiagnostics.SQX0001_SyntaxError,
+                descriptor,
                 Location.Create(input.Path, span, source.Lines.GetLinePositionSpan(span)),
                 exception.Message));
         }
         catch (Exception exception)
         {
             code = $"// Generator error: {exception.Message}\n// Path: {input.Path}";
+            var descriptor = input.Path.EndsWith(".sqv", StringComparison.OrdinalIgnoreCase)
+                ? Diagnostics.SqvDiagnostics.SQV0001_SyntaxError
+                : Diagnostics.SqxDiagnostics.SQX0001_SyntaxError;
             context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.SqxDiagnostics.SQX0001_SyntaxError,
+                descriptor,
                 Location.None,
                 exception.Message));
         }
