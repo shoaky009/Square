@@ -379,6 +379,133 @@ public class VueGeneratorTests
             generated.LastIndexOf(".BuildElementTree();", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void SqvVForLowersToForNodeWithItemName()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text v-for="item in Items">{{ item }}</Text>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableCollection<string> Items = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("List.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("ForNode.Create(Items, item =>", generated);
+        Assert.Contains(".AttachTo(", generated);
+    }
+
+    [Fact]
+    public void SqvVForWithIndexLowersToIndexedForNode()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text v-for="(item, index) in Items">{{ item }}</Text>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableCollection<string> Items = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("IndexedList.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("ForNode.Create(Items, item, index =>", generated);
+        Assert.Contains(".AttachTo(", generated);
+    }
+
+    [Fact]
+    public void SqvVElseIfAndVElseLowersToExclusiveShowChain()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text v-if="State == 0">A</Text>
+                <Text v-else-if="State == 1">B</Text>
+                <Text v-else>C</Text>
+              </View>
+            </template>
+            <script lang="csharp">
+              public int State = 0;
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Chain.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new ShowNode(State == 0", generated);
+        Assert.Contains("new ShowNode(!((State == 0)) && (State == 1)", generated);
+        Assert.Contains("new ShowNode(!((State == 0) || (State == 1))", generated);
+    }
+
+    [Fact]
+    public void SqvEventModifiersEmitStopAndPreventWrapper()
+    {
+        const string source = """
+            <template>
+              <Button @click.stop.prevent="OnClick">Save</Button>
+            </template>
+            <script lang="csharp">
+              private void OnClick(Square.Events.Event e) { }
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Modifiers.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("e.StopPropagation(); e.PreventDefault(); OnClick(e);", generated);
+    }
+
+    [Fact]
+    public void SqvVShowBindsIsVisible()
+    {
+        const string source = """
+            <template>
+              <View>
+                <Text v-show="Visible">Hi</Text>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableValue<bool> Visible = new(true);
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Show.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains(".BindProperty(\"IsVisible\", Visible);", generated);
+    }
+
+    [Fact]
+    public void SqvNestedVForAndVIfEmitIndependentNodes()
+    {
+        const string source = """
+            <template>
+              <View>
+                <View v-for="row in Rows">
+                  <Text v-if="row.Active">{{ row.Name }}</Text>
+                </View>
+              </View>
+            </template>
+            <script lang="csharp">
+              public ObservableCollection<Row> Rows = new();
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("Nested.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("ForNode.Create(Rows, row =>", generated);
+        Assert.Contains("new ShowNode(row.Active", generated);
+    }
+
     private static GeneratorDriverRunResult RunGenerator(params AdditionalText[] files)
     {
         var compilation = CreateCompilation("public sealed class Placeholder { }");

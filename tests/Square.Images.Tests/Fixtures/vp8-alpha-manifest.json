@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "file": "vp8-alpha-gradient-17x15.webp",
+      "sha256": "83f94a78646fbc1b42d1a73f91f62bd1636d8b71577017783b0423f4e9150c42",
+      "width": 17,
+      "height": 15,
+      "golden": "vp8-alpha-gradient-17x15.bgra",
+      "goldenSha256": "7b4a64c36a814d71565bb3da25449dd5c40ff90ba5b63043736529535a3c9bd7",
+      "alpha": true,
+      "alphaSource": "ffmpeg bgra alpha channel"
+    },
+    {
+      "file": "vp8-alpha-checker-detail-29x21.webp",
+      "sha256": "bd55e1c310a6df6cd4f647e5c35fdd1582fd0286f4ef009fb31ead7e5f68d75c",
+      "width": 29,
+      "height": 21,
+      "golden": "vp8-alpha-checker-detail-29x21.bgra",
+      "goldenSha256": "c9f868af6501076e15fc4760558660812b5e52519614e5b7c54f5dadf0d7623f",
+      "alpha": true,
+      "alphaSource": "ffmpeg bgra alpha channel"
+    }
+  ]
+}

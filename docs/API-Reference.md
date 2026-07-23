@@ -1576,8 +1576,8 @@ image.ImageContent = document.PrimaryBitmap;
 | GIF | `Still` / `Animation` | GIF87a/GIF89a 全部帧；完整逻辑画布合成、时长、循环、透明索引、全局/局部调色板、交错、12 位 LZW、disposal 0–3 |
 | ICO | `Variants` | 全部目录变体；1/4/8/24/32 位 BMP 嵌入和 PNG 嵌入；主变体选择 |
 | CUR | `Variants` | ICO 同类变体解码，并公开热点 |
-| WebP | `Still` / `Animation` | 静态 VP8L 与 VP8X `ANIM`/`ANMF` 内嵌 VP8L 无损动画；帧矩形、时长、循环、blend 和 dispose-to-background |
-| TIFF | `Pages` | Classic TIFF 42，大小端，多 IFD 页面，未压缩 Strip，1/8 位灰度、Palette、8 位 RGB/RGBA、ExtraSamples Alpha 与页面 Orientation |
+| WebP | `Still` / `Animation` | simple/VP8X 静态 VP8L、VP8 lossy 关键帧、`ALPH+VP8`，以及 `ANIM`/`ANMF` 内嵌 VP8L、VP8 或 `ALPH+VP8` 动画；EXIF Orientation、ICCP/XMP、帧矩形、时长、循环、blend 和 dispose-to-background |
+| TIFF | `Pages` | Classic TIFF 42，大小端，多 IFD 页面，未压缩/LZW/Deflate/Adobe Deflate/PackBits Strip，8 位 Predictor 2，1/8 位灰度、Palette、8 位 RGB/RGBA、ExtraSamples Alpha 与页面 Orientation |
 
 GIF、APNG 和动画 WebP 的每个 `ImageItem` 都是完整画布的合成快照。`Duration` 是该帧原始时长；`ImageAnimationInfo.PlayCount` 表示总播放次数，`LoopsForever` 表示无限循环。
 
@@ -1601,11 +1601,11 @@ foreach (var variant in icon.Items)
     Console.WriteLine($"{variant.Width}x{variant.Height}, {variant.SourceBitDepth} bit");
 ```
 
-JPEG Exif Orientation 默认应用到像素。`Metadata.OriginalOrientation` 保留文件原始值，`Metadata.OrientationApplied` 表示是否发生方向变换。设置 `ExifOrientationPolicy.Ignore` 可保留原始像素方向。
+JPEG、TIFF 页面与 WebP EXIF Orientation 默认应用到像素。`Metadata.OriginalOrientation` 保留文件原始值，`Metadata.OrientationApplied` 表示是否发生方向变换。设置 `ExifOrientationPolicy.Ignore` 可保留原始像素方向。
 
-TIFF 每个 IFD 页面对应一个 `ImageItem`，页面可具有不同尺寸、源位深和 Orientation。页面元数据位于 `ImageItem.Metadata`，文档级 `Metadata` 对应主页面。当前 TIFF 仅支持 Chunky、未压缩 Strip；LZW、Deflate、PackBits、Tile、Planar Separate、CMYK、YCbCr、Lab 和 BigTIFF 尚未支持。
+TIFF 每个 IFD 页面对应一个 `ImageItem`，页面可具有不同尺寸、源位深和 Orientation。页面元数据位于 `ImageItem.Metadata`，文档级 `Metadata` 对应主页面。当前 TIFF 支持 Chunky 的未压缩、LZW、Deflate、Adobe Deflate 与 PackBits Strip；8 位样本支持水平差分 `Predictor=2`。Tile、Planar Separate、CMYK、YCbCr、Lab 和 BigTIFF 尚未支持。
 
-WebP 当前支持静态 `VP8L` 和 `ANIM`/`ANMF` 内嵌 VP8L 无损动画，并保留完全透明像素的 RGB 分量。VP8 lossy、独立 `ALPH` chunk 和动画有损帧仍会作为尚未支持的格式拒绝。
+WebP 当前支持静态 `VP8L`、静态 VP8 lossy 关键帧，以及 `ANIM`/`ANMF` 内嵌 VP8L、VP8 或 `ALPH+VP8` 动画帧，并保留完全透明像素的 RGB 分量。纯 C# VP8 解码器支持分割、1/2/4/8 token partition、Y2/WHT、16x16/8x8 与全部 4x4 帧内预测模式、系数概率更新、量化、simple/normal loop filter，并将规范 YUV420 平面通过确定性的 libwebp 标量公式转换为 BGRA。VP8 支持独立 `ALPH` chunk：method 0 原始平面、method 1 VP8L 压缩平面、None/Horizontal/Vertical/Gradient filter，以及 preprocessing 0/1；alpha 与颜色按 straight-alpha 合并。动画合成支持局部 frame rectangle、alpha-over/no-blend、dispose-to-background、ANIM BGRA 背景和单帧动画 loop metadata。扩展 WebP 支持 `EXIF` Orientation（可由 `ExifOrientationPolicy` 控制），并校验 `ICCP`、`ALPH`、`EXIF`、`XMP ` chunk 与 VP8X flag 的一致性、重复项、规范阶段顺序和累计元数据大小限制；VP8X 必须是扩展文件首块，ICCP 位于图像数据前，ALPH 紧邻并位于 VP8 前，EXIF/XMP 位于图像或动画帧后。
 
 解码限制分别覆盖编码输入、单项目尺寸与内存、文档项目数、全部项目累计解码内存，以及 Exif 元数据大小、标签数和 IFD 深度。
 

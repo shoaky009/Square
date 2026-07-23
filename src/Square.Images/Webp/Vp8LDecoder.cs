@@ -9,6 +9,14 @@ internal static class Vp8LDecoder
 
     public static Bitmap Decode(ReadOnlySpan<byte> data, ImageDecoderOptions options)
     {
+        var decoded = DecodePixels(data, options);
+        var bitmap = new Bitmap(decoded.Width, decoded.Height);
+        for (var i = 0; i < decoded.Pixels.Length; i++) { var p = decoded.Pixels[i]; var o = i * 4; bitmap.Pixels[o] = (byte)p; bitmap.Pixels[o + 1] = (byte)(p >> 8); bitmap.Pixels[o + 2] = (byte)(p >> 16); bitmap.Pixels[o + 3] = (byte)(p >> 24); }
+        return bitmap;
+    }
+
+    internal static DecodedImage DecodePixels(ReadOnlySpan<byte> data, ImageDecoderOptions options, bool requireExact = false)
+    {
         var reader = new Bits(data);
         if (reader.Read(8) != 0x2f) throw Bad("signature");
         var width = reader.Read(14) + 1; var height = reader.Read(14) + 1;
@@ -36,9 +44,8 @@ internal static class Vp8LDecoder
         var pixels = DecodeImage(ref reader, codedWidth, height, true, options);
         for (var i = transforms.Count - 1; i >= 0; i--) pixels = Inverse(transforms[i], pixels);
         if (pixels.Length != checked(width * height)) throw Bad("transform dimensions");
-        var bitmap = new Bitmap(width, height);
-        for (var i = 0; i < pixels.Length; i++) { var p = pixels[i]; var o = i * 4; bitmap.Pixels[o] = (byte)p; bitmap.Pixels[o + 1] = (byte)(p >> 8); bitmap.Pixels[o + 2] = (byte)(p >> 16); bitmap.Pixels[o + 3] = (byte)(p >> 24); }
-        return bitmap;
+        if (requireExact && reader.RemainingBits >= 8) throw Bad("trailing data");
+        return new DecodedImage(width, height, pixels);
     }
 
     private static uint[] DecodeImage(ref Bits reader, int width, int height, bool top, ImageDecoderOptions options)
@@ -141,6 +148,7 @@ internal static class Vp8LDecoder
     private static uint Select(uint l,uint t,uint tl) { var dl=0;var dt=0;for(var s=0;s<32;s+=8){var e=(byte)(l>>s)+(byte)(t>>s)-(byte)(tl>>s);dl+=Math.Abs(e-(byte)(l>>s));dt+=Math.Abs(e-(byte)(t>>s));}return dl<dt?l:t; }
     private static uint Clamp(uint a,uint b,uint c,bool half){uint r=0;for(var s=0;s<32;s+=8){var av=(byte)(a>>s);var v=half?av+(av-(byte)(b>>s))/2:av+(byte)(b>>s)-(byte)(c>>s);r|=(uint)Math.Clamp(v,0,255)<<s;}return r;}
     private static InvalidDataException Bad(string part) => new($"Invalid VP8L {part}.");
+    internal readonly record struct DecodedImage(int Width, int Height, uint[] Pixels);
     private readonly record struct Tx(int Type,int Width,int Height,int Bits,uint[]? Data,uint[]? Palette,int WidthBits);
     private readonly record struct Group(Huff G,Huff R,Huff B,Huff A,Huff D);
 
@@ -150,5 +158,5 @@ internal static class Vp8LDecoder
         public Huff(ReadOnlySpan<byte> lengths){var total=0;for(var i=0;i<lengths.Length;i++)if(lengths[i]>0){if(lengths[i]>15)throw Bad("Huffman length");_count[lengths[i]]++;total++;}if(total==0)throw Bad("empty Huffman tree");_symbols=new int[total];if(total==1){for(var i=0;i<lengths.Length;i++)if(lengths[i]!=0){_single=i;break;}return;}var open=1;var code=0;var offset=0;for(var l=1;l<=15;l++){open=(open<<1)-_count[l];if(open<0)throw Bad("oversubscribed Huffman tree");_first[l]=code;_offset[l]=offset;offset+=_count[l];code=(code+_count[l])<<1;}if(open!=0)throw Bad("incomplete Huffman tree");var next=(int[])_offset.Clone();for(var s=0;s<lengths.Length;s++)if(lengths[s]>0)_symbols[next[lengths[s]]++]=s;}
         public int Read(ref Bits r){if(_single>=0)return _single;var code=0;for(var l=1;l<=15;l++){code=code<<1|r.Read(1);var d=code-_first[l];if((uint)d<(uint)_count[l])return _symbols[_offset[l]+d];}throw Bad("Huffman code");}
     }
-    private ref struct Bits{private readonly ReadOnlySpan<byte> _data;private int _pos;public Bits(ReadOnlySpan<byte>d)=>_data=d;public int Read(int n){if(n is <0 or >24||(long)_pos+n>(long)_data.Length*8)throw Bad("bitstream");var v=0;for(var i=0;i<n;i++,_pos++)v|=((_data[_pos>>3]>>(_pos&7))&1)<<i;return v;}}
+    private ref struct Bits{private readonly ReadOnlySpan<byte> _data;private int _pos;public Bits(ReadOnlySpan<byte>d)=>_data=d;public int RemainingBits=>checked(_data.Length*8-_pos);public int Read(int n){if(n is <0 or >24||(long)_pos+n>(long)_data.Length*8)throw Bad("bitstream");var v=0;for(var i=0;i<n;i++,_pos++)v|=((_data[_pos>>3]>>(_pos&7))&1)<<i;return v;}}
 }

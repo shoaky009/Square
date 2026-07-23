@@ -9,4 +9,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Square\Square.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Square.Images.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Webp\Vp8\THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="licenses\Square.Images.Vp8.txt" />
+  </ItemGroup>
 </Project>

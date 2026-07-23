@@ -11,7 +11,7 @@ internal static class CodecTestData
         byte[] AndMask, byte[]? Palette = null, ushort HotspotX = 0, ushort HotspotY = 0);
     internal readonly record struct TiffPageData(int Width, int Height, ushort Photometric, ushort Samples,
         ushort Bits, byte[] Pixels, ushort Orientation = 1, uint RowsPerStrip = uint.MaxValue,
-        ushort[]? ColorMap = null, ushort ExtraSample = 0);
+        ushort[]? ColorMap = null, ushort ExtraSample = 0, ushort Compression = 1, ushort Predictor = 1);
     internal readonly record struct ApngFrameData(int Width, int Height, int X, int Y, byte[] Raw,
         ushort DelayNumerator, ushort DelayDenominator = 1000, byte Dispose = 0, byte Blend = 0);
     internal readonly record struct WebpFrameData(int X, int Y, int Width, int Height, int DurationMilliseconds,
@@ -143,11 +143,11 @@ internal static class CodecTestData
     }
 
     public static byte[] AnimatedWebp(int width, int height, WebpFrameData[] frames, ushort loopCount = 0,
-        uint background = 0)
+        uint background = 0, byte[]? exif = null)
     {
         using var body = new MemoryStream();
         Span<byte> vp8x = stackalloc byte[10];
-        vp8x[0] = 2;
+        vp8x[0] = (byte)(2 | (exif != null ? 8 : 0));
         WriteUInt24(vp8x[4..7], width - 1); WriteUInt24(vp8x[7..10], height - 1);
         WebpChunk(body, "VP8X"u8, vp8x);
         Span<byte> anim = stackalloc byte[6];
@@ -166,6 +166,7 @@ internal static class CodecTestData
             payload.Write(header); WebpChunk(payload, "VP8L"u8, frame.Vp8L);
             WebpChunk(body, "ANMF"u8, payload.ToArray());
         }
+        if (exif != null) WebpChunk(body, "EXIF"u8, exif);
         var bytes = new byte[12 + body.Length];
         "RIFF"u8.CopyTo(bytes); BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)(bytes.Length - 8));
         "WEBP"u8.CopyTo(bytes.AsSpan(8)); body.ToArray().CopyTo(bytes, 12); return bytes;
@@ -176,6 +177,49 @@ internal static class CodecTestData
         if (!webp.AsSpan(12, 4).SequenceEqual("VP8L"u8)) throw new ArgumentException("Expected simple VP8L WebP.");
         var length = BinaryPrimitives.ReadInt32LittleEndian(webp.AsSpan(16, 4));
         return webp.AsSpan(20, length).ToArray();
+    }
+
+    public static byte[] ExtendedLosslessWebp(byte[] vp8l, int width, int height, byte[]? exif = null,
+        byte[]? iccp = null, byte[]? xmp = null, byte additionalFlags = 0)
+    {
+        using var body = new MemoryStream();
+        Span<byte> vp8x = stackalloc byte[10];
+        vp8x[0] = (byte)(additionalFlags | (exif != null ? 8 : 0) | (iccp != null ? 0x20 : 0) |
+            (xmp != null ? 4 : 0));
+        WriteUInt24(vp8x[4..7], width - 1);
+        WriteUInt24(vp8x[7..10], height - 1);
+        WebpChunk(body, "VP8X"u8, vp8x);
+        if (iccp != null) WebpChunk(body, "ICCP"u8, iccp);
+        WebpChunk(body, "VP8L"u8, vp8l);
+        if (exif != null) WebpChunk(body, "EXIF"u8, exif);
+        if (xmp != null) WebpChunk(body, "XMP "u8, xmp);
+        var bytes = new byte[12 + body.Length];
+        "RIFF"u8.CopyTo(bytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)(bytes.Length - 8));
+        "WEBP"u8.CopyTo(bytes.AsSpan(8));
+        body.ToArray().CopyTo(bytes, 12);
+        return bytes;
+    }
+
+    public static byte[] Webp(params (string Type, byte[] Data)[] chunks)
+    {
+        using var body = new MemoryStream();
+        foreach (var chunk in chunks) WebpChunk(body, System.Text.Encoding.ASCII.GetBytes(chunk.Type), chunk.Data);
+        var bytes = new byte[12 + body.Length];
+        "RIFF"u8.CopyTo(bytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)(bytes.Length - 8));
+        "WEBP"u8.CopyTo(bytes.AsSpan(8));
+        body.ToArray().CopyTo(bytes, 12);
+        return bytes;
+    }
+
+    public static byte[] Vp8X(int width, int height, byte flags)
+    {
+        var data = new byte[10];
+        data[0] = flags;
+        WriteUInt24(data.AsSpan(4, 3), width - 1);
+        WriteUInt24(data.AsSpan(7, 3), height - 1);
+        return data;
     }
 
     public static byte[] Bmp(int width, int signedHeight, int bits, byte[] rows)
@@ -306,14 +350,17 @@ internal static class CodecTestData
             var page = pages[i];
             var rowsPerStrip = page.RowsPerStrip == uint.MaxValue ? (uint)page.Height : page.RowsPerStrip;
             var strips = checked((page.Height + (int)rowsPerStrip - 1) / (int)rowsPerStrip);
-            var entryCount = 11 + (page.ColorMap != null ? 1 : 0) + (page.ExtraSample != 0 ? 1 : 0);
+            var encodedStrips = EncodeTiffStrips(page, rowsPerStrip, strips);
+            var entryCount = 11 + (page.ColorMap != null ? 1 : 0) + (page.ExtraSample != 0 ? 1 : 0) +
+                (page.Predictor != 1 ? 1 : 0);
             var ifdSize = 2 + entryCount * 12 + 4;
             var bitsBytes = page.Samples > 1 ? page.Samples * 2 : 0;
             var stripArrayBytes = strips > 1 ? strips * 4 * 2 : 0;
             var colorMapBytes = (page.ColorMap?.Length ?? 0) * 2;
             layouts[i] = new TiffPageLayout(offset, entryCount, ifdSize, bitsBytes, stripArrayBytes,
-                colorMapBytes, rowsPerStrip, strips);
-            offset = checked(offset + ifdSize + bitsBytes + stripArrayBytes + colorMapBytes + page.Pixels.Length);
+                colorMapBytes, rowsPerStrip, encodedStrips);
+            offset = checked(offset + ifdSize + bitsBytes + stripArrayBytes + colorMapBytes +
+                encodedStrips.Sum(static strip => strip.Length));
         }
 
         var result = new byte[offset];
@@ -329,24 +376,21 @@ internal static class CodecTestData
         uint nextIfd, bool littleEndian)
     {
         var rowsPerStrip = layout.RowsPerStrip;
-        var rowBytes = checked((page.Width * page.Samples * page.Bits + 7) / 8);
         var auxOffset = layout.IfdOffset + layout.IfdSize;
         var bitsOffset = auxOffset;
         var stripOffsetsArray = bitsOffset + layout.BitsBytes;
-        var stripCountsArray = stripOffsetsArray + (layout.Strips > 1 ? layout.Strips * 4 : 0);
+        var stripCountsArray = stripOffsetsArray + (layout.EncodedStrips.Length > 1 ? layout.EncodedStrips.Length * 4 : 0);
         var colorMapOffset = stripOffsetsArray + layout.StripArrayBytes;
         var pixelOffset = colorMapOffset + layout.ColorMapBytes;
-        var stripOffsets = new uint[layout.Strips];
-        var stripCounts = new uint[layout.Strips];
+        var stripOffsets = new uint[layout.EncodedStrips.Length];
+        var stripCounts = new uint[layout.EncodedStrips.Length];
         var consumed = 0;
-        for (var strip = 0; strip < layout.Strips; strip++)
+        for (var strip = 0; strip < layout.EncodedStrips.Length; strip++)
         {
-            var rows = Math.Min((int)rowsPerStrip, page.Height - strip * (int)rowsPerStrip);
             stripOffsets[strip] = (uint)(pixelOffset + consumed);
-            stripCounts[strip] = (uint)(rows * rowBytes);
-            consumed += rows * rowBytes;
+            stripCounts[strip] = (uint)layout.EncodedStrips[strip].Length;
+            consumed += layout.EncodedStrips[strip].Length;
         }
-        if (consumed != page.Pixels.Length) throw new InvalidOperationException("TIFF test pixels do not match dimensions.");
 
         WriteTiffUInt16(result.AsSpan(layout.IfdOffset, 2), (ushort)layout.EntryCount, littleEndian);
         var entryOffset = layout.IfdOffset + 2;
@@ -354,16 +398,17 @@ internal static class CodecTestData
         WriteTiffEntry(result, ref entryOffset, 257, 4, 1, (uint)page.Height, littleEndian);
         if (page.Samples == 1) WriteTiffEntry(result, ref entryOffset, 258, 3, 1, page.Bits, littleEndian);
         else WriteTiffEntry(result, ref entryOffset, 258, 3, page.Samples, (uint)bitsOffset, littleEndian);
-        WriteTiffEntry(result, ref entryOffset, 259, 3, 1, 1, littleEndian);
+        WriteTiffEntry(result, ref entryOffset, 259, 3, 1, page.Compression, littleEndian);
         WriteTiffEntry(result, ref entryOffset, 262, 3, 1, page.Photometric, littleEndian);
-        WriteTiffEntry(result, ref entryOffset, 273, 4, (uint)layout.Strips,
-            layout.Strips == 1 ? stripOffsets[0] : (uint)stripOffsetsArray, littleEndian);
+        WriteTiffEntry(result, ref entryOffset, 273, 4, (uint)layout.EncodedStrips.Length,
+            layout.EncodedStrips.Length == 1 ? stripOffsets[0] : (uint)stripOffsetsArray, littleEndian);
         WriteTiffEntry(result, ref entryOffset, 274, 3, 1, page.Orientation, littleEndian);
         WriteTiffEntry(result, ref entryOffset, 277, 3, 1, page.Samples, littleEndian);
         WriteTiffEntry(result, ref entryOffset, 278, 4, 1, rowsPerStrip, littleEndian);
-        WriteTiffEntry(result, ref entryOffset, 279, 4, (uint)layout.Strips,
-            layout.Strips == 1 ? stripCounts[0] : (uint)stripCountsArray, littleEndian);
+        WriteTiffEntry(result, ref entryOffset, 279, 4, (uint)layout.EncodedStrips.Length,
+            layout.EncodedStrips.Length == 1 ? stripCounts[0] : (uint)stripCountsArray, littleEndian);
         WriteTiffEntry(result, ref entryOffset, 284, 3, 1, 1, littleEndian);
+        if (page.Predictor != 1) WriteTiffEntry(result, ref entryOffset, 317, 3, 1, page.Predictor, littleEndian);
         if (page.ColorMap != null) WriteTiffEntry(result, ref entryOffset, 320, 3,
             (uint)page.ColorMap.Length, (uint)colorMapOffset, littleEndian);
         if (page.ExtraSample != 0) WriteTiffEntry(result, ref entryOffset, 338, 3, 1, page.ExtraSample, littleEndian);
@@ -372,8 +417,8 @@ internal static class CodecTestData
         if (page.Samples > 1)
             for (var sample = 0; sample < page.Samples; sample++)
                 WriteTiffUInt16(result.AsSpan(bitsOffset + sample * 2, 2), page.Bits, littleEndian);
-        if (layout.Strips > 1)
-            for (var strip = 0; strip < layout.Strips; strip++)
+        if (layout.EncodedStrips.Length > 1)
+            for (var strip = 0; strip < layout.EncodedStrips.Length; strip++)
             {
                 WriteTiffUInt32(result.AsSpan(stripOffsetsArray + strip * 4, 4), stripOffsets[strip], littleEndian);
                 WriteTiffUInt32(result.AsSpan(stripCountsArray + strip * 4, 4), stripCounts[strip], littleEndian);
@@ -381,7 +426,11 @@ internal static class CodecTestData
         if (page.ColorMap != null)
             for (var value = 0; value < page.ColorMap.Length; value++)
                 WriteTiffUInt16(result.AsSpan(colorMapOffset + value * 2, 2), page.ColorMap[value], littleEndian);
-        page.Pixels.CopyTo(result, pixelOffset);
+        foreach (var strip in layout.EncodedStrips)
+        {
+            strip.CopyTo(result, pixelOffset);
+            pixelOffset += strip.Length;
+        }
     }
 
     private static void WriteTiffEntry(byte[] result, ref int offset, ushort tag, ushort type, uint count,
@@ -411,8 +460,107 @@ internal static class CodecTestData
         else BinaryPrimitives.WriteUInt32BigEndian(destination, value);
     }
 
+    private static byte[][] EncodeTiffStrips(TiffPageData page, uint rowsPerStrip, int strips)
+    {
+        var rowBytes = checked((page.Width * page.Samples * page.Bits + 7) / 8);
+        if (page.Pixels.Length != checked(rowBytes * page.Height))
+            throw new InvalidOperationException("TIFF test pixels do not match dimensions.");
+        var result = new byte[strips][];
+        var offset = 0;
+        for (var strip = 0; strip < strips; strip++)
+        {
+            var rows = Math.Min((int)rowsPerStrip, page.Height - strip * (int)rowsPerStrip);
+            var raw = page.Pixels.AsSpan(offset, rows * rowBytes).ToArray();
+            offset += raw.Length;
+            if (page.Predictor == 2 && page.Bits == 8)
+            {
+                for (var row = 0; row < rows; row++)
+                {
+                    var data = raw.AsSpan(row * rowBytes, rowBytes);
+                    for (var index = data.Length - 1; index >= page.Samples; index--)
+                        data[index] = unchecked((byte)(data[index] - data[index - page.Samples]));
+                }
+            }
+            result[strip] = page.Compression switch
+            {
+                1 => raw,
+                5 => TiffLzw(raw),
+                8 or 32946 => TiffDeflate(raw),
+                32773 => TiffPackBits(raw),
+                _ => raw
+            };
+        }
+        return result;
+    }
+
+    private static byte[] TiffDeflate(byte[] raw)
+    {
+        using var output = new MemoryStream();
+        using (var zlib = new ZLibStream(output, CompressionLevel.SmallestSize, leaveOpen: true)) zlib.Write(raw);
+        return output.ToArray();
+    }
+
+    private static byte[] TiffPackBits(byte[] raw)
+    {
+        using var output = new MemoryStream();
+        for (var offset = 0; offset < raw.Length;)
+        {
+            var count = Math.Min(128, raw.Length - offset);
+            output.WriteByte((byte)(count - 1));
+            output.Write(raw, offset, count);
+            offset += count;
+        }
+        return output.ToArray();
+    }
+
+    private static byte[] TiffLzw(byte[] raw)
+    {
+        var writer = new MsbBitWriter();
+        var codeSize = 9;
+        var nextCode = 258;
+        writer.Write(256, codeSize);
+        var hasPrevious = false;
+        foreach (var value in raw)
+        {
+            writer.Write(value, codeSize);
+            if (hasPrevious && nextCode < 4096)
+            {
+                nextCode++;
+                if (nextCode == (1 << codeSize) - 1 && codeSize < 12) codeSize++;
+            }
+            hasPrevious = true;
+        }
+        writer.Write(257, codeSize);
+        return writer.ToArray();
+    }
+
+    private sealed class MsbBitWriter
+    {
+        private readonly List<byte> _bytes = [];
+        private int _current;
+        private int _bits;
+
+        public void Write(int value, int bitCount)
+        {
+            for (var bit = bitCount - 1; bit >= 0; bit--)
+            {
+                _current = (_current << 1) | ((value >> bit) & 1);
+                if (++_bits != 8) continue;
+                _bytes.Add((byte)_current);
+                _current = 0;
+                _bits = 0;
+            }
+        }
+
+        public byte[] ToArray()
+        {
+            if (_bits > 0) _bytes.Add((byte)(_current << (8 - _bits)));
+            return [.. _bytes];
+        }
+    }
+
     private readonly record struct TiffPageLayout(int IfdOffset, int EntryCount, int IfdSize, int BitsBytes,
-        int StripArrayBytes, int ColorMapBytes, uint RowsPerStrip, int Strips);
+        int StripArrayBytes, int ColorMapBytes, uint RowsPerStrip, byte[][] EncodedStrips);
 
     private static byte[] IconBmpImage(IconVariantData variant)
     {

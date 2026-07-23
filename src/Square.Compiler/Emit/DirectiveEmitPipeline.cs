@@ -110,9 +110,17 @@ internal sealed class DirectiveEmitPipeline
         {
             var source = FindAttr(element, descriptor.PrimaryAttribute ?? "each")?.RawValue
                          ?? "System.Array.Empty<object>()";
-            _sb.AppendLine(indent + field + " = ForNode.Create(" + source + ", it =>");
+            var itemName = FindAttr(element, "__itemName")?.RawValue;
+            var indexName = FindAttr(element, "__indexName")?.RawValue;
+            var itemLocal = !string.IsNullOrWhiteSpace(itemName) ? itemName : "it";
+            var hasIndex = !string.IsNullOrWhiteSpace(indexName);
+            var indexLocal = hasIndex ? indexName : "it_index";
+            var lambda = hasIndex
+                ? itemLocal + ", " + indexLocal
+                : itemLocal;
+            _sb.AppendLine(indent + field + " = ForNode.Create(" + source + ", " + lambda + " =>");
             _sb.AppendLine(indent + "{");
-            _emitFactoryBody(element.Children, indent + "    ", "it");
+            _emitFactoryBody(element.Children, indent + "    ", itemLocal);
             _sb.AppendLine(indent + "});");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             return;

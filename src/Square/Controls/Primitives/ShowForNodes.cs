@@ -100,17 +100,27 @@ public static class ForNode
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source);
 
+    public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build) =>
+        new ForNode<T>(() => source, build, source);
+
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
 
+    public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build) =>
+        new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
+
     public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, Element?> build) =>
+        new ReactiveForNode<T>(source, build);
+
+    public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, Element?> build) =>
         new ReactiveForNode<T>(source, build);
 }
 
 internal sealed class ReactiveForNode<T> : IForNode
 {
     private readonly IReactiveValue<IReadOnlyList<T>> _source;
-    private readonly Func<T, Element?> _build;
+    private readonly Func<T, Element?>? _build;
+    private readonly Func<T, int, Element?>? _buildIndexed;
     private readonly List<Element> _children = [];
     private IDisposable? _subscription;
     private Element? _parent;
@@ -120,6 +130,12 @@ internal sealed class ReactiveForNode<T> : IForNode
     {
         _source = source;
         _build = build;
+    }
+
+    public ReactiveForNode(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, Element?> build)
+    {
+        _source = source;
+        _buildIndexed = build;
     }
 
     public void AttachTo(Element parent)
@@ -134,15 +150,19 @@ internal sealed class ReactiveForNode<T> : IForNode
 
     public void Update() => Rebuild();
 
+    private Element? Build(T item, int index) =>
+        _build != null ? _build(item) : _buildIndexed?.Invoke(item, index);
+
     private void Rebuild()
     {
         if (_parent == null) return;
         foreach (var child in _children)
             if (child.Parent == _parent) _parent.Children.Remove(child);
         _children.Clear();
+        var i = 0;
         foreach (var item in _source.Value)
         {
-            if (_build(item) is not { } child) continue;
+            if (Build(item, i++) is not { } child) continue;
             _parent.Children.Insert(Math.Min(_index + _children.Count, _parent.Children.Count), child);
             child.BuildElementTree();
             _children.Add(child);
@@ -164,13 +184,19 @@ internal sealed class ReactiveForNode<T> : IForNode
 public sealed class ForNode<T> : IForNode
 {
     private readonly Func<IEnumerable<T>> _source;
-    private readonly Func<T, Element?> _build;
+    private readonly Func<T, Element?>? _build;
+    private readonly Func<T, int, Element?>? _buildIndexed;
     private readonly List<(T item, Element? node)> _nodes = new();
     private readonly INotifyCollectionChanged? _observableSource;
     private Element? _parent;
     private int _index;
 
     public ForNode(Func<IEnumerable<T>> source, Func<T, Element?> build)
+        : this(source, build, source() as INotifyCollectionChanged)
+    {
+    }
+
+    public ForNode(Func<IEnumerable<T>> source, Func<T, int, Element?> build)
         : this(source, build, source() as INotifyCollectionChanged)
     {
     }
@@ -183,6 +209,18 @@ public sealed class ForNode<T> : IForNode
         Rebuild();
         if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
     }
+
+    internal ForNode(Func<IEnumerable<T>> source, Func<T, int, Element?> build, INotifyCollectionChanged? observableSource)
+    {
+        _source = source;
+        _buildIndexed = build;
+        _observableSource = observableSource;
+        Rebuild();
+        if (_observableSource != null) _observableSource.CollectionChanged += OnCollectionChanged;
+    }
+
+    private Element? Build(T item, int index) =>
+        _build != null ? _build(item) : _buildIndexed?.Invoke(item, index);
 
     public void AttachTo(Element parent)
     {
@@ -206,9 +244,10 @@ public sealed class ForNode<T> : IForNode
         }
         _nodes.Clear();
 
+        var i = 0;
         foreach (var item in _source())
         {
-            var node = _build(item);
+            var node = Build(item, i++);
             _nodes.Add((item, node));
             if (node != null && _parent != null)
             {
@@ -233,7 +272,7 @@ public sealed class ForNode<T> : IForNode
                 for (var i = 0; i < e.NewItems.Count; i++)
                 {
                     var item = (T)e.NewItems[i]!;
-                    _nodes.Insert(addIndex + i, (item, _build(item)));
+                    _nodes.Insert(addIndex + i, (item, Build(item, addIndex + i)));
                     InsertNode(addIndex + i);
                 }
                 break;
@@ -250,7 +289,7 @@ public sealed class ForNode<T> : IForNode
                 {
                     RemoveNode(replaceIndex);
                     var item = (T)e.NewItems[i]!;
-                    _nodes.Insert(replaceIndex, (item, _build(item)));
+                    _nodes.Insert(replaceIndex, (item, Build(item, replaceIndex)));
                     InsertNode(replaceIndex);
                 }
                 break;

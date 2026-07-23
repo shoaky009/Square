@@ -1593,6 +1593,33 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void ForNodeIndexedBuildReceivesIndices()
+    {
+        var root = new View();
+        var items = new ObservableCollection<string> { "a", "b" };
+        var captured = new List<(string, int)>();
+        var loop = ForNode.Create(items, (item, index) =>
+        {
+            captured.Add((item, index));
+            return new Square.Controls.Text(item + index);
+        });
+        loop.AttachTo(root);
+        ((IComponentLifecycle)root).OnAttached();
+
+        Assert.Equal(new[] { "a0", "b1" },
+            root.QueryAll<Square.Controls.Text>().Select(text => text.TextContent));
+        Assert.Equal(new[] { ("a", 0), ("b", 1) }, captured);
+
+        items.Insert(0, "z");
+        Reconciler.Current.Flush();
+        // 新插入的 z 获得其插入索引 0；已有节点文本保持不变（运行时按需重建，不重排已有索引）。
+        Assert.Equal("z0", root.QueryAll<Square.Controls.Text>().First().TextContent);
+        Assert.Equal(3, root.QueryAll<Square.Controls.Text>().Count());
+
+        loop.Dispose();
+    }
+
+    [Fact]
     public void ReconcilerFlushProcessesDirtyWorkScheduledByUpdate()
     {
         Reconciler.Current.Reset();

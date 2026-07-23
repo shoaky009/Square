@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "file": "vp8-solid-8x8.webp",
+      "sha256": "f8563692b10e6bfc00764569c16a6f02203345b04d6f5b0ea98a9b2d0aa2d3b2",
+      "width": 8,
+      "height": 8,
+      "golden": "vp8-solid-8x8.bgra",
+      "goldenSha256": "f87374248b2fab0873b3348679ac51578244c03023e085a3805b88e264609714"
+    },
+    {
+      "file": "vp8-gradient-17x13.webp",
+      "sha256": "7357aba770c3045a24919496da1bcd0f21ee2ec0456fffa41720c2b5d13b39a2",
+      "width": 17,
+      "height": 13,
+      "golden": "vp8-gradient-17x13.bgra",
+      "goldenSha256": "f346cf2957fabd81b068aded78677a0022705d202eef0eaae46a72a44012503d"
+    },
+    {
+      "file": "vp8-detail-31x19.webp",
+      "sha256": "841a4c769c0a0cc01c40866620737a021c6636c2f749a8f5a6a86a77241b4ee9",
+      "width": 31,
+      "height": 19,
+      "golden": "vp8-detail-31x19.bgra",
+      "goldenSha256": "b5701f478c78dec9fd59a2384f2a7efcc5d0d65551ed5236cfb29ef89249c889"
+    }
+  ]
+}

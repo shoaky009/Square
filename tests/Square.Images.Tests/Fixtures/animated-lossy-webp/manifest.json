@@ -1,0 +1,128 @@
+{
+  "generator": "ffmpeg libwebp_anim one-frame encodes; deterministic repository ANMF muxer",
+  "colorGoldenSource": "ffmpeg-decoded yuv420p converted with Square\u0027s deterministic VP8 scalar YUV-to-BGRA formula",
+  "alphaGoldenSource": "straight alpha from ffmpeg BGRA decode of each one-frame ALPH\u002BVP8 WebP",
+  "compositing": "WebP ANMF background, blend, and dispose-to-background rules in straight-alpha BGRA",
+  "fixtures": [
+    {
+      "file": "opaque-partial-dispose.webp",
+      "sha256": "ee0b551f7575ca6f90b4a4c87c7f37d494a1548e7c2533bf5ac61182c0c2babb",
+      "width": 32,
+      "height": 20,
+      "backgroundBgra": "ff201008",
+      "loopCount": 4,
+      "frames": [
+        {
+          "index": 0,
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 14,
+          "durationMilliseconds": 70,
+          "disposeToBackground": true,
+          "blend": "replace",
+          "chunks": [
+            {
+              "type": "VP8 ",
+              "length": 268,
+              "sha256": "0690bc6af24b8d044e42a4dcb39e2ba23fdc26771000926f77f210463959ffd9"
+            }
+          ],
+          "golden": "opaque-partial-dispose.webp.frame0.bgra",
+          "goldenSha256": "514dffeffc8fd1322463e863daff9ab15ebb619a7cd14cbe09e86d3f46cac2f4"
+        },
+        {
+          "index": 1,
+          "x": 14,
+          "y": 8,
+          "width": 18,
+          "height": 12,
+          "durationMilliseconds": 130,
+          "disposeToBackground": false,
+          "blend": "replace",
+          "chunks": [
+            {
+              "type": "VP8 ",
+              "length": 222,
+              "sha256": "504fba746d00f197633ba41a291d8c2e633a6bf8b98cf87daf2d19a168888775"
+            }
+          ],
+          "golden": "opaque-partial-dispose.webp.frame1.bgra",
+          "goldenSha256": "dcfdf52863818903354737976b59c391130e1c8a2db0f80996cc08faf2c665ba"
+        }
+      ]
+    },
+    {
+      "file": "mixed-alpha-partial-dispose.webp",
+      "sha256": "1af8952bdd52869c2165f8dbe7d647de7a58303fe1589349d587926167077f16",
+      "width": 30,
+      "height": 18,
+      "backgroundBgra": "00000000",
+      "loopCount": 0,
+      "frames": [
+        {
+          "index": 0,
+          "x": 0,
+          "y": 2,
+          "width": 22,
+          "height": 14,
+          "durationMilliseconds": 90,
+          "disposeToBackground": false,
+          "blend": "replace",
+          "chunks": [
+            {
+              "type": "VP8 ",
+              "length": 348,
+              "sha256": "68611acde6fc27d631bb4f689561d74a5a7fa13f92b07f854ebc7da3c4dd541d"
+            }
+          ],
+          "golden": "mixed-alpha-partial-dispose.webp.frame0.bgra",
+          "goldenSha256": "dfd8c2f1cd9cbd17fe163fa3c3b0d289043f0c324fb687b5c7a81339bbdbe550"
+        },
+        {
+          "index": 1,
+          "x": 12,
+          "y": 4,
+          "width": 18,
+          "height": 12,
+          "durationMilliseconds": 110,
+          "disposeToBackground": true,
+          "blend": "alpha-over",
+          "chunks": [
+            {
+              "type": "ALPH",
+              "length": 107,
+              "sha256": "aca8b88f2cb52a5f0bad9f3c9f5e06c00574a8e8157c33464e7429db4e8ccadc"
+            },
+            {
+              "type": "VP8 ",
+              "length": 218,
+              "sha256": "47af1aec50ee393016bac23d3a51b1ca10e9a47098773d5e412a193ff3b2cf57"
+            }
+          ],
+          "golden": "mixed-alpha-partial-dispose.webp.frame1.bgra",
+          "goldenSha256": "e54aebcc38c30f709f330a0d7c025407924fb50340c18e1e5df2f6a7c4e0ee62"
+        },
+        {
+          "index": 2,
+          "x": 4,
+          "y": 8,
+          "width": 10,
+          "height": 8,
+          "durationMilliseconds": 60,
+          "disposeToBackground": false,
+          "blend": "alpha-over",
+          "chunks": [
+            {
+              "type": "VP8 ",
+              "length": 120,
+              "sha256": "10d4f0e9e38729c5348190612676263cf8bd861a002b597b5ba22a6231267464"
+            }
+          ],
+          "golden": "mixed-alpha-partial-dispose.webp.frame2.bgra",
+          "goldenSha256": "797cc33235fbbaed486fa7250a6fd9ea6e74ac6f898f2c630408d05e09eae7ca"
+        }
+      ]
+    }
+  ]
+}

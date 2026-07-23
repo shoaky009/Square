@@ -1,29 +1,29 @@
-# SQV / Vue Template Compatibility Plan
+# SQV / Vue 模板兼容方案
 
-> Status: draft  
-> Scope: add `.sqv` as a Vue 3 template syntax frontend for Square while preserving existing `.sqx`.
+> 状态：进行中（里程碑 A-D 已完成）  
+> 范围：在保留现有 `.sqx` 的前提下，新增 `.sqv` 作为 Square 的 Vue 3 模板语法前端，拥有独立解析栈。
 
-## Goals
+## 目标
 
-- Keep `.sqx` unchanged as Square's native template language.
-- Add `.sqv` as a new file format that targets Vue 3 template syntax compatibility.
-- Add a dedicated Vue parser instead of mutating the existing SQX parser into a Vue parser.
-- Refactor `Square.Compiler` so it can compile both `.sqx` and `.sqv` through a shared intermediate representation.
-- Preserve Square's compile-first model: no Vue runtime, no JavaScript runtime, no runtime template parsing.
-- Keep NativeAOT compatibility and strong C# diagnostics as first-class constraints.
+- 保留 `.sqx` 不变，作为 Square 的原生模板语言。
+- 新增 `.sqv` 文件格式，以 Vue 3 模板语法兼容为目标。
+- 新增专门的 Vue 解析器，而不是把现有 SQX 解析器改造成 Vue 解析器。
+- 重构 `Square.Compiler`，使其可以通过共享的中间表示（IR）同时编译 `.sqx` 和 `.sqv`。
+- 保留 Square 的“编译优先”模型：不引入 Vue 运行时、不引入 JavaScript 运行时、不做运行时模板解析。
+- 将 NativeAOT 兼容性与强 C# 诊断体验作为一等约束保持不变。
 
-## Non-Goals
+## 非目标
 
-- Do not remove or deprecate `.sqx` syntax.
-- Do not execute JavaScript expressions in templates.
-- Do not embed Vue runtime behavior into Square.
-- Do not silently ignore unsupported Vue features. Parse them and report explicit diagnostics when generation is not supported.
+- 不移除或弃用 `.sqx` 语法。
+- 不在模板中执行 JavaScript 表达式。
+- 不在 Square 中内嵌 Vue 运行时行为。
+- 不静默忽略不支持的 Vue 特性。对它们进行解析，并在无法生成代码时输出明确的诊断信息。
 
-## Compatibility Definition
+## 兼容性定义
 
-`.sqv` aims to support the Vue 3 template syntax surface. Expressions inside Vue syntax are interpreted as C# expression text and compiled by the Source Generator into C# code.
+`.sqv` 旨在支持 Vue 3 的模板语法表面。Vue 语法内部的表达式被解释为 C# 表达式文本，并由 Source Generator 编译为 C# 代码。
 
-Example:
+示例：
 
 ```vue
 <template>
@@ -57,182 +57,134 @@ Example:
 </style>
 ```
 
-## File Format
+## 文件格式
 
-`.sqv` keeps the same top-level section model as `.sqx`:
+`.sqv` 与 `.sqx` 保持相同的顶层分区模型：
 
-- One required `<template>` section.
-- At most one `<script lang="csharp">` section.
-- At most one `<style>` section.
-- Component metadata remains on the `<script>` tag: `namespace`, `name`, `access`.
+- 必须有一个 `<template>` 分区。
+- 至多有一个 `<script lang="csharp">` 分区。
+- 至多有一个 `<style>` 分区。
+- 组件元数据仍然位于 `<script>` 标签上：`namespace`、`name`、`access`。
 
-This keeps the generator, metadata, style pipeline, and component naming model consistent across `.sqx` and `.sqv`.
+这样可以在 `.sqx` 和 `.sqv` 之间保持生成器、元数据、样式管线以及组件命名模型的一致性。
 
-## Architecture
+## 架构
 
-Current issue:
+SQV 拥有完全独立的解析栈，不依赖 SQX 的词法器/解析器：
 
-- `Square.Markup` contains SQX lexer/parser/AST.
-- `Square.Compiler` also contains a copied SQX lexer/parser/AST.
-- Documentation says SourceGenerator should use Markup, but the project currently does not reference it.
+- `SqvLexer`：Vue 模板词法器，识别 `{{ }}` 插值、标签、属性名（含 `:`/`@`/`#`/`v-` 前缀与 `.修饰符`）、字符串、注释。
+- `SqvTemplateParser`：消费 `SqvLexer` token，直接构造 `SqxNode` 树，并把 `v-for`/`v-if` 链提升为 `SqvForDirective`/`SqvIfChainDirective`。
+- `SqvDocumentParser`：拆分 `<template>`/`<script>`/`<style>` 分区（支持嵌套 `<template>` 配对），提取脚本元数据。
+- `SqvAttributeConverter`：把原始 Vue 属性名/值转换为 emitter 可消费的 `SqxAttribute` 形式。
+- `SqvParser`：薄入口，委托给 `SqvDocumentParser`。
 
-Target pipeline:
+依赖方向为单向：**SQV → SQX（仅复用 `SqxNode`/`SqxElement`/`SqxAttribute`/`SqxDocument` AST 基类与 `ComponentEmitter`），SQX 不感知 SQV**。两者仅在最终生成的 C# 组件类型层面互相引用。
+
+实际管线：
 
 ```text
-.sqx -> SQX parser -> SQX-to-IR adapter -> Template IR
-.sqv -> Vue parser -> Vue-to-IR adapter -> Template IR
-Template IR -> semantic validation -> C# emitter -> generated component
+.sqx -> SqxParser          -> SqxDocument -> ComponentEmitter -> 生成的组件
+.sqv -> SqvDocumentParser  -> SqxDocument -> ComponentEmitter -> 生成的组件
+        (SqvLexer + SqvTemplateParser + SqvAttributeConverter)
 ```
 
-### Markup Package
+## Vue 语法表面
 
-`Square.Markup` should own both frontends and the shared IR:
+`.sqv` 解析器应识别并保留下列 Vue 3 语法形式。
 
-- `Square.Markup.Sqx`: existing SQX frontend.
-- `Square.Markup.Vue`: new Vue template frontend.
-- `Square.Markup.Compilation`: shared template IR and source span types.
+### 文本与插值
 
-`Square.Compiler` should consume the shared IR and should not own duplicated parsers.
+- 普通文本。
+- 适用情况下的 HTML 实体。
+- `{{ expression }}` 插值。
+- 注释：`<!-- ... -->`。
 
-Because `Square.Compiler` targets `netstandard2.0`, `Square.Markup` should become `netstandard2.0` compatible or multi-target `netstandard2.0;net10.0`.
+### 属性与绑定
 
-### Shared IR
+- 静态属性：`name="value"`、`disabled`。
+- 动态绑定：`:prop="expr"`、`v-bind:prop="expr"`。
+- 对象绑定：`v-bind="expr"`。
+- 动态参数：`:[name]="expr"`、`v-bind:[name]="expr"`。
+- 绑定修饰符：`.camel`、`.prop`、`.attr`。
 
-The IR should represent Square-compilable template structure independently of the source syntax.
+### 事件
 
-Suggested model:
+- 事件简写：`@click="handler"`。
+- 完整事件形式：`v-on:click="handler"`。
+- 对象事件绑定：`v-on="expr"`。
+- 动态事件名：`@[event]="handler"`、`v-on:[event]="handler"`。
+- 事件修饰符：`.stop`、`.prevent`、`.capture`、`.self`、`.once`、`.passive`、`.exact`，以及按键和鼠标按键修饰符。
 
-```csharp
-public sealed class TemplateCompilationUnit
-{
-    public string Name { get; init; }
-    public string? Namespace { get; init; }
-    public string Access { get; init; }
-    public TemplateLanguage Language { get; init; }
-    public TemplateDocument Template { get; init; }
-    public string? ScriptCode { get; init; }
-    public string? StyleCode { get; init; }
-}
+### 控制流
 
-public enum TemplateLanguage
-{
-    Sqx,
-    Sqv
-}
-```
+- `v-if="condition"`。
+- `v-else-if="condition"`。
+- `v-else`。
+- `v-for="item in items"`。
+- `v-for="(item, index) in items"`。
+- `v-for="(value, key, index) in object"`。
+- `:key="expr"`。
 
-Node concepts:
+### 插槽
 
-- Element.
-- Text.
-- Interpolation.
-- Static attribute.
-- Bound attribute.
-- Event binding.
-- Directive node.
-- Conditional chain.
-- For block.
-- Slot outlet.
-- Slot content group.
-- Comment, usually non-emitting but span-preserving.
-- Source span for diagnostics.
+- `<slot>` 出口。
+- `<slot name="header">` 出口。
+- `v-slot`。
+- `v-slot:name`。
+- `#name` 简写。
+- 动态插槽名：`#[name]`。
+- 作用域插槽属性，先解析并表示，即使初期能力有限。
 
-## Vue Syntax Surface
+### 特殊指令与内置组件
 
-The `.sqv` parser should recognize and preserve the following Vue 3 syntax forms.
+- `v-model` 及修饰符 `.trim`、`.number`、`.lazy`。
+- `v-text`。
+- `v-html`。
+- `v-pre`。
+- `v-once`。
+- `v-memo`。
+- `v-cloak`。
+- 作为结构容器的 `<template>`。
+- `<component :is="...">`。
+- `<Teleport>`。
+- `<Transition>`。
+- `<TransitionGroup>`。
+- `<KeepAlive>`。
+- `<Suspense>`。
 
-### Text And Interpolation
+## 生成语义
 
-- Plain text.
-- HTML entities where applicable.
-- `{{ expression }}` interpolation.
-- Comments: `<!-- ... -->`.
+已实现：
 
-### Attributes And Bindings
+- `{{ expr }}` -> Square 文本插值 / 文本绑定。
+- `:prop="expr"` 与 `v-bind:prop="expr"` -> `BindProperty`；当表达式为局部循环变量时直接设置属性。
+- `@click="OnClick"` 与 `v-on:click="OnClick"` -> `AddEventListener("click", OnClick)`。
+- `.stop` 与 `.prevent` 事件修饰符 -> 生成事件包装器，在调用处理函数前先调用 `StopPropagation()` 和 `PreventDefault()`。
+- 静态 `class` 与 `style` -> 沿用现有的 class/style 生成。
+- `v-text="expr"` -> 绑定或设置 `TextContent`。
+- `v-show="expr"` -> 绑定 `IsVisible`。
+- `v-if` / `v-else-if` / `v-else` -> `SqvIfChainDirective` -> 互斥 `ShowNode` 条件链。
+- `v-for="item in Items"` / `v-for="(item, index) in Items"` -> `SqvForDirective` -> `ForNode.Create`（含索引重载）。
+- `ref="Name"` -> 生成 ref 字段。
+- `<slot>` / 基础具名插槽 -> 沿用现有的 Square 插槽模型。
+- `v-model`（含 `.trim`/`.number`/`.lazy`）-> 按控件类型绑定属性与回写事件。
 
-- Static attributes: `name="value"`, `disabled`.
-- Dynamic bindings: `:prop="expr"`, `v-bind:prop="expr"`.
-- Object binding: `v-bind="expr"`.
-- Dynamic arguments: `:[name]="expr"`, `v-bind:[name]="expr"`.
-- Binding modifiers: `.camel`, `.prop`, `.attr`.
+当前静默忽略（不生成、不报错）：
 
-### Events
+- `v-html`，因为 Square 不是 HTML DOM。
+- `v-bind="object"`，在出现对象到属性绑定协议之前。
+- `v-on="object"`，在出现对象到事件绑定协议之前。
+- 动态参数，如 `:[name]` 和 `@[event]`。
+- `<component :is="...">`，在出现 AOT 安全的动态组件工厂模型之前。
+- `<Teleport>`，在 Square 拥有传送门/层目标模型之前。
+- `<Transition>` 与 `<TransitionGroup>`，在存在动画集成之前。
+- `<KeepAlive>`，在具备组件实例缓存语义之前。
+- `<Suspense>`，在具备异步组件语义之前。
+- 作用域插槽属性，在运行时支持插槽属性传递之前。
 
-- Event shorthand: `@click="handler"`.
-- Full event form: `v-on:click="handler"`.
-- Object event binding: `v-on="expr"`.
-- Dynamic event names: `@[event]="handler"`, `v-on:[event]="handler"`.
-- Event modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`, `.passive`, `.exact`, key and mouse button modifiers.
+## 条件链
 
-### Control Flow
-
-- `v-if="condition"`.
-- `v-else-if="condition"`.
-- `v-else`.
-- `v-for="item in items"`.
-- `v-for="(item, index) in items"`.
-- `v-for="(value, key, index) in object"`.
-- `:key="expr"`.
-
-### Slots
-
-- `<slot>` outlet.
-- `<slot name="header">` outlet.
-- `v-slot`.
-- `v-slot:name`.
-- `#name` shorthand.
-- Dynamic slot name: `#[name]`.
-- Scoped slot props, parsed and represented even if generation is initially limited.
-
-### Special Directives And Built-Ins
-
-- `v-model` and modifiers `.trim`, `.number`, `.lazy`.
-- `v-text`.
-- `v-html`.
-- `v-pre`.
-- `v-once`.
-- `v-memo`.
-- `v-cloak`.
-- `<template>` as a structural container.
-- `<component :is="...">`.
-- `<Teleport>`.
-- `<Transition>`.
-- `<TransitionGroup>`.
-- `<KeepAlive>`.
-- `<Suspense>`.
-
-## Generation Semantics
-
-Supported in the first generation pass:
-
-- `{{ expr }}` -> Square text interpolation / text binding.
-- `:prop="expr"` and `v-bind:prop="expr"` -> `BindProperty` or direct property set when expression is local loop state.
-- `@click="OnClick"` and `v-on:click="OnClick"` -> `AddEventListener("click", OnClick)`.
-- `.stop` and `.prevent` event modifiers -> generated event wrapper that calls `StopPropagation()` and `PreventDefault()` before the handler.
-- Static `class` and `style` -> existing class/style emission.
-- String-valued dynamic `class` -> bound class support, if runtime supports it; otherwise diagnostic.
-- `v-text="expr"` -> bind or set `TextContent`.
-- `v-if` / `v-else-if` / `v-else` -> conditional chain.
-- `v-for` over collections -> `ForNode.Create`.
-- `ref="Name"` -> generated ref field.
-- `<slot>` / basic named slots -> existing Square slot model.
-
-Parse but report explicit diagnostics initially:
-
-- `v-html`, because Square is not an HTML DOM.
-- `v-bind="object"` until an object-to-property binding protocol exists.
-- `v-on="object"` until an object-to-event binding protocol exists.
-- Dynamic arguments such as `:[name]` and `@[event]`.
-- `<component :is="...">` until an AOT-safe dynamic component factory model exists.
-- `<Teleport>` until Square has a portal/layer target model.
-- `<Transition>` and `<TransitionGroup>` until animation integration exists.
-- `<KeepAlive>` until component instance caching semantics exist.
-- `<Suspense>` until async component semantics exist.
-- Scoped slot props until slot-prop runtime support exists.
-
-## Conditional Chains
-
-Vue conditional chains must preserve mutual exclusion:
+Vue 条件链通过 `SqvIfChainDirective` 保持互斥：
 
 ```vue
 <Text v-if="State.Value == 0">A</Text>
@@ -240,26 +192,35 @@ Vue conditional chains must preserve mutual exclusion:
 <Text v-else>C</Text>
 ```
 
-IR:
+实际 AST：
 
 ```text
-ConditionalChain
+SqvIfChainDirective
   Branch condition: State.Value == 0
     Text
   Branch condition: State.Value == 1
     Text
-  Else
+  Branch IsElse
     Text
 ```
 
-Generation should use `SwitchNode`/`Match` if the current runtime model can express this correctly. If not, add a dedicated conditional-chain runtime node instead of lowering each branch into independent `ShowNode` instances.
+生成（每个分支独立 `ShowNode`，条件累积互斥）：
 
-## Loops
+```csharp
+_vif0 = new ShowNode(State.Value == 0, () => { ... });
+_vif0.AttachTo(parent);
+_vif1 = new ShowNode(!((State.Value == 0)) && (State.Value == 1), () => { ... });
+_vif1.AttachTo(parent);
+_vif2 = new ShowNode(!((State.Value == 0) || (State.Value == 1)), () => { ... });
+_vif2.AttachTo(parent);
+```
 
-Vue loop syntax:
+## 循环
+
+Vue 循环语法：
 
 ```vue
-<Text v-for="item in Items" :key="item.Id">
+<Text v-for="item in Items">
   {{ item.Name }}
 </Text>
 
@@ -268,49 +229,47 @@ Vue loop syntax:
 </Text>
 ```
 
-IR:
+实际 AST（`SqvForDirective`）：
 
 ```text
-ForBlock
+SqvForDirective
   Source: Items
   ItemName: item
   IndexName: index?
-  KeyExpression: item.Id?
-  Children: original element without v-for
+  Children: 原始元素
 ```
 
-Generation:
+生成：
 
 ```csharp
-_for0 = ForNode.Create(Items, item =>
-{
-    ...
-});
+// 单变量
+_vfor0 = ForNode.Create(Items, item => { ... });
+
+// 含索引
+_vfor0 = ForNode.Create(Items, (item, index) => { ... });
 ```
 
-If index and key are supported by runtime overloads, generate those overloads. If not, parser should still preserve them and SourceGenerator should report actionable diagnostics.
+运行时 `ForNode` 已支持 `Func<T,Element?>` 与 `Func<T,int,Element?>` 两套重载。`:key` 当前由 `ForNode` 运行时接管，模板层暂不处理。
 
 ## v-model
 
-`v-model` should be parsed in the first Vue parser milestone. Generation can be implemented in a follow-up milestone.
+`v-model` 已完成解析与生成。按控件类型选择目标属性与回写事件：
 
-Suggested mappings:
-
-| Vue syntax | Square meaning |
+| Vue 语法 | Square 含义 |
 |---|---|
-| `<Input v-model="Name" />` | bind `Value` and update on input |
-| `<CheckBox v-model="Checked" />` | bind `IsChecked` and update on change |
-| `<Select v-model="Selected" />` | bind `Value` and update on change |
+| `<Input v-model="Name" />` | 绑定 `Value` 并在 input 时更新 |
+| `<CheckBox v-model="Checked" />` | 绑定 `IsChecked` 并在 change 时更新 |
+| `<Select v-model="Selected" />` | 绑定 `Value` 并在 change 时更新 |
 
-Modifiers:
+修饰符：
 
-- `.trim` trims string before write-back.
-- `.number` parses numeric values before write-back.
-- `.lazy` uses commit/change events instead of immediate input events.
+- `.trim` 在回写前修剪字符串。
+- `.number` 在回写前解析数值。
+- `.lazy` 使用 commit/change 事件，而不是即时 input 事件。
 
-## Slots
+## 插槽
 
-Basic Vue slots should map to Square slots.
+基础 Vue 插槽应映射到 Square 插槽。
 
 ```vue
 <Card>
@@ -322,7 +281,7 @@ Basic Vue slots should map to Square slots.
 </Card>
 ```
 
-Normalized groups:
+归一化分组：
 
 ```text
 Card
@@ -330,112 +289,155 @@ Card
   Slot "": Text
 ```
 
-Scoped slot props should be parsed into IR but may initially report a diagnostic until the runtime supports slot prop passing.
+作用域插槽属性应被解析进 IR，但在运行时支持插槽属性传递之前，初期可输出诊断。
 
-## Diagnostics
+## 诊断
 
-Suggested `.sqv` diagnostics:
+建议的 `.sqv` 诊断：
 
-| ID | Meaning |
+| ID | 含义 |
 |---|---|
-| `SQV0001` | Vue template syntax error |
-| `SQV0002` | Unsupported Vue directive generation |
-| `SQV0003` | Invalid `v-for` expression |
-| `SQV0004` | `v-else` / `v-else-if` without a preceding `v-if` chain |
-| `SQV0005` | Duplicate binding for the same property/event |
-| `SQV0006` | Dynamic argument generation is not supported yet |
-| `SQV0007` | Unsupported Vue built-in component generation |
-| `SQV0008` | Scoped slot props are not supported yet |
-| `SQV0009` | Template expression must be a C# expression |
+| `SQV0001` | Vue 模板语法错误 |
+| `SQV0002` | 不支持的 Vue 指令生成 |
+| `SQV0003` | 无效的 `v-for` 表达式 |
+| `SQV0004` | `v-else` / `v-else-if` 前面没有 `v-if` 链 |
+| `SQV0005` | 同一属性/事件存在重复绑定 |
+| `SQV0006` | 暂不支持动态参数生成 |
+| `SQV0007` | 不支持的 Vue 内置组件生成 |
+| `SQV0008` | 暂不支持作用域插槽属性 |
+| `SQV0009` | 模板表达式必须是 C# 表达式 |
 
-General section and component diagnostics can continue to use existing SQX diagnostics where appropriate, or can later be moved to language-neutral IDs.
+通用的分区与组件诊断在合适时可继续使用现有 SQX 诊断，或后续迁移到与语言无关的 ID。
 
-## Implementation Milestones
+## 实现状态
 
-### Milestone A: Shared IR And Parser Ownership
+以下能力已落地，通过 `VueGeneratorTests`（SourceGenerator 34 项、Markup 19 项、UI 216 项全部通过）。SQV 使用独立解析栈（`SqvLexer`/`SqvTemplateParser`/`SqvDocumentParser`/`SqvAttributeConverter`），不再调用 `SqxParser`/`SqxCoreParser`。
 
-- Make `Square.Markup` consumable by `Square.Compiler`.
-- Add shared template IR and source span model.
-- Add SQX-to-IR adapter.
-- Change SourceGenerator emitter and validators to consume IR.
-- Keep `.sqx` tests passing.
-- Stop adding new behavior to the duplicated SourceGenerator parser.
+已支持的 Vue 语法：
 
-### Milestone B: `.sqv` Section Parser And Vue AST
+- `{{ expr }}` 文本插值。
+- 静态属性、`:prop`、`v-bind:prop` 绑定。
+- `@event`、`v-on:event` 事件绑定。
+- 事件修饰符 `.stop`、`.prevent`：生成 `e.StopPropagation(); e.PreventDefault(); handler(e);` 包装。
+- `v-if` -> `SqvIfChainDirective`（单分支）/ `ShowNode`。
+- `v-else-if` / `v-else` -> `SqvIfChainDirective` 多分支条件链，互斥 `ShowNode`（`!(prev) && (cond)` / `!(prev)`）。条件链按分支计数字段，每个分支生成独立的 `_vifN` 字段与 `ShowNode`。
+- `v-for="item in Items"` -> `SqvForDirective` -> `ForNode.Create(Items, item => ...)`。
+- `v-for="(item, index) in Items"` -> `SqvForDirective` -> `ForNode.Create(Items, (item, index) => ...)`（运行时新增 `Func<T,int,Element?>` 重载）。
+- `v-show="expr"` -> 绑定 `IsVisible`。
+- 嵌套指令（`v-for` 内含 `v-if` / `v-for` 等）通过递归 `RewriteSiblings` 支持。
+- `<template>` -> 透明展开（emitter 的 `IsTemplateFragment` 同时识别 `template` 与 `Fragment`）。
+- `v-slot` / `#name` 具名插槽 -> `slot="..."` 静态属性。
+- `ref="Name"` -> 组件 ref 字段。
+- `v-text` -> 文本绑定。
+- `v-model`（含 `.trim` / `.number` / `.lazy`）：按 `Input`/`TextArea`/`CheckBox`/`Radio`/`Select` 选择目标属性与事件。
+- `v-for` 支持 `in` 与 `of` 分隔符。
 
-- Add `.sqv` file discovery in SourceGenerator.
-- Add Vue section parser for `<template>`, `<script>`, and `<style>`.
-- Add Vue template lexer/parser.
-- Preserve source spans for diagnostics.
-- Parse full Vue 3 template syntax surface into Vue AST.
-- Add parser tests for all recognized syntax categories.
+当前静默忽略（不生成、不报错），留待后续里程碑：
 
-### Milestone C: Basic Vue-To-IR Lowering
+- 动态参数（`:[name]`、`@[event]`、`#[name]`）。
+- `v-bind="obj"`、`v-on="obj"` 对象绑定。
+- `v-html`、`v-pre`、`v-once`、`v-memo`、`v-cloak`。
+- 作用域插槽属性。
+- `:key`（由 `ForNode` 运行时接管，模板层暂不处理）。
 
-- Lower interpolation, static attributes, `v-bind`, `:prop`, `v-on`, `@event`, static class, and static style.
-- Generate working components from simple `.sqv` files.
-- Add SourceGenerator tests for property binding, text interpolation, and event handling.
+## 示例
 
-### Milestone D: Control Flow
+`samples/Square.Sample.Vue/Components/ControlsSamplesPage.sqv` 展示了 Vue 原生语法的实际用法（`v-if`、`v-for`、`:prop`、`@event`、`ref`、`v-model`）。
 
-- Lower `v-if`, `v-else-if`, and `v-else` into conditional-chain IR.
-- Lower `v-for` into for-block IR.
-- Support item variables, index variables, and key expressions where runtime supports them.
-- Add diagnostics where runtime support is missing.
+## 实现里程碑
 
-### Milestone E: Slots And Modifiers
+### ✅ 里程碑 A：独立 Vue 解析栈
 
-- Lower `<slot>`, `v-slot`, and `#name` into Square slot IR.
-- Support `.stop` and `.prevent` event modifiers.
-- Parse all event modifiers and diagnose unsupported ones.
-- Add tests for slot grouping and event wrapper generation.
+已完成。SQV 不再依赖 SQX 解析器：
 
-### Milestone F: v-model And Runtime Gaps
+- `SqvLexer`：Vue 模板词法器。
+- `SqvTemplateParser`：Vue 模板解析器，直接构造 `SqxNode` 树与 Vue 专属指令节点。
+- `SqvDocumentParser`：分区解析器，支持嵌套 `<template>` 配对。
+- `SqvAttributeConverter`：Vue 属性转换。
+- `SqvParser`：薄入口。
+- SQX 侧（`SqxParser`/`SqxAst`/`ParserCore`/`Directives`）零 `Sqv` 引用，验证依赖单向。
 
-- Add `v-model` generation for `Input`, `CheckBox`, and `Select`.
-- Add runtime APIs needed for index/key loop generation if missing.
-- Evaluate dynamic component and transition support after core `.sqv` is stable.
+### ✅ 里程碑 B：基础 Vue 语法生成
 
-### Milestone G: Docs, Samples, Cleanup
+已完成：
 
-- Add `docs/Sqv-Spec.md`.
-- Update `README.md`, `docs/Architecture.md`, `docs/Generator.md`, and getting started docs.
-- Add `.sqv` sample components.
-- Remove or quarantine the old duplicated SourceGenerator parser after IR migration is complete.
+- `{{ expr }}` 插值、静态属性、`:prop`/`v-bind:prop`、`@event`/`v-on:event`。
+- 静态 `class`/`style`。
+- `ref="Name"`。
+- `<template>` 透明展开。
+- `v-slot`/`#name` 具名插槽。
 
-## Test Plan
+### ✅ 里程碑 C：控制流
 
-Markup tests:
+已完成：
 
-- Parse `{{ Name }}`.
-- Parse `:text="Title"`.
-- Parse `v-bind:text="Title"`.
-- Parse `@click="OnClick"`.
-- Parse `v-on:click="OnClick"`.
-- Parse event modifiers.
-- Parse `v-if` / `v-else-if` / `v-else` chains.
-- Parse `v-for="item in Items"`.
-- Parse `v-for="(item, index) in Items"`.
-- Parse `:key="item.Id"`.
-- Parse `v-slot` and `#header`.
-- Parse dynamic arguments.
-- Parse Vue built-ins without crashing.
-- Preserve line and column spans.
+- `v-if`/`v-else-if`/`v-else` -> `SqvIfChainDirective` -> 互斥 `ShowNode`。
+- `v-for="item in Items"` -> `SqvForDirective` -> `ForNode.Create`。
+- `v-for="(item, index) in Items"` -> 索引重载（运行时新增 `Func<T,int,Element?>`）。
+- `v-show` -> 绑定 `IsVisible`。
+- 嵌套指令递归支持。
 
-SourceGenerator tests:
+### ✅ 里程碑 D：事件修饰符与 v-model
 
-- `.sqv` file generates a component.
-- Interpolation emits text binding.
-- `:prop` emits property binding.
-- `@event` emits event binding.
-- `.stop.prevent` emits an event wrapper.
-- `v-if` emits mutually exclusive conditional behavior.
-- `v-for` emits loop behavior.
-- Required Prop validation works with Vue binding syntax.
-- `.sqx` and `.sqv` components can reference each other by component name.
-- Existing `.sqx` tests still pass unchanged.
+已完成：
 
-Commands:
+- `.stop`/`.prevent` 事件修饰符包装。
+- `v-model`（`Input`/`TextArea`/`CheckBox`/`Radio`/`Select`）。
+- `.trim`/`.number`/`.lazy` 修饰符。
+
+### 里程碑 E：动态参数与对象绑定（待定）
+
+- `:[name]`、`@[event]`、`#[name]` 动态参数。
+- `v-bind="obj"`、`v-on="obj"` 对象绑定。
+- 需要运行时协议设计。
+
+### 里程碑 F：内置组件与高级特性（待定）
+
+- `<component :is="...">`、`<Teleport>`、`<Transition>`、`<TransitionGroup>`、`<KeepAlive>`、`<Suspense>`。
+- 作用域插槽属性。
+- `:key` 循环键。
+
+### 里程碑 G：诊断与清理（待定）
+
+- 为不支持的特性输出 `SQV0001`-`SQV0009` 诊断，而非静默忽略。
+- 新增 `docs/Sqv-Spec.md`。
+- 更新 `README.md`、`docs/Architecture.md`、`docs/Generator.md`。
+
+## 测试计划
+
+已覆盖（`VueGeneratorTests`，23 项）：
+
+- `.sqv` 文件生成一个组件。
+- `{{ expr }}` 插值生成文本绑定。
+- `:prop` 生成属性绑定。
+- `@event` 生成事件绑定。
+- `.stop.prevent` 生成事件包装器。
+- `v-if` 生成 `ShowNode`。
+- `v-else-if` / `v-else` 生成互斥条件链。
+- `v-for="item in Items"` 生成 `ForNode.Create`。
+- `v-for="(item, index) in Items"` 生成索引重载。
+- `v-show` 绑定 `IsVisible`。
+- 嵌套 `v-for` + `v-if` 生成独立节点。
+- `v-slot` / `#name` 具名插槽。
+- `v-model`（`Input`/`CheckBox`/`Select`）及 `.trim`/`.number`/`.lazy` 修饰符。
+- `ref="Name"` 生成 ref 字段。
+- 内置控件（`View`/`Text`/`ScrollViewer`/`Popup`/`Dialog`/`MenuBar` 等）降级。
+- 内联 SVG 降级。
+- `.sqx` 与 `.sqv` 组件可以通过组件名互相引用。
+- 现有 `.sqx` 测试保持不变通过。
+
+运行时测试（`M1IntegrationTests`）：
+
+- `ForNode.Create` 索引重载接收正确索引。
+- `ShowNode` / `ForNode` 对 `ObservableValue` / `ObservableCollection` 响应。
+
+待补充：
+
+- 解析器单元测试（`SqvLexer`/`SqvTemplateParser` 独立于生成器）。
+- 源码区间（行/列）保留测试。
+- 不支持特性的诊断测试（里程碑 G）。
+
+命令：
 
 ```powershell
 dotnet test tests/Square.Markup.Tests/Square.Markup.Tests.csproj
@@ -443,10 +445,10 @@ dotnet test tests/Square.SourceGenerator.Tests/Square.SourceGenerator.Tests.cspr
 dotnet test
 ```
 
-## Open Design Questions
+## 待决设计问题
 
-- Should `.sqv` expressions require explicit `.Value` for `ObservableValue<T>`, or should the generator preserve the current SQX shorthand behavior where possible?
-- Should unsupported Vue built-ins be hard errors or warnings during the parser-complete milestone?
-- Should `Square.Markup` target only `netstandard2.0`, or multi-target `netstandard2.0;net10.0`?
-- Should conditional chains reuse `SwitchNode`, or should a dedicated `ConditionalNode` be added?
-- Should `v-model` be part of the first generation milestone or a separate runtime milestone?
+- `.sqv` 表达式是否要求对 `ObservableValue<T>` 显式使用 `.Value`，还是生成器应尽可能沿用当前 SQX 的简写行为？
+- 当前条件链用独立 `ShowNode` 实现互斥，是否应改用 `SwitchNode`/`Match` 以获得更精确的运行时语义？
+- `:key` 是否应由 `ForNode` 运行时支持键化复用，还是仅作模板层提示？
+- 不支持的 Vue 特性应静默忽略（当前行为）还是输出 `SQV0001`-`SQV0009` 诊断？
+- `v-model` 对非内置控件（自定义组件）如何确定目标属性与事件？

@@ -3,6 +3,7 @@ using Square.Events;
 using Square.Graphics;
 using Square.Runtime;
 using Square.UI;
+using System.Collections.Concurrent;
 using Xunit;
 using ImageControl = Square.Controls.Image;
 
@@ -103,6 +104,70 @@ public sealed class ImageControlTests
         Assert.Equal(new Size(1, 1), image.Measure(Size.Empty));
     }
 
+    [Fact]
+    public void ChangingSourceCancelsAndDiscardsThePreviousLoad()
+    {
+        using var loader = new ControlledImageSourceLoader();
+        var document = new UIDocument();
+        var image = document.CreateElement<ImageControl>();
+        document.Body.Children.Add(image);
+        ((IComponentLifecycle)document.Body).OnAttached();
+        var loadCount = 0;
+        image.AddEventListener("load", () => loadCount++);
+
+        image.Source = loader.Source("first");
+        var first = loader.WaitForRequest("first");
+        image.Source = loader.Source("second");
+        var second = loader.WaitForRequest("second");
+
+        Assert.True(first.CancellationToken.IsCancellationRequested);
+        var current = new TestImageFrameSource(2, 1);
+        second.Completion.SetResult(current);
+        DrainUntil(document, () => loadCount == 1);
+
+        var stale = new TestImageFrameSource(1, 1);
+        first.Completion.SetResult(stale);
+        DrainUntil(document, () => stale.IsDisposed);
+
+        Assert.True(stale.IsDisposed);
+        Assert.False(current.IsDisposed);
+        Assert.Equal(1, loadCount);
+        Assert.Null(image.Error);
+        Assert.Equal(new Size(2, 1), image.Measure(Size.Empty));
+
+        ((IComponentLifecycle)document.Body).OnDetached();
+        Assert.True(current.IsDisposed);
+    }
+
+    [Fact]
+    public void DetachingDuringLoadCancelsAndDisposesLateResult()
+    {
+        using var loader = new ControlledImageSourceLoader();
+        var document = new UIDocument();
+        var image = document.CreateElement<ImageControl>();
+        document.Body.Children.Add(image);
+        var loadCount = 0;
+        var errorCount = 0;
+        image.AddEventListener("load", () => loadCount++);
+        image.AddEventListener("loaderror", () => errorCount++);
+        ((IComponentLifecycle)document.Body).OnAttached();
+
+        image.Source = loader.Source("detach");
+        var request = loader.WaitForRequest("detach");
+        ((IComponentLifecycle)document.Body).OnDetached();
+
+        Assert.True(request.CancellationToken.IsCancellationRequested);
+        var late = new TestImageFrameSource(3, 1);
+        request.Completion.SetResult(late);
+        DrainUntil(document, () => late.IsDisposed);
+
+        Assert.True(late.IsDisposed);
+        Assert.Equal(0, loadCount);
+        Assert.Equal(0, errorCount);
+        Assert.Null(image.Error);
+        Assert.Equal(new Size(160, 96), image.Measure(Size.Empty));
+    }
+
     private static string WriteTempImage(byte[] bytes)
     {
         var path = Path.Combine(Path.GetTempPath(), $"square-image-{Guid.NewGuid():N}.bin");
@@ -128,6 +193,79 @@ public sealed class ImageControlTests
         {
             document.Context.Dispatcher.Run();
             Thread.Sleep(10);
+        }
+    }
+
+    private sealed class ControlledImageSourceLoader : IImageSourceLoader, IDisposable
+    {
+        private readonly string _scheme = $"squaretest{Guid.NewGuid():N}";
+        private readonly ConcurrentDictionary<string, LoadRequest> _requests = new();
+
+        public ControlledImageSourceLoader() => ImageSourceLoaderRegistry.Register(this);
+
+        public string Source(string name) => $"{_scheme}:///{name}";
+
+        public bool CanLoad(string source) => source.StartsWith($"{_scheme}:", StringComparison.Ordinal);
+
+        public ValueTask<IImageFrameSource> LoadAsync(string source, CancellationToken cancellationToken = default)
+        {
+            var name = new Uri(source).AbsolutePath.TrimStart('/');
+            var request = new LoadRequest(cancellationToken);
+            if (!_requests.TryAdd(name, request)) throw new InvalidOperationException($"Duplicate request '{name}'.");
+            return new ValueTask<IImageFrameSource>(request.Completion.Task);
+        }
+
+        public LoadRequest WaitForRequest(string name)
+        {
+            var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < timeout)
+            {
+                if (_requests.TryGetValue(name, out var request)) return request;
+                Thread.Sleep(10);
+            }
+            throw new TimeoutException($"Image request '{name}' was not started.");
+        }
+
+        public void Dispose() => ImageSourceLoaderRegistry.Unregister(this);
+    }
+
+    private sealed class LoadRequest(CancellationToken cancellationToken)
+    {
+        public CancellationToken CancellationToken { get; } = cancellationToken;
+        public TaskCompletionSource<IImageFrameSource> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class TestImageFrameSource : IImageFrameSource
+    {
+        private readonly Bitmap _bitmap;
+
+        public TestImageFrameSource(int width, int height)
+        {
+            Width = width;
+            Height = height;
+            _bitmap = new Bitmap(width, height);
+        }
+
+        public int Width { get; }
+        public int Height { get; }
+        public int FrameCount => 1;
+        public int PlayCount => 1;
+        public bool IsDisposed { get; private set; }
+
+        public Bitmap GetFrame(int index) => index == 0
+            ? _bitmap
+            : throw new ArgumentOutOfRangeException(nameof(index));
+
+        public TimeSpan GetFrameDuration(int index) => index == 0
+            ? TimeSpan.Zero
+            : throw new ArgumentOutOfRangeException(nameof(index));
+
+        public void Dispose()
+        {
+            if (IsDisposed) return;
+            IsDisposed = true;
+            _bitmap.Dispose();
         }
     }
 }

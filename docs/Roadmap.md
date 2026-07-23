@@ -100,7 +100,7 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 - **DevTools NativeAOT**：移除 ASP.NET Core/Kestrel 依赖，改为 loopback `HttpListener`、显式路由与手写 JSON 序列化，主示例 AOT 发布可继续启用截图、输入注入和 Inspector。
 - **PNG 编码与 BMP 解码**：`Square.Graphics.Codecs` 命名空间下，`BitmapPngEncoder` 将 `Bitmap` 编码为 8 位 RGBA PNG（zlib 压缩），`BmpPngConverter` 提供非压缩 24/32 位 BMP 加载与 BMP→PNG 转换，纯 C# 无外部依赖。
 - **SVG 资源与模板 SVG DOM**：`Square.Graphics.Svg.SvgImage` 可从文件、流或字符串加载静态 SVG；SQX/SQV 可直接声明 `svg/g/path/rect/circle/ellipse/line/polyline/polygon`。每个根 `SVGSVGElement` 持有 `SVGDocument : XMLDocument`，内部 SVG 节点由该文档管理并通过现有矢量绘制命令渲染，支持 NativeAOT。
-- **`Square.Images` 图片文档、控件加载与动画模块**：独立 packable 项目依赖核心 `Square.Graphics.Bitmap`，通过统一 `ImageDecoder.Decode(...) -> ImageDocument` 自动探测格式。已支持纯 C# PNG/APNG、基线 JPEG、BMP、GIF 多帧合成、ICO/CUR 全变体、Classic TIFF 多页面与 VP8L WebP 动画；GIF、APNG 和 WebP 覆盖帧时长、循环、透明、帧矩形、blend 与 disposal，ICO/CUR 暴露主变体、源位深与热点，JPEG/TIFF 支持大小端 Exif/IFD Orientation。`<Image source="...">` 已通过核心加载器注册表异步加载本地文件、自动播放动画、处理取消/错误/可见性暂停；动画复用稳定 `Bitmap` 表面，Software Renderer 直接读取新像素，Vulkan 依据 `ContentVersion` 覆盖既有 atlas 区域。测试包含提交到仓库的 GIF/APNG/动画 VP8L WebP 文件、SHA-256 清单与逐帧 raw BGRA golden。后续增量包括 TIFF LZW/Deflate/PackBits、Tile 与更多颜色空间、WebP VP8 lossy/ALPH、完整 Exif/GPS/缩略图，以及 HTTP/嵌入资源加载器。
+- **`Square.Images` 图片文档、控件加载与动画模块**：独立 packable 项目依赖核心 `Square.Graphics.Bitmap`，通过统一 `ImageDecoder.Decode(...) -> ImageDocument` 自动探测格式。已支持纯 C# PNG/APNG、基线 JPEG、BMP、GIF 多帧合成、ICO/CUR 全变体、Classic TIFF 多页面，以及 VP8L/VP8/ALPH 静态与动画 WebP；TIFF 支持未压缩/LZW/Deflate/Adobe Deflate/PackBits Strip 和 8 位 Predictor 2；WebP 支持 VP8X EXIF Orientation、ICCP/ALPH/EXIF/XMP flag/chunk 一致性、阶段顺序与累计元数据限制；VP8 关键帧支持分割、多 token partition、全部帧内预测、残差、量化与 loop filter；ALPH 支持 raw/VP8L 压缩、四种 filter 与 straight-alpha RGB 保留；动画支持 VP8L、VP8、ALPH+VP8 混合帧、局部矩形、alpha-over/no-blend、dispose-to-background 和单帧 loop metadata；GIF、APNG 和 WebP 覆盖帧时长、循环、透明、帧矩形、blend 与 disposal，ICO/CUR 暴露主变体、源位深与热点，JPEG/TIFF/WebP 支持 Exif/IFD Orientation。`<Image source="...">` 已通过核心加载器注册表异步加载本地文件、自动播放动画、处理取消/错误/可见性暂停；动画复用稳定 `Bitmap` 表面，Software Renderer 直接读取新像素，Vulkan 依据 `ContentVersion` 覆盖既有 atlas 区域。测试包含提交到仓库的 GIF/APNG、VP8L/VP8/ALPH 动画 WebP、静态 VP8 lossy 和透明 VP8+ALPH 文件、SHA-256 清单与 raw BGRA golden，并覆盖 Source 快速切换、取消、卸载与迟到结果释放。`Square.Images` 已通过本地 NuGet 包消费和 Windows x64 NativeAOT 原生发布/执行验证。后续增量包括嵌入资源与 HTTP 加载器、TIFF Tile 与更多颜色空间，以及完整 Exif/GPS/缩略图。
 - **DOM `Range` 与 `TextFragment`**：`Square.UI.Range` 提供最小 DOM Range 文本选择模型（`SetStart` / `SetEnd` / `SelectNodeContents` / `Collapse` / 边界点比较）；`Square.Rendering.TextFragment` 提供字符级命中测试（`HitTestOffset`），为富文本编辑与选择奠定基础。
 - **Software Renderer 性能优化**：`RenderContext` 缓存位图像素指针与尺寸、裁剪区域缓存（避免栈查找）、批量 BGRA 填充；`LayoutEngine` 与 `StyleAccessor` 同步优化。
 - **`DesktopApplication.RenderingMode`**：新增 `RenderMode` 枚举（`FullFrame` / `Auto` / `DirtyRegion`），控制每帧重绘策略，可通过 `--render-mode` 参数或 `SQUARE_RENDER_MODE` 环境变量配置。
@@ -131,7 +131,7 @@ M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文�
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
 - M9 多目标输出：WinUI host + Software bitmap、SVG exporter、NativeUiNode 原型、Godot 嵌入宿主（见 `docs/Rendering-Targets.md`）
 - M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作（基于已落地的 `Range` 与 `TextFragment`）
-- `.sqv` 前端继续推进：独立 Template IR、`v-model`、slots 与 scoped props、动态参数等（见 `docs/vue-plan.md` 里程碑 D–G）
+- `.sqv` 前端继续推进：`v-model` 与基础 slots 已落地；下一步是独立 Template IR、scoped slot props、动态参数与解析器归属清理（见 `docs/vue-plan.md` 里程碑 A、E–G）
 - 继续扩展 CSS Grid / Animation 到更完整规范
 
 ---

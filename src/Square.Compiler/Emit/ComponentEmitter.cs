@@ -13,6 +13,8 @@ namespace Square.Compiler.Emit
         private readonly DirectiveCatalog _catalog = DirectiveCatalog.BuiltIn;
         private DirectiveEmitPipeline _pipeline;
         private readonly Dictionary<string, int> _structCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        private int _vforIndex;
+        private int _vifIndex;
         private int _varCounter;
         private int _slotCounter;
 
@@ -66,6 +68,8 @@ namespace Square.Compiler.Emit
         {
             _varCounter = 0;
             _slotCounter = 0;
+            _vforIndex = 0;
+            _vifIndex = 0;
             _structCounts.Clear();
             _refs.Clear();
             _sb.Clear();
@@ -98,16 +102,26 @@ namespace Square.Compiler.Emit
         {
             foreach (var node in nodes)
             {
-                if (node is not SqxElement element) continue;
-                if (_catalog.TryGet(element.TagName, out var descriptor) &&
-                    !descriptor.SkipStandaloneEmit &&
-                    descriptor.Pattern == "ControlFlowAttach")
+                if (node is SqxElement element)
                 {
-                    var prefix = string.IsNullOrEmpty(descriptor.FieldPrefix) ? "_dir" : descriptor.FieldPrefix;
-                    if (!_structCounts.TryGetValue(prefix, out var count)) count = 0;
-                    _structCounts[prefix] = count + 1;
+                    if (_catalog.TryGet(element.TagName, out var descriptor) &&
+                        !descriptor.SkipStandaloneEmit &&
+                        descriptor.Pattern == "ControlFlowAttach")
+                    {
+                        var prefix = string.IsNullOrEmpty(descriptor.FieldPrefix) ? "_dir" : descriptor.FieldPrefix;
+                        if (!_structCounts.TryGetValue(prefix, out var count)) count = 0;
+                        _structCounts[prefix] = count + 1;
+                    }
+                    CountStructs(element.Children);
                 }
-                CountStructs(element.Children);
+                else if (node is SqvForDirective)
+                {
+                    _structCounts["_vfor"] = (_structCounts.TryGetValue("_vfor", out var c) ? c : 0) + 1;
+                }
+                else if (node is SqvIfChainDirective ifChain)
+                {
+                    _structCounts["_vif"] = (_structCounts.TryGetValue("_vif", out var c2) ? c2 : 0) + ifChain.Branches.Count;
+                }
             }
         }
 
@@ -121,6 +135,9 @@ namespace Square.Compiler.Emit
             EmitStructFields("_show", "ShowNode");
             EmitStructFields("_for", "IForNode");
             EmitStructFields("_switch", "SwitchNode");
+            // Vue 专属结构节点
+            EmitStructFields("_vfor", "IForNode");
+            EmitStructFields("_vif", "ShowNode");
             _sb.AppendLine();
 
             var hasStructs = _structCounts.Count > 0;
@@ -133,9 +150,13 @@ namespace Square.Compiler.Emit
                 EmitDisposeFields("_show");
                 EmitDisposeFields("_for");
                 EmitDisposeFields("_switch");
+                EmitDisposeFields("_vfor");
+                EmitDisposeFields("_vif");
                 EmitNullFields("_show");
                 EmitNullFields("_for");
                 EmitNullFields("_switch");
+                EmitNullFields("_vfor");
+                EmitNullFields("_vif");
                 _sb.AppendLine("        base.OnGeneratedDetachedCore();");
                 _sb.AppendLine("    }");
                 _sb.AppendLine();
@@ -199,6 +220,14 @@ namespace Square.Compiler.Emit
                     _sb.AppendLine(indent + parentName + ".Children.Add(" + elementName + ");");
                     if (RequiresBuildAfterAttach(element.TagName))
                         _sb.AppendLine(indent + elementName + ".BuildElementTree();");
+                }
+                else if (node is SqvForDirective forDirective)
+                {
+                    EmitVFor(forDirective, indent, parentName);
+                }
+                else if (node is SqvIfChainDirective ifChain)
+                {
+                    EmitVIfChain(ifChain, indent, parentName, localName);
                 }
             }
         }
@@ -345,6 +374,45 @@ namespace Square.Compiler.Emit
             }
         }
 
+        private void EmitVFor(SqvForDirective directive, string indent, string parentName)
+        {
+            var field = "_vfor" + _vforIndex++;
+            var item = directive.ItemName;
+            var hasIndex = !string.IsNullOrEmpty(directive.IndexName);
+            var lambda = hasIndex ? item + ", " + directive.IndexName : item;
+            _sb.AppendLine(indent + field + " = ForNode.Create(" + directive.SourceExpression + ", " + lambda + " =>");
+            _sb.AppendLine(indent + "{");
+            EmitFactoryBody(directive.Children, indent + "    ", item);
+            _sb.AppendLine(indent + "});");
+            _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
+        }
+
+        private void EmitVIfChain(SqvIfChainDirective chain, string indent, string parentName, string localName)
+        {
+            string accumulated = null;
+            foreach (var branch in chain.Branches)
+            {
+                var field = "_vif" + _vifIndex++;
+                string condition;
+                if (branch.IsElse)
+                    condition = accumulated == null ? "true" : "!(" + accumulated + ")";
+                else if (accumulated == null)
+                    condition = branch.Condition ?? "false";
+                else
+                    condition = "!(" + accumulated + ") && (" + (branch.Condition ?? "false") + ")";
+
+                accumulated = accumulated == null
+                    ? "(" + (branch.Condition ?? "false") + ")"
+                    : accumulated + " || (" + (branch.Condition ?? "false") + ")";
+
+                _sb.AppendLine(indent + field + " = new ShowNode(" + condition + ", () =>");
+                _sb.AppendLine(indent + "{");
+                EmitFactoryBody(branch.Children, indent + "    ", localName);
+                _sb.AppendLine(indent + "});");
+                _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
+            }
+        }
+
         private void EmitFactoryBody(List<SqxNode> nodes, string indent, string localName)
         {
             var content = nodes.Where(node => !IsWrapperExpression(node)).ToList();
@@ -379,6 +447,15 @@ namespace Square.Compiler.Emit
                 return EmitText(text.Text, indent);
             if (node is SqxExpression expression)
                 return EmitExpressionText(expression.Expression, indent, localName);
+
+            // Vue 专属指令作为工厂根：用 View 包装，使其可作为 Element 返回。
+            if (node is SqvForDirective or SqvIfChainDirective)
+            {
+                var wrapper = NextVariable();
+                _sb.AppendLine(indent + "var " + wrapper + " = new View();");
+                EmitNodes(new List<SqxNode> { node }, indent, wrapper, localName);
+                return wrapper;
+            }
 
             var fallback = NextVariable();
             _sb.AppendLine(indent + "var " + fallback + " = new View();");

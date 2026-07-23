@@ -32,4 +32,12 @@ internal static class ExifReader
         }
         return ImageOrientation.Normal;
     }
+
+    public static ImageOrientation ReadWebpOrientation(ReadOnlySpan<byte> data, ImageDecoderOptions options)
+    {
+        if (data.StartsWith(Prefix)) data = data[Prefix.Length..];
+        if (data.Length > options.MaxMetadataBytes)
+            throw new InvalidDataException("WebP Exif metadata exceeds the configured byte limit.");
+        return TiffIfdReader.ReadOrientation(data, options);
+    }
 }

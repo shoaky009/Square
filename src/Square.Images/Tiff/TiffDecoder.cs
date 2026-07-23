@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Square.Graphics;
 using Square.Images.Metadata;
 
@@ -16,6 +17,7 @@ internal static class TiffDecoder
     private const ushort RowsPerStrip = 278;
     private const ushort StripByteCounts = 279;
     private const ushort PlanarConfiguration = 284;
+    private const ushort Predictor = 317;
     private const ushort ColorMap = 320;
     private const ushort ExtraSamples = 338;
 
@@ -67,7 +69,8 @@ internal static class TiffDecoder
         var height = checked((int)RequiredSingle(ref reader, directory, ImageLength));
         options.ValidateDimensions(width, height);
         var compression = OptionalSingle(ref reader, directory, Compression, 1);
-        if (compression != 1) throw new InvalidDataException("Only uncompressed TIFF pages are supported.");
+        if (compression is not (1 or 5 or 8 or 32946 or 32773))
+            throw new InvalidDataException($"Unsupported TIFF compression {compression}.");
         var photometric = OptionalSingle(ref reader, directory, Photometric, 1);
         var samples = checked((int)OptionalSingle(ref reader, directory, SamplesPerPixel, 1));
         var planar = OptionalSingle(ref reader, directory, PlanarConfiguration, 1);
@@ -79,6 +82,10 @@ internal static class TiffDecoder
         if (bits.Any(value => value != bits[0])) throw new InvalidDataException("Mixed TIFF sample depths are not supported.");
         if (bits[0] == 1 && samples != 1) throw new InvalidDataException("Only single-channel 1-bit TIFF pages are supported.");
         ValidateColorModel(photometric, samples);
+        var predictor = OptionalSingle(ref reader, directory, Predictor, 1);
+        if (predictor is not (1 or 2)) throw new InvalidDataException($"Unsupported TIFF predictor {predictor}.");
+        if (predictor == 2 && bits[0] != 8)
+            throw new InvalidDataException("TIFF horizontal predictor requires 8-bit samples.");
 
         var orientationValue = OptionalSingle(ref reader, directory, Orientation, 1);
         if (orientationValue is < 1 or > 8) throw new InvalidDataException("TIFF orientation value is invalid.");
@@ -104,11 +111,12 @@ internal static class TiffDecoder
             for (var strip = 0; strip < offsets.Length; strip++)
             {
                 var rows = checked((int)Math.Min(rowsPerStrip, (uint)(height - row)));
-                var requiredBytes = checked((uint)(rows * rowBytes));
-                if (byteCounts[strip] < requiredBytes) throw new InvalidDataException("TIFF strip is shorter than its rows.");
-                var data = reader.Slice(offsets[strip], byteCounts[strip]);
+                var requiredBytes = checked(rows * rowBytes);
+                var encoded = reader.Slice(offsets[strip], byteCounts[strip]);
+                var decoded = DecodeStrip(encoded, requiredBytes, compression);
+                if (predictor == 2) ApplyHorizontalPredictor(decoded, rows, rowBytes, samples);
                 for (var stripRow = 0; stripRow < rows; stripRow++, row++)
-                    DecodeRow(data.Slice(stripRow * rowBytes, rowBytes), bitmap.GetRow(row), width,
+                    DecodeRow(decoded.AsSpan(stripRow * rowBytes, rowBytes), bitmap.GetRow(row), width,
                         bits[0], samples, photometric, palette, extraSample);
             }
             return bitmap;
@@ -117,6 +125,188 @@ internal static class TiffDecoder
         {
             bitmap.Dispose();
             throw;
+        }
+    }
+
+    private static byte[] DecodeStrip(ReadOnlySpan<byte> source, int expectedBytes, uint compression)
+    {
+        var destination = new byte[expectedBytes];
+        switch (compression)
+        {
+            case 1:
+                if (source.Length < expectedBytes) throw new InvalidDataException("TIFF strip is shorter than its rows.");
+                source[..expectedBytes].CopyTo(destination);
+                break;
+            case 5:
+                DecodeLzw(source, destination);
+                break;
+            case 8:
+            case 32946:
+                DecodeDeflate(source, destination);
+                break;
+            case 32773:
+                DecodePackBits(source, destination);
+                break;
+            default:
+                throw new InvalidDataException($"Unsupported TIFF compression {compression}.");
+        }
+        return destination;
+    }
+
+    private static void DecodeDeflate(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        try
+        {
+            using var input = new MemoryStream(source.ToArray(), writable: false);
+            using var deflate = new ZLibStream(input, CompressionMode.Decompress);
+            ReadExactly(deflate, destination, "TIFF Deflate strip is truncated.");
+            if (deflate.ReadByte() != -1) throw new InvalidDataException("TIFF Deflate strip expands beyond its rows.");
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException)
+        {
+            throw new InvalidDataException("Invalid TIFF Deflate strip.", exception);
+        }
+    }
+
+    private static void ReadExactly(Stream stream, Span<byte> destination, string truncatedMessage)
+    {
+        var offset = 0;
+        while (offset < destination.Length)
+        {
+            var read = stream.Read(destination[offset..]);
+            if (read == 0) throw new InvalidDataException(truncatedMessage);
+            offset += read;
+        }
+    }
+
+    private static void DecodePackBits(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        var input = 0;
+        var output = 0;
+        while (output < destination.Length)
+        {
+            if (input >= source.Length) throw new InvalidDataException("TIFF PackBits strip is truncated.");
+            var control = unchecked((sbyte)source[input++]);
+            if (control >= 0)
+            {
+                var count = control + 1;
+                if (count > source.Length - input) throw new InvalidDataException("TIFF PackBits literal is truncated.");
+                if (count > destination.Length - output) throw new InvalidDataException("TIFF PackBits strip expands beyond its rows.");
+                source.Slice(input, count).CopyTo(destination[output..]);
+                input += count;
+                output += count;
+            }
+            else if (control >= -127)
+            {
+                var count = 1 - control;
+                if (input >= source.Length) throw new InvalidDataException("TIFF PackBits run is truncated.");
+                if (count > destination.Length - output) throw new InvalidDataException("TIFF PackBits strip expands beyond its rows.");
+                destination.Slice(output, count).Fill(source[input++]);
+                output += count;
+            }
+        }
+    }
+
+    private static void DecodeLzw(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        const int clearCode = 256;
+        const int endCode = 257;
+        var prefixes = new short[4096];
+        var suffixes = new byte[4096];
+        var stack = new byte[4096];
+        var reader = new TiffLzwBitReader(source);
+        var nextCode = 258;
+        var codeSize = 9;
+        var previousCode = -1;
+        var firstByte = (byte)0;
+        var output = 0;
+        var sawEnd = false;
+
+        while (reader.TryRead(codeSize, out var code))
+        {
+            if (code == clearCode)
+            {
+                nextCode = 258;
+                codeSize = 9;
+                previousCode = -1;
+                continue;
+            }
+            if (code == endCode)
+            {
+                sawEnd = true;
+                break;
+            }
+            if (code > nextCode || code >= 4096) throw new InvalidDataException("TIFF LZW strip contains an invalid code.");
+
+            var currentCode = code;
+            var stackLength = 0;
+            if (code == nextCode)
+            {
+                if (previousCode < 0) throw new InvalidDataException("TIFF LZW strip starts with an invalid code.");
+                stack[stackLength++] = firstByte;
+                currentCode = previousCode;
+            }
+            while (currentCode >= 258)
+            {
+                if (currentCode >= nextCode || stackLength >= stack.Length)
+                    throw new InvalidDataException("TIFF LZW dictionary is invalid.");
+                stack[stackLength++] = suffixes[currentCode];
+                currentCode = prefixes[currentCode];
+            }
+            if (currentCode > 255) throw new InvalidDataException("TIFF LZW strip contains an invalid root code.");
+            firstByte = (byte)currentCode;
+            stack[stackLength++] = firstByte;
+            if (stackLength > destination.Length - output)
+                throw new InvalidDataException("TIFF LZW strip expands beyond its rows.");
+            while (stackLength > 0) destination[output++] = stack[--stackLength];
+
+            if (previousCode >= 0 && nextCode < 4096)
+            {
+                prefixes[nextCode] = (short)previousCode;
+                suffixes[nextCode] = firstByte;
+                nextCode++;
+                if (nextCode == (1 << codeSize) - 1 && codeSize < 12) codeSize++;
+            }
+            previousCode = code;
+        }
+
+        if (!sawEnd || output != destination.Length)
+            throw new InvalidDataException("TIFF LZW strip is truncated.");
+    }
+
+    private static void ApplyHorizontalPredictor(Span<byte> strip, int rows, int rowBytes, int samples)
+    {
+        for (var row = 0; row < rows; row++)
+        {
+            var data = strip.Slice(row * rowBytes, rowBytes);
+            for (var index = samples; index < data.Length; index++)
+                data[index] = unchecked((byte)(data[index] + data[index - samples]));
+        }
+    }
+
+    private ref struct TiffLzwBitReader(ReadOnlySpan<byte> data)
+    {
+        private readonly ReadOnlySpan<byte> _data = data;
+        private int _bitOffset;
+
+        public bool TryRead(int bitCount, out int value)
+        {
+            if (bitCount > _data.Length * 8 - _bitOffset)
+            {
+                value = 0;
+                return false;
+            }
+            value = 0;
+            for (var bit = 0; bit < bitCount; bit++)
+            {
+                var position = _bitOffset++;
+                value = (value << 1) | ((_data[position / 8] >> (7 - position % 8)) & 1);
+            }
+            return true;
         }
     }
 

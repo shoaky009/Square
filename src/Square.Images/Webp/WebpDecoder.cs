@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
 using Square.Graphics;
+using Square.Images.Metadata;
+using Square.Images.Webp.Vp8;
 
 namespace Square.Images.Webp;
 
@@ -11,61 +13,153 @@ internal static class WebpDecoder
         var offset = 12;
         int? canvasWidth = null, canvasHeight = null;
         var animated = false;
+        byte vp8xFlags = 0;
         byte[]? stillImage = null;
+        byte[]? stillLossyImage = null;
+        byte[]? stillAlpha = null;
+        byte[]? exif = null;
+        var hasIccp = false;
+        var hasXmp = false;
+        var sawChunk = false;
+        var sawImageData = false;
+        var sawTrailingMetadata = false;
+        long metadataBytes = 0;
         uint background = 0;
         ushort loopCount = 1;
         var hasAnim = false;
         var frames = new List<WebpFrame>();
-        while (offset < end)
+        var ownsFrames = true;
+        try
         {
-            var chunk = ReadChunk(data, ref offset, end, options);
-            if (chunk.Type.SequenceEqual("VP8X"u8))
+            while (offset < end)
             {
-                if (chunk.Data.Length != 10 || canvasWidth != null) throw new InvalidDataException("Invalid WebP VP8X chunk.");
-                var flags = chunk.Data[0];
-                if ((flags & 0xC1) != 0 || chunk.Data[1] != 0 || chunk.Data[2] != 0 || chunk.Data[3] != 0)
-                    throw new InvalidDataException("Invalid WebP VP8X flags.");
-                animated = (flags & 2) != 0;
-                canvasWidth = UInt24(chunk.Data[4..7]) + 1; canvasHeight = UInt24(chunk.Data[7..10]) + 1;
-                options.ValidateDimensions(canvasWidth.Value, canvasHeight.Value);
+                var chunk = ReadChunk(data, ref offset, end, options);
+                if (chunk.Type.SequenceEqual("VP8X"u8))
+                {
+                    if (sawChunk || chunk.Data.Length != 10 || canvasWidth != null)
+                        throw new InvalidDataException("Invalid WebP VP8X chunk.");
+                    var flags = chunk.Data[0];
+                    if ((flags & 0xC1) != 0 || chunk.Data[1] != 0 || chunk.Data[2] != 0 || chunk.Data[3] != 0)
+                        throw new InvalidDataException("Invalid WebP VP8X flags.");
+                    vp8xFlags = flags;
+                    animated = (flags & 2) != 0;
+                    canvasWidth = UInt24(chunk.Data[4..7]) + 1; canvasHeight = UInt24(chunk.Data[7..10]) + 1;
+                    options.ValidateDimensions(canvasWidth.Value, canvasHeight.Value);
+                }
+                else if (chunk.Type.SequenceEqual("ANIM"u8))
+                {
+                    if (!animated || hasAnim || sawImageData || sawTrailingMetadata || chunk.Data.Length != 6)
+                        throw new InvalidDataException("Invalid WebP ANIM chunk.");
+                    background = BinaryPrimitives.ReadUInt32LittleEndian(chunk.Data[0..4]);
+                    loopCount = BinaryPrimitives.ReadUInt16LittleEndian(chunk.Data[4..6]);
+                    hasAnim = true;
+                }
+                else if (chunk.Type.SequenceEqual("ANMF"u8))
+                {
+                    if (!animated || !hasAnim || canvasWidth == null || sawTrailingMetadata || chunk.Data.Length < 24)
+                        throw new InvalidDataException("Invalid WebP ANMF chunk.");
+                    if (frames.Count >= options.MaxItemCount) throw new InvalidDataException("WebP frame count exceeds the configured limit.");
+                    frames.Add(ParseFrame(chunk.Data, canvasWidth.Value, canvasHeight!.Value, options));
+                    sawImageData = true;
+                }
+                else if (chunk.Type.SequenceEqual("VP8L"u8))
+                {
+                    if (animated || stillImage != null || stillLossyImage != null || stillAlpha != null || sawTrailingMetadata)
+                        throw new InvalidDataException("WebP contains an unexpected VP8L bitstream.");
+                    stillImage = chunk.Data.ToArray();
+                    sawImageData = true;
+                }
+                else if (chunk.Type.SequenceEqual("VP8 "u8))
+                {
+                    if (animated || stillImage != null || stillLossyImage != null || sawTrailingMetadata)
+                        throw new InvalidDataException("WebP contains an unexpected VP8 bitstream.");
+                    stillLossyImage = chunk.Data.ToArray();
+                    sawImageData = true;
+                }
+                else if (chunk.Type.SequenceEqual("ALPH"u8))
+                {
+                    if (animated || canvasWidth == null || (vp8xFlags & 0x10) == 0 || stillAlpha != null ||
+                        stillImage != null || stillLossyImage != null || sawImageData || sawTrailingMetadata)
+                        throw new InvalidDataException("Unexpected, misplaced, or duplicate WebP ALPH chunk.");
+                    stillAlpha = chunk.Data.ToArray();
+                }
+                else if (chunk.Type.SequenceEqual("EXIF"u8))
+                {
+                    if (canvasWidth == null || (vp8xFlags & 8) == 0 || exif != null || !sawImageData || hasXmp)
+                        throw new InvalidDataException("Unexpected, misplaced, or duplicate WebP EXIF chunk.");
+                    AddMetadataBytes(chunk.Data.Length, ref metadataBytes, options, "EXIF");
+                    exif = chunk.Data.ToArray();
+                    sawTrailingMetadata = true;
+                }
+                else if (chunk.Type.SequenceEqual("ICCP"u8))
+                {
+                    if (canvasWidth == null || (vp8xFlags & 0x20) == 0 || hasIccp || hasAnim || sawImageData || sawTrailingMetadata)
+                        throw new InvalidDataException("Unexpected, misplaced, or duplicate WebP ICCP chunk.");
+                    AddMetadataBytes(chunk.Data.Length, ref metadataBytes, options, "ICC profile");
+                    hasIccp = true;
+                }
+                else if (chunk.Type.SequenceEqual("XMP "u8))
+                {
+                    if (canvasWidth == null || (vp8xFlags & 4) == 0 || hasXmp || !sawImageData)
+                        throw new InvalidDataException("Unexpected, misplaced, or duplicate WebP XMP chunk.");
+                    AddMetadataBytes(chunk.Data.Length, ref metadataBytes, options, "XMP");
+                    hasXmp = true;
+                    sawTrailingMetadata = true;
+                }
+                sawChunk = true;
             }
-            else if (chunk.Type.SequenceEqual("ANIM"u8))
-            {
-                if (!animated || hasAnim || chunk.Data.Length != 6 || frames.Count != 0)
-                    throw new InvalidDataException("Invalid WebP ANIM chunk.");
-                background = BinaryPrimitives.ReadUInt32LittleEndian(chunk.Data[0..4]);
-                loopCount = BinaryPrimitives.ReadUInt16LittleEndian(chunk.Data[4..6]);
-                hasAnim = true;
-            }
-            else if (chunk.Type.SequenceEqual("ANMF"u8))
-            {
-                if (!animated || !hasAnim || canvasWidth == null || chunk.Data.Length < 24)
-                    throw new InvalidDataException("Invalid WebP ANMF chunk.");
-                if (frames.Count >= options.MaxItemCount) throw new InvalidDataException("WebP frame count exceeds the configured limit.");
-                frames.Add(ParseFrame(chunk.Data, canvasWidth.Value, canvasHeight!.Value, options));
-            }
-            else if (chunk.Type.SequenceEqual("VP8L"u8))
-            {
-                if (animated || stillImage != null) throw new InvalidDataException("WebP contains an unexpected VP8L bitstream.");
-                stillImage = chunk.Data.ToArray();
-            }
-            else if (chunk.Type.SequenceEqual("VP8 "u8) || chunk.Type.SequenceEqual("ALPH"u8))
-                throw new InvalidDataException("Lossy WebP and separate ALPH chunks are not supported yet.");
-        }
 
-        if (animated)
-        {
-            if (!hasAnim || frames.Count == 0) throw new InvalidDataException("Animated WebP is missing animation frames.");
-            return Compose(canvasWidth!.Value, canvasHeight!.Value, background, loopCount, frames, options);
+            ValidateExtendedChunks(vp8xFlags, exif != null, hasIccp, hasXmp);
+            var orientation = exif == null ? ImageOrientation.Normal : ExifReader.ReadWebpOrientation(exif, options);
+            var applyOrientation = options.ExifOrientationPolicy == ExifOrientationPolicy.Apply &&
+                orientation != ImageOrientation.Normal;
+            var metadata = new ImageMetadata(orientation, applyOrientation);
+
+            if (animated)
+            {
+                if (!hasAnim || frames.Count == 0) throw new InvalidDataException("Animated WebP is missing animation frames.");
+                ownsFrames = false;
+                return Compose(canvasWidth!.Value, canvasHeight!.Value, background, loopCount, frames, options,
+                    orientation, metadata);
+            }
+            if (stillImage == null && stillLossyImage == null)
+                throw new InvalidDataException("WebP is missing an image bitstream.");
+            var declaresAlpha = (vp8xFlags & 0x10) != 0;
+            if (stillLossyImage != null && declaresAlpha != (stillAlpha != null))
+                throw new InvalidDataException("WebP alpha flag and ALPH chunk do not match.");
+            if (stillImage != null && stillAlpha != null)
+                throw new InvalidDataException("Lossless WebP cannot use a separate ALPH chunk.");
+            var bitmap = stillImage != null
+                ? Vp8LDecoder.Decode(stillImage, options)
+                : Vp8Decoder.Decode(stillLossyImage!, options);
+            if (canvasWidth != null && (bitmap.Width != canvasWidth || bitmap.Height != canvasHeight))
+            {
+                bitmap.Dispose(); throw new InvalidDataException("WebP canvas does not match its VP8L image.");
+            }
+            if (stillAlpha != null)
+            {
+                byte[] alpha;
+                try
+                {
+                    alpha = AlphaDecoder.Decode(stillAlpha, bitmap.Width, bitmap.Height, options);
+                }
+                catch
+                {
+                    bitmap.Dispose();
+                    throw;
+                }
+                for (var i = 0; i < alpha.Length; i++) bitmap.Pixels[i * 4 + 3] = alpha[i];
+            }
+            if (applyOrientation) bitmap = ImageOrientationTransform.Apply(bitmap, orientation, options);
+            return new ImageDocument(ImageFormat.Webp, ImageDocumentKind.Still,
+                [new ImageItem(0, bitmap, 32, TimeSpan.Zero, metadata: metadata)], 0, metadata: metadata);
         }
-        if (stillImage == null) throw new InvalidDataException("WebP is missing a VP8L image chunk.");
-        var bitmap = Vp8LDecoder.Decode(stillImage, options);
-        if (canvasWidth != null && (bitmap.Width != canvasWidth || bitmap.Height != canvasHeight))
+        catch
         {
-            bitmap.Dispose(); throw new InvalidDataException("WebP canvas does not match its VP8L image.");
+            if (ownsFrames)
+                foreach (var frame in frames) frame.Bitmap.Dispose();
+            throw;
         }
-        return new ImageDocument(ImageFormat.Webp, ImageDocumentKind.Still,
-            [new ImageItem(0, bitmap, 32, TimeSpan.Zero)], 0);
     }
 
     private static WebpFrame ParseFrame(ReadOnlySpan<byte> data, int canvasWidth, int canvasHeight,
@@ -79,28 +173,58 @@ internal static class WebpDecoder
             throw new InvalidDataException("WebP frame rectangle is outside the canvas.");
         var offset = 16;
         byte[]? vp8l = null;
+        byte[]? vp8 = null;
+        byte[]? alpha = null;
+        var sawUnknown = false;
         while (offset < data.Length)
         {
             var chunk = ReadChunk(data, ref offset, data.Length, options);
             if (chunk.Type.SequenceEqual("VP8L"u8))
             {
-                if (vp8l != null) throw new InvalidDataException("WebP frame contains multiple VP8L chunks.");
+                if (vp8l != null || vp8 != null || alpha != null || sawUnknown)
+                    throw new InvalidDataException("WebP frame contains an unexpected VP8L chunk.");
                 vp8l = chunk.Data.ToArray();
             }
-            else if (chunk.Type.SequenceEqual("VP8 "u8) || chunk.Type.SequenceEqual("ALPH"u8))
-                throw new InvalidDataException("Animated lossy WebP frames are not supported yet.");
+            else if (chunk.Type.SequenceEqual("VP8 "u8))
+            {
+                if (vp8 != null || vp8l != null || sawUnknown)
+                    throw new InvalidDataException("WebP frame contains an unexpected VP8 chunk.");
+                vp8 = chunk.Data.ToArray();
+            }
+            else if (chunk.Type.SequenceEqual("ALPH"u8))
+            {
+                if (alpha != null || vp8 != null || vp8l != null || sawUnknown)
+                    throw new InvalidDataException("WebP frame contains an unexpected ALPH chunk.");
+                alpha = chunk.Data.ToArray();
+            }
+            else sawUnknown = true;
         }
-        if (vp8l == null) throw new InvalidDataException("WebP frame is missing a VP8L chunk.");
-        var bitmap = Vp8LDecoder.Decode(vp8l, options);
+        if (vp8l == null && vp8 == null) throw new InvalidDataException("WebP frame is missing an image bitstream.");
+        if (vp8l != null && alpha != null) throw new InvalidDataException("Lossless WebP frame cannot use a separate ALPH chunk.");
+        var bitmap = vp8l != null ? Vp8LDecoder.Decode(vp8l, options) : Vp8Decoder.Decode(vp8!, options);
         if (bitmap.Width != width || bitmap.Height != height)
         {
             bitmap.Dispose(); throw new InvalidDataException("WebP frame dimensions do not match ANMF.");
+        }
+        if (alpha != null)
+        {
+            byte[] decodedAlpha;
+            try
+            {
+                decodedAlpha = AlphaDecoder.Decode(alpha, width, height, options);
+            }
+            catch
+            {
+                bitmap.Dispose();
+                throw;
+            }
+            for (var i = 0; i < decodedAlpha.Length; i++) bitmap.Pixels[i * 4 + 3] = decodedAlpha[i];
         }
         return new WebpFrame(x, y, width, height, duration, (flags & 1) != 0, (flags & 2) == 0, bitmap);
     }
 
     private static ImageDocument Compose(int width, int height, uint background, ushort loopCount,
-        List<WebpFrame> frames, ImageDecoderOptions options)
+        List<WebpFrame> frames, ImageDecoderOptions options, ImageOrientation orientation, ImageMetadata metadata)
     {
         var canvas = new Bitmap(width, height);
         Fill(canvas, background);
@@ -116,6 +240,8 @@ internal static class WebpDecoder
                 var frame = frames[i];
                 Blend(canvas, frame);
                 var snapshot = Clone(canvas);
+                if (metadata.OrientationApplied)
+                    snapshot = ImageOrientationTransform.Apply(snapshot, orientation, options);
                 totalBytes = checked(totalBytes + snapshot.Pixels.Length);
                 if (totalBytes > options.MaxTotalDecodedBytes)
                 {
@@ -123,15 +249,14 @@ internal static class WebpDecoder
                 }
                 var duration = TimeSpan.FromMilliseconds(frame.DurationMilliseconds);
                 totalTicks = checked(totalTicks + duration.Ticks);
-                items[i] = new ImageItem(i, snapshot, 32, duration);
+                items[i] = new ImageItem(i, snapshot, 32, duration, metadata: metadata);
                 previous = frame;
             }
             canvas.Dispose();
             foreach (var frame in frames) frame.Bitmap.Dispose();
             var animation = new ImageAnimationInfo(loopCount == 0, loopCount == 0 ? 0 : loopCount,
                 TimeSpan.FromTicks(totalTicks));
-            return new ImageDocument(ImageFormat.Webp, frames.Count > 1 ? ImageDocumentKind.Animation : ImageDocumentKind.Still,
-                items, 0, frames.Count > 1 ? animation : null);
+            return new ImageDocument(ImageFormat.Webp, ImageDocumentKind.Animation, items, 0, animation, metadata);
         }
         catch
         {
@@ -158,13 +283,18 @@ internal static class WebpDecoder
     {
         var sa = source[3];
         if (sa == 255) { source.CopyTo(destination); return; }
-        if (sa == 0) return;
         var da = destination[3];
-        var outA = sa + (da * (255 - sa) + 127) / 255;
+        if (sa == 0)
+        {
+            if (da == 0) destination.Clear();
+            return;
+        }
+        var alphaNumerator = sa * 255 + da * (255 - sa);
+        var outA = (alphaNumerator + 127) / 255;
         for (var channel = 0; channel < 3; channel++)
         {
-            var premul = source[channel] * sa + destination[channel] * da * (255 - sa) / 255;
-            destination[channel] = (byte)((premul + outA / 2) / outA);
+            var colorNumerator = source[channel] * sa * 255 + destination[channel] * da * (255 - sa);
+            destination[channel] = (byte)((colorNumerator + alphaNumerator / 2) / alphaNumerator);
         }
         destination[3] = (byte)outA;
     }
@@ -191,6 +321,19 @@ internal static class WebpDecoder
             throw new InvalidDataException("Invalid WebP RIFF header.");
         end = checked(8L + BinaryPrimitives.ReadUInt32LittleEndian(data[4..8]));
         if (end != data.Length) throw new InvalidDataException("WebP RIFF size does not match the input length.");
+    }
+    private static void ValidateExtendedChunks(byte flags, bool hasExif, bool hasIccp, bool hasXmp)
+    {
+        if (((flags & 8) != 0) != hasExif) throw new InvalidDataException("WebP EXIF flag and chunk do not match.");
+        if (((flags & 0x20) != 0) != hasIccp) throw new InvalidDataException("WebP ICCP flag and chunk do not match.");
+        if (((flags & 4) != 0) != hasXmp) throw new InvalidDataException("WebP XMP flag and chunk do not match.");
+    }
+    private static void AddMetadataBytes(int length, ref long total, ImageDecoderOptions options, string kind)
+    {
+        if (length == 0) throw new InvalidDataException($"WebP {kind} metadata is empty.");
+        total = checked(total + length);
+        if (total > options.MaxMetadataBytes)
+            throw new InvalidDataException("WebP metadata exceeds the configured total byte limit.");
     }
     private static WebpChunk ReadChunk(ReadOnlySpan<byte> data, ref int offset, long end, ImageDecoderOptions options)
     {

@@ -7,9 +7,7 @@
     <Radio ref="RadioB" text="Radio - option B" group="demo" :checked="OptionB" @change="OnRadioBChanged" />
     <Select ref="DemoSelect" :value="SelectedValue" :options="ColorOptions" @change="OnSelectChanged" />
     <Text v-if="ShowCount" class="status" text="Show: button clicked" />
-    <For :each="Items">{(it)=>
-      <Text class="status" :text="it" />
-    }</For>
+    <Text v-for="item in Items" class="status" :text="item" />
   </View>
 </template>
 <script lang="csharp">

@@ -56,7 +56,7 @@ UI 使用 `.sqx`（Square 原生语法）或 `.sqv`（Vue 3 模板语法前端�
 - `Square.DevTools`：localhost HTTP 调试服务，支持 renderer PNG 截图和鼠标、键盘、文本、滚轮模拟输入
 - 进程内 renderer 截图：`DesktopApplication.CaptureRendererBitmapAsync()` 将保留的 DisplayTree 离屏重放为 Bitmap，不依赖 PID、窗口枚举或桌面合成器
 - 纯 C# SVG：`SvgImage` 静态矢量资源，以及由 `SVGDocument` 管理、可直接写入 SQX/SQV 模板的 SVG DOM
-- `Square.Images` 独立解码包：统一 `ImageDocument` 模型，支持纯 C# PNG/APNG、JPEG、BMP、GIF 动画、ICO/CUR 变体、TIFF 多页面与无损 WebP 动画；JPEG/TIFF 支持 Orientation；引用该包后 `<Image source="...">` 可异步加载本地文件并自动播放动画
+- `Square.Images` 独立解码包：统一 `ImageDocument` 模型，支持纯 C# PNG/APNG、JPEG、BMP、GIF 动画、ICO/CUR 变体、TIFF 多页面，以及 VP8L/VP8/ALPH 静态与动画 WebP；JPEG/TIFF/WebP 支持 Orientation；引用该包后 `<Image source="...">` 可异步加载本地文件并自动播放动画
 - 平台截图（`PlatformScreenshot`，Win32 / X11 按进程 ID 捕获窗口位图）
 - DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试
 - Software Renderer 性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充、圆角主体快速路径与边缘子像素光栅化）
@@ -162,7 +162,7 @@ using var document = ImageDecoder.Decode("photo.jpg");
 image.ImageContent = document.PrimaryBitmap;
 ```
 
-GIF87a/GIF89a、APNG 和动画 WebP 会公开所有完整合成帧、帧时长、循环信息、透明、blend 和 disposal；ICO/CUR 会公开全部尺寸/位深变体及 CUR 热点；Classic TIFF 会公开全部 IFD 页面。普通 PNG、JPEG、BMP 与静态 WebP 返回单项目文档。JPEG Exif 和 TIFF 页面 Orientation 默认应用，可通过 `ExifOrientationPolicy.Ignore` 保留原始像素方向。TIFF 当前支持大小端、未压缩 Strip、1/8 位灰度、Palette、8 位 RGB/RGBA 和 ExtraSamples Alpha；LZW/Deflate/PackBits、Tile、Planar Separate、CMYK/YCbCr 和 BigTIFF 尚未支持。WebP 支持 simple/VP8X 静态 VP8L 及 ANIM/ANMF 内嵌 VP8L 无损动画；VP8 lossy、独立 `ALPH` 和动画有损帧尚未支持。
+GIF87a/GIF89a、APNG 和动画 WebP 会公开所有完整合成帧、帧时长、循环信息、透明、blend 和 disposal；ICO/CUR 会公开全部尺寸/位深变体及 CUR 热点；Classic TIFF 会公开全部 IFD 页面。普通 PNG、JPEG、BMP 与静态 WebP 返回单项目文档。JPEG、TIFF 页面和 WebP EXIF Orientation 默认应用，可通过 `ExifOrientationPolicy.Ignore` 保留原始像素方向。TIFF 当前支持大小端、未压缩/LZW/Deflate/Adobe Deflate/PackBits Strip、8 位水平差分 Predictor、1/8 位灰度、Palette、8 位 RGB/RGBA 和 ExtraSamples Alpha；Tile、Planar Separate、CMYK/YCbCr、Lab 和 BigTIFF 尚未支持。WebP 支持 simple/VP8X 静态 VP8L、静态 VP8 lossy 关键帧、VP8 `ALPH` 原始/VP8L 压缩平面及全部四种 alpha filter、ANIM/ANMF 内嵌 VP8L、VP8 或 `ALPH+VP8` 帧、EXIF Orientation，以及有正确 VP8X flag 的 ICCP/XMP 元数据 chunk；同时校验 VP8X 首块、ICCP 前置、ALPH 紧邻 VP8、EXIF/XMP 后置、图像数据唯一性和累计元数据限制。VP8 解码覆盖分割、1/2/4/8 token partition、Y2/WHT、全部帧内预测模式、残差、量化和 simple/normal loop filter，并使用确定性的 libwebp 标量 YUV420→BGRA 转换。动画合成支持局部 frame rectangle、alpha-over/no-blend、dispose-to-background、带 alpha 的背景色和单帧动画循环元数据；透明像素保留 straight-alpha RGB。
 
 ```csharp
 using var animation = ImageDecoder.Decode("animation.gif");
