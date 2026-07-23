@@ -41,7 +41,7 @@ public sealed partial class SystemGlyphRasterizer
         var key = new GlyphKey(effectiveFont.Family, effectiveFont.Size, effectiveFont.Weight, effectiveFont.Style, character);
         if (_cacheGlyphs && _cache.TryGetValue(key, out var cached)) return cached;
 
-        var glyph = OperatingSystem.IsWindows()
+        var glyph = OperatingSystem.IsWindows() && !FontCollection.Shared.IsCustomFamily(effectiveFont.Family)
             ? RasterizeWin32(effectiveFont, character)
             : _stbRasterizer.Rasterize(effectiveFont, character);
         if (_cacheGlyphs) _cache[key] = glyph;

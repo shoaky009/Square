@@ -305,6 +305,7 @@ public sealed class CssEngine
             "active" => Element.HasState(ElementState.Active),
             "disabled" => Element.HasState(ElementState.Disabled),
             "checked" => Element.HasState(ElementState.Checked),
+            "open" => Element.HasState(ElementState.Open),
             "empty" => Element.Children.Count == 0,
             "first-child" => Element.Parent?.Children[0] == Element,
             "last-child" => Element.Parent?.Children[^1] == Element,

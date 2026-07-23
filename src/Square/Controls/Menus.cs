@@ -93,6 +93,8 @@ public class Menu : Popup
 
     public void OpenFor(MenuItem owner)
     {
+        if (OwnerItem is { } previousOwner && !ReferenceEquals(previousOwner, owner))
+            previousOwner.SetState(ElementState.Open, false);
         Anchor = owner;
         _screenPosition = null;
         Placement = owner.Parent is MenuBar ? PopupPlacement.Bottom : PopupPlacement.Right;
@@ -101,6 +103,7 @@ public class Menu : Popup
         VerticalOffset = owner.Parent is MenuBar ? 2 : 0;
         CloseSiblingMenus(owner);
         Open();
+        owner.SetState(ElementState.Open, true);
     }
 
     public virtual void OpenAt(Point screenPosition)
@@ -115,6 +118,7 @@ public class Menu : Popup
         foreach (var item in Items)
             item.Submenu?.Close();
         ActiveItem = null;
+        OwnerItem?.SetState(ElementState.Open, false);
         base.Close();
     }
 
@@ -318,13 +322,12 @@ public class MenuItem : UIElement, ITextSelectable
 
     public override void Paint(IRenderContext context)
     {
-        var active = HasState(ElementState.Hover) || Parent is Menu menu && ReferenceEquals(menu.ActiveItem, this);
+        var active = HasState(ElementState.Hover) || HasState(ElementState.Open) ||
+                     Parent is Menu menu && ReferenceEquals(menu.ActiveItem, this);
         var styledBackground = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
         var background = styledBackground.A > 0
             ? styledBackground
             : active && IsEnabled ? Color.FromRgb(225, 238, 252) : Color.Transparent;
-        if (Parent is MenuBar && Submenu?.IsOpen == true && styledBackground.A == 0)
-            background = Color.White;
         if (background.A > 0) context.FillRect(Geometry, new SolidColorBrush(background));
 
         var foreground = IsEnabled

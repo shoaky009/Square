@@ -91,6 +91,11 @@
     color: #ffffff;
   }
 
+  .rich-menu-bar MenuItem:open {
+    background: #2b3a55;
+    color: #ffffff;
+  }
+
   .rich-menu-bar Menu {
     width: 248px;
     background: #f8fafc;

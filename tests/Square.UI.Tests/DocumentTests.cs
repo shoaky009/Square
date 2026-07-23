@@ -189,7 +189,15 @@ public class DocumentTests
         Assert.Equal("Default title",
             Assert.IsType<Square.Controls.Text>(Assert.Single(titleHost.Children)).TextContent);
         Assert.Equal(3, controlHost.Children.Count);
-        Assert.All(controlHost.Children, child => Assert.IsType<Button>(child));
+        Assert.All(controlHost.Children, child =>
+        {
+            var button = Assert.IsAssignableFrom<Button>(child);
+            var icon = Assert.IsType<Square.Controls.Text>(Assert.Single(button.Children));
+            Assert.Equal("'Square Iconfont'", icon.Style.Get("font-family"));
+            Assert.Single(icon.TextContent);
+            Assert.NotNull(new Square.Text.Glyph.SystemGlyphRasterizer().Rasterize(
+                new Square.Graphics.Font("Square Iconfont", 16), icon.TextContent[0]));
+        });
     }
 
     [Fact]

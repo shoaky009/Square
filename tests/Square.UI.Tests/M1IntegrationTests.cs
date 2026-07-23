@@ -1380,12 +1380,18 @@ public class M1IntegrationTests
         Assert.False(editMenu.IsOpen);
 
         file.DispatchEvent(StandardEvents.CreateClick());
+        Assert.True(file.HasState(ElementState.Open));
         edit.SetState(ElementState.Hover, false);
         edit.SetState(ElementState.Hover, true);
 
         Assert.False(fileMenu.IsOpen);
+        Assert.False(file.HasState(ElementState.Open));
         Assert.True(editMenu.IsOpen);
+        Assert.True(edit.HasState(ElementState.Open));
         Assert.Equal(1, bar.ActiveIndex);
+
+        bar.CloseMenus();
+        Assert.False(edit.HasState(ElementState.Open));
     }
 
     [Fact]

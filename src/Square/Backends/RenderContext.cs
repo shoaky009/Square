@@ -143,7 +143,12 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     {
         var clipped = ClipRect(TransformRect(rect));
         if (clipped.IsEmpty) return;
-        BlendRect(clipped, color);
+        var left = MathF.Ceiling(clipped.Left);
+        var top = MathF.Ceiling(clipped.Top);
+        var right = MathF.Floor(clipped.Right);
+        var bottom = MathF.Floor(clipped.Bottom);
+        if (left >= right || top >= bottom) return;
+        BlendRect(new Rect(left, top, right - left, bottom - top), color);
     }
 
     public void FillRect(Rect rect, Brush brush)

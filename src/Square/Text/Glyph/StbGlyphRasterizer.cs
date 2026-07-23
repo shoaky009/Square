@@ -174,6 +174,7 @@ internal sealed class FontCollection
 
     private readonly object _gate = new();
     private readonly Dictionary<string, FontEntry> _byFamily = new(NormalizedComparer.Instance);
+    private readonly HashSet<string> _customFamilies = new(NormalizedComparer.Instance);
     private readonly List<FontEntry> _fallbacks = [];
     private string? _cjkFamily;
     private string? _japaneseFamily;
@@ -206,6 +207,7 @@ internal sealed class FontCollection
             var entry = new FontEntry(family, data, offset);
             var norm = Normalize(family);
             _byFamily[norm] = entry;
+            _customFamilies.Add(norm);
             // 自定义面插到 fallback 前端，提高命中率
             _fallbacks.RemoveAll(e => Normalize(e.Family) == norm);
             _fallbacks.Insert(0, entry);
@@ -218,6 +220,12 @@ internal sealed class FontCollection
     {
         lock (_gate)
             return _byFamily.ContainsKey(Normalize(family));
+    }
+
+    public bool IsCustomFamily(string family)
+    {
+        lock (_gate)
+            return _customFamilies.Contains(Normalize(family));
     }
 
     public FontEntry? Resolve(string requestedFamily, char character)

@@ -57,6 +57,20 @@ public class PseudoClassTests
     }
 
     [Fact]
+    public void MatchOpenState()
+    {
+        var sheet = new CssParser(new CssTokenizer("MenuItem:open { background: navy; }").Tokenize()).Parse();
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(sheet);
+        var item = new Square.Controls.MenuItem();
+
+        item.SetState(ElementState.Open, true);
+        engine.ApplyStyles(item);
+
+        Assert.Equal("navy", item.Style.Get("background"));
+    }
+
+    [Fact]
     public void StyleReconcilerReappliesDynamicFocusPseudoClass()
     {
         var sheet = new CssParser(new CssTokenizer("Button:focus { color: red; width: 180px; }").Tokenize()).Parse();

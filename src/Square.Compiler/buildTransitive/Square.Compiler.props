@@ -30,5 +30,6 @@
                      Exclude="$(DefaultItemExcludes);$(MSBuildProjectDirectory)\Public\**;$(MSBuildProjectDirectory)\Assets\**" />
     <AdditionalFiles Include="$(MSBuildProjectDirectory)\**\*.sqv"
                      Exclude="$(DefaultItemExcludes);$(MSBuildProjectDirectory)\Public\**;$(MSBuildProjectDirectory)\Assets\**" />
+    <UpToDateCheckInput Include="@(AdditionalFiles)" />
   </ItemGroup>
 </Project>

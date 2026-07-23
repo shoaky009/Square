@@ -33,6 +33,26 @@ public class DirtyPartialPresentTests
     }
 
     [Fact]
+    public void ClearRectAtFractionalDpiDoesNotEscapeMatchingClip()
+    {
+        var bmp = new Bitmap(12, 12);
+        var ctx = new RenderContext(bmp, new Size(8, 8), 1.5f);
+        ctx.Clear(Color.Black);
+
+        var dirty = new Rect(1, 1, 4, 4);
+        ctx.Clear(Color.White, dirty);
+        ctx.PushClip(dirty);
+        ctx.FillRect(new Rect(0, 0, 8, 8), new SolidColorBrush(Color.Red));
+        ctx.PopClip();
+
+        var outside = 3 * bmp.Stride + 7 * 4;
+        Assert.Equal(0, bmp.Pixels[outside]);
+        Assert.Equal(0, bmp.Pixels[outside + 1]);
+        Assert.Equal(0, bmp.Pixels[outside + 2]);
+        Assert.Equal(255, bmp.Pixels[outside + 3]);
+    }
+
+    [Fact]
     public void PresentWithDirtyRectsForwardsListToHandler()
     {
         IReadOnlyList<Rect>? received = null;
