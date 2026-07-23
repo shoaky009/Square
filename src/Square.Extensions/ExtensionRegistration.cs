@@ -1,5 +1,6 @@
 using Square.Extensions.Markdown;
 using Square.Extensions.RichText;
+using Square.Platform;
 using Square.UI;
 
 namespace Square.Extensions;
@@ -15,5 +16,6 @@ public static class ExtensionRegistration
 
         ElementRegistry.Register("MarkdownViewer", static () => new MarkdownViewer());
         ElementRegistry.Register("RichTextEditor", static () => new RichTextEditor());
+        FilePickerProvider.Current = new NativeFilePickerProvider();
     }
 }

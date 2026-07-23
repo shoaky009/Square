@@ -63,6 +63,11 @@ public interface IPlatformHost : IDisposable
     void SetClipboardText(string text);
 }
 
+internal interface IPlatformNativeWindow
+{
+    IntPtr Handle { get; }
+}
+
 public enum MouseAction
 {
     Down,

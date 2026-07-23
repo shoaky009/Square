@@ -170,6 +170,13 @@ public sealed class AppWindow : IRenderBackendApplication
 
     public Task BeginMoveAsync() => InvokeAsync(static host => host.BeginMove());
 
+    public Task<IReadOnlyList<string>> OpenFilesAsync(OpenFilePickerOptions? options = null)
+    {
+        options ??= new OpenFilePickerOptions();
+        options.Validate();
+        return InvokeAsync(host => FilePickerProvider.OpenFiles(host, options));
+    }
+
     public void Minimize() => Post(static host => host.Minimize());
 
     public void Maximize() => Post(static host => host.Maximize());
@@ -325,6 +332,42 @@ public sealed class AppWindow : IRenderBackendApplication
                 throw new InvalidOperationException("The native application window is not available.");
             action(host);
         });
+    }
+
+    private Task<T> InvokeAsync<T>(Func<IPlatformHost, T> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (_dispatcher.CheckAccess())
+        {
+            try
+            {
+                var host = GetHost();
+                if (host == null)
+                    throw new InvalidOperationException("The native application window is not available.");
+                return Task.FromResult(action(host));
+            }
+            catch (Exception exception)
+            {
+                return Task.FromException<T>(exception);
+            }
+        }
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dispatcher.Invoke(() =>
+        {
+            try
+            {
+                var host = GetHost();
+                if (host == null)
+                    throw new InvalidOperationException("The native application window is not available.");
+                completion.SetResult(action(host));
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+        return completion.Task;
     }
 
     private IPlatformHost? GetHost()

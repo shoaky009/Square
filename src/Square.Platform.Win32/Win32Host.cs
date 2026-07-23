@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Square.Platform.Win32;
 
-internal sealed class Win32Host : IPlatformHost
+internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
 {
     private IntPtr _hwnd;
     private bool _running;
@@ -612,6 +612,8 @@ internal sealed class Win32Host : IPlatformHost
             Win32Api.CloseClipboard();
         }
     }
+
+    IntPtr IPlatformNativeWindow.Handle => _hwnd;
 
     private void DispatchUtf16Character(char character)
     {
