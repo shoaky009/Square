@@ -78,7 +78,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 
 **依赖方向**：`Square.Compiler` 在编译期生成组件；`Events` 保持平台与 UI 无关；`UI` → `Events`；`Controls/UI/Rendering/CSS/Text` → `Runtime` + `Graphics`（逻辑依赖）；具体 Platform/Backend 项目依赖核心抽象。核心层禁止反向依赖具体 Backend/Platform 实现。`Square.Hosting` 是聚合层，应用在启动前通过 `PlatformRegistry` 注册所引用的平台工厂。
 
-内联 SVG 使用嵌入文档边界：宿主 `UIDocument` 只布局 `SVGSVGElement` 根盒；根元素持有 `SVGDocument : XMLDocument`，SVG 内部元素的 `OwnerDocument` 指向该 SVGDocument。根元素将 SVG 子树递归编译为现有 Geometry/Path/Transform 绘制命令，因此 Software 与 Vulkan 后端不需要单独理解 SVG DOM。
+内联 SVG 使用嵌入文档边界：宿主 `UIDocument` 只布局 `SVGSVGElement` 根盒；根元素持有 `SVGDocument : XMLDocument`，SVG 内部元素的 `OwnerDocument` 指向该 SVGDocument。根元素将 SVG 子树递归编译为现有 Geometry/Path/Transform 绘制命令；`PathGeometry` 统一通过 `FillGeometry` / `DrawGeometry` 进入后端，因此 `<path>`、`<polygon>`、`<polyline>` 的填充和描边在 Software 与 Vulkan 中共享相同的 SVG 上层实现，后端不需要单独理解 SVG DOM。
 
 ---
 

@@ -81,6 +81,38 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void RendersSvgDocumentPathAndPolygonGeometry()
+    {
+        using var context = CreateContext(80, 40);
+        context.Clear(Color.White);
+        var svg = new SVGSVGElement { Geometry = new Rect(0, 0, 80, 40) };
+        svg.SetProperty("ViewBox", "0 0 80 40");
+
+        var path = new SVGPathElement();
+        path.SetProperty("Data", "M 5 5 L 35 5 L 20 35 Z");
+        path.SetProperty("Fill", "#123456");
+        svg.Children.Add(path);
+
+        var polygon = new SVGPolygonElement();
+        polygon.SetProperty("Points", "45,5 75,5 60,35");
+        polygon.SetProperty("Fill", "none");
+        polygon.SetProperty("Stroke", "#654321");
+        polygon.SetProperty("StrokeWidth", 3);
+        svg.Children.Add(polygon);
+
+        svg.Paint(context);
+
+        var pathInterior = context.GetBitmap().GetPixel(20, 15);
+        var polygonEdge = context.GetBitmap().GetPixel(60, 34);
+        Assert.Equal((byte)0x12, pathInterior[2]);
+        Assert.Equal((byte)0x34, pathInterior[1]);
+        Assert.Equal((byte)0x56, pathInterior[0]);
+        Assert.Equal((byte)0x65, polygonEdge[2]);
+        Assert.Equal((byte)0x43, polygonEdge[1]);
+        Assert.Equal((byte)0x21, polygonEdge[0]);
+    }
+
+    [Fact]
     public void PresentSubmitsFrameBuffer()
     {
         Bitmap? presented = null;

@@ -210,6 +210,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 else
                     RasterizeTransformedEllipse(eg.Center, eg.RadiusX, eg.RadiusY, 0, sc.Color);
                 break;
+            case PathGeometry path:
+                FillPath(path, brush);
+                break;
         }
     }
 
@@ -229,6 +232,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 else
                     RasterizeTransformedEllipse(
                         eg.Center, eg.RadiusX, eg.RadiusY, pen.Width, (pen.Brush as SolidColorBrush)?.Color ?? Color.Black);
+                break;
+            case PathGeometry path:
+                DrawPath(path, pen);
                 break;
         }
     }

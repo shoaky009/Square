@@ -1,6 +1,6 @@
 # 渲染架构
 
-> Version: 0.4  
+> Version: 0.5
 > 配套：`Architecture.md`、`Graphics.md`、`Layout.md`
 > `PushLayer` / `PopLayer` 当前实现嵌套绘制透明度乘法；`bounds` 尚不创建离屏表面，真正的 group opacity/compositing 仍为后续能力。
 
@@ -73,8 +73,11 @@ Backend (Software / Vulkan / ...)
 | 命令 | 说明 |
 |---|---|
 | `FillRect` | 填充矩形 |
+| `FillPath` | 填充路径 |
 | `DrawText` | 绘制文本 |
-| `DrawPath` | 绘制路径 |
+| `DrawPath` | 描边路径 |
+| `FillGeometry` | 填充矩形、圆角矩形、椭圆或 `PathGeometry` |
+| `DrawGeometry` | 描边矩形、圆角矩形、椭圆或 `PathGeometry` |
 | `DrawImage` | 绘制图片 |
 | `PushClip` | 推入裁剪 |
 | `PopClip` | 弹出裁剪 |
@@ -90,6 +93,9 @@ Backend (Software / Vulkan / ...)
 
 - 调用 `IRenderContext` 提交 DrawCommand
 - Backend 负责实际绘制
+- 模板内联 SVG 会先转换为 Geometry/Path 命令；Software 与 Vulkan 后端均通过
+  `FillGeometry` / `DrawGeometry` 分派 `PathGeometry`，因此 `<path>`、`<polygon>`
+  和 `<polyline>` 的填充与描边不需要后端理解 SVG DOM
 
 ---
 
