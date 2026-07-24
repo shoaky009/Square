@@ -1,7 +1,7 @@
 # Square Framework 总体架构
 
 > Version: 0.3
-> 配套：`Requirements.md`（需求）、`Sqx-Spec.md`（语言规范）、`Rendering-Targets.md`（多目标渲染与宿主路线）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
+> 配套：`Requirements.md`（需求）、`vue-plan.md`（SQV / Vue 模板语法）、`Sqx-Spec.md`（SQX 原生语法）、`Rendering-Targets.md`（多目标渲染与宿主路线）、`plan.md`（分阶段计划）、`rebuild-plan.md`（架构重建）
 
 ---
 
@@ -16,14 +16,14 @@ Square 是 **纯 C#、编译优先（Compile First）、NativeAOT 优先、渲�
 3. **NativeAOT First** —— 禁用 `Reflection.Emit`、运行时代码生成、`Dynamic`、运行时加载程序集。
 4. **Backend Independent** —— 核心不依赖具体图形库；图形库均为可插拔 Backend。
 5. **Retained Rendering** —— Element Tree + Display Tree，非 Immediate Mode。
-6. **Low Coupling / IDE Friendly** —— 模块间通过抽象接口通信；`.sqx` 提供类型检查、智能补全、编译错误定位。
+6. **Low Coupling / IDE Friendly** —— 模块间通过抽象接口通信；`.sqv` / `.sqx` 提供类型检查、智能补全、编译错误定位。
 
 ---
 
 ## 2. 总体管线（保留模式）
 
 ```
-.sqx (template + style + script)
+.sqv / .sqx (template + style + script)
       │
       ▼
 [Square.Compiler] ──► C# 组件类型 (编译期)
@@ -59,8 +59,8 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 
 | 模块 | 职责 | 关键设计 |
 |---|---|---|
-| `Square.Markup` | `.sqx` 词法/语法解析 → AST | 含 template/script/style 三段；错误带行列号 |
-| `Square.Compiler` | Roslyn Incremental Generator，`.sqx`→C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
+| `Square.Markup` | `.sqv` / `.sqx` 解析 → 共享 AST | SQV 使用 Vue 模板语法前端；SQX 是 Square 原生语法；错误带行列号 |
+| `Square.Compiler` | Roslyn Incremental Generator，`.sqv` / `.sqx` → C# | Props/ref/绑定/事件；结构指令经 `[SqxDirective]` Catalog 发射；诊断映射 |
 | `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
 | `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`/`XMLDocument`/`SVGDocument`、属性 | UI Element Tree；嵌入 SVG DOM；Style/ClassList/Children；Reconciler 批量更新 |
 | `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
@@ -86,15 +86,26 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 
 ### 4.1 组件 = 模板 + 逻辑 + 样式
 
-`.sqx` 使用无文件级根标签的顶级 section：
+推荐使用 `.sqv` 作为默认组件格式。`.sqv` 使用 Vue 风格模板语法，`.sqx` 是 Square 原生模板语法；两者最终都会编译到同一个组件模型。
+
+两种模板格式都使用无文件级根标签的顶级 section：
 
 ```
-<template>   结构 + 绑定 + 流程控制
+<template>   结构 + 绑定 + 流程控制（SQV 使用 Vue 风格语法）
 <script lang="csharp">  C# 逻辑 + Props 声明 + 文件级元数据
 <style>  CSS 样式
 ```
 
 `<template>` 必须且只能有一个；`<script>`、`<style>` 可选且各自最多一个。Source Generator 将三个 section 编译为同一个 `partial` 组件类。组件名默认取文件名，文件级元数据声明在 `<script>` 标签属性上。
+
+SQV 示例：
+
+```vue
+<template>
+  <Button :disabled="Saving" @click="Save">Save</Button>
+  <Text v-if="Saved.Value">Saved</Text>
+</template>
+```
 
 ### 4.2 Props（组件输入契约）
 

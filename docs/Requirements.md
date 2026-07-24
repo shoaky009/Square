@@ -323,7 +323,7 @@ SQX 支持在模板中标记元素引用。
 - 通过 Slot 定义各页内容
 - 切换动画（滑动/淡入淡出）
 
-> Tab/Tabs 不作为 Square 标准控件提供。页签的结构、位置、关闭行为、键盘策略和视觉形态高度依赖产品，开发者可基于 Slot、`IsVisible`、事件和状态自行组合。仓库中的 `samples/Square.Sample/Components/Tabs.sqx` 仅作为组合示例。
+> Tab/Tabs 不作为 Square 标准控件提供。页签的结构、位置、关闭行为、键盘策略和视觉形态高度依赖产品，开发者可基于 Slot、`IsVisible`、事件和状态自行组合。仓库中的 `samples/Square.Sample.Vue/Components/Tabs.sqv` 仅作为组合示例。
 
 ---
 

@@ -1,7 +1,7 @@
 # 组件组合与信号通信
 
 > 适用版本：Square 0.3 开发版  
-> 相关规范：`Sqx-Spec.md`、`Architecture.md`、`Generator.md`
+> 相关规范：`vue-plan.md`、`Sqx-Spec.md`、`Architecture.md`、`Generator.md`
 
 本文说明如何使用 Slot 组合组件、用 Slot 自定义 Tabs，以及如何通过 `Signal<T>` 在组件和线程之间传递状态。
 
@@ -12,7 +12,7 @@
 自定义组件通过 `<Slot>` 接收调用方内容。未设置 `slot` 的直接子节点进入默认 Slot，设置 `slot="name"` 的直接子节点进入同名 Slot。
 
 ```xml
-<!-- Panel.sqx -->
+<!-- Panel.sqv -->
 <View class="panel">
   <View class="panel-header">
     <Slot name="header">
@@ -44,7 +44,7 @@
 
 ## 2. 基于 Slot 的自定义 Tabs 示例
 
-Sample 中的 `Tabs.sqx` 使用两个区域：
+Sample 中的 `Tabs.sqv` 使用两个区域：
 
 - `tabs` 命名 Slot：页签按钮。
 - 默认 Slot：与按钮按索引对应的页面。
@@ -196,10 +196,10 @@ _ = Task.Run(async () =>
 
 关键文件：
 
-- `samples/Square.Sample/Components/Tabs.sqx`
-- `samples/Square.Sample/Components/Main.sqx`
-- `samples/Square.Sample/Components/SignalPublisher.sqx`
-- `samples/Square.Sample/Components/SignalSubscriber.sqx`
+- `samples/Square.Sample.Vue/Components/Tabs.sqv`
+- `samples/Square.Sample.Vue/Components/Main.sqv`
+- `samples/Square.Sample.Vue/Components/SignalPublisher.sqv`
+- `samples/Square.Sample.Vue/Components/SignalSubscriber.sqv`
 - `samples/Square.Sample/SampleSignals.cs`
 
 ---
