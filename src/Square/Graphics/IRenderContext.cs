@@ -21,6 +21,7 @@ public interface IRenderContext : IDisposable
 {
     Size CanvasSize { get; }
     float DpiScale { get; }
+    bool SupportsPartialRendering => false;
 
     void PushTransform(Matrix3x2 matrix);
     void PopTransform();

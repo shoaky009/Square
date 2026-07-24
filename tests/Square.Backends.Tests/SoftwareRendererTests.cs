@@ -23,6 +23,13 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void SoftwareRendererSupportsPartialRendering()
+    {
+        using var context = CreateContext(4, 4);
+        Assert.True(context.SupportsPartialRendering);
+    }
+
+    [Fact]
     public void RendersSvgImageThroughImageControl()
     {
         using var context = CreateContext(40, 40);
@@ -1112,6 +1119,48 @@ public class SoftwareRendererTests
             expectedContext.GetBitmap(),
             context.GetBitmap(),
             new Rect(10, 48, 220, 98));
+    }
+
+    [Fact]
+    public void DirtyRenderOpensSelectPopupToMatchFullFrame()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 240, 170) };
+        var select = new Select
+        {
+            Geometry = new Rect(10, 10, 220, 36),
+            Options = ["Blue", "Green", "Orange"],
+            Value = "Blue"
+        };
+        root.Children.Add(select);
+        var context = CreateContext(240, 170);
+        context.Clear(Color.White);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        tree.Render(context);
+
+        select.HandlePointerDown(new Point(20, 20));
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = dirty.Aggregate(DisplayTree.Union);
+        context.Clear(Color.White, union);
+        tree.Render(context, union);
+
+        var expectedRoot = new View { Geometry = root.Geometry };
+        var expectedSelect = new Select
+        {
+            Geometry = select.Geometry,
+            Options = select.Options,
+            Value = select.Value
+        };
+        expectedRoot.Children.Add(expectedSelect);
+        expectedSelect.HandlePointerDown(new Point(20, 20));
+        var expectedContext = CreateContext(240, 170);
+        expectedContext.Clear(Color.White);
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expectedRoot);
+        expectedTree.Render(expectedContext);
+
+        AssertRegionEqual(expectedContext.GetBitmap(), context.GetBitmap(), union);
     }
 
     [Fact]

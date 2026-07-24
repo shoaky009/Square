@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Square.Controls;
 using Square.Controls.Primitives;
+using Square.CSS.Engine;
 using Square.Events;
 using Square.Graphics;
 using Square.Platform;
@@ -15,6 +16,8 @@ using Square.Sample.Components;
 using Square.UI;
 using Xunit;
 using RouterControl = Square.Router.Router;
+using VueMain = Square.Sample.Vue.Components.Main;
+using VueTabs = Square.Sample.Vue.Components.Tabs;
 
 namespace Square.UI.Tests;
 
@@ -197,6 +200,63 @@ public class M1IntegrationTests
         Assert.True(tabPanels.ScrollContentSize.Height > tabPanels.Geometry.Height);
         Assert.True(tabPanels.ScrollBy(0, 120));
         Assert.True(controlsPage.QueryAll<Button>().All(item => item.Geometry.Height >= 36));
+        ((IComponentLifecycle)component).OnDetached();
+    }
+
+    [Fact]
+    public void GeneratedControlsPageLaysOutSelectAfterTabBecomesVisible()
+    {
+        var component = new Main();
+        component.BuildElementTree();
+        ((IComponentLifecycle)component).OnAttached();
+        var root = Assert.IsType<View>(Assert.Single(component.Children));
+        var tabs = Assert.Single(root.QueryAll<Tabs>());
+        var select = Assert.Single(root.QueryAll<Select>());
+
+        tabs.SelectedIndex = 1;
+        Reconciler.Current.Flush();
+        CssStyleReconciler.Flush();
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(900, 900));
+        layout.Arrange(root, new Rect(0, 0, 900, 900));
+
+        Assert.True(select.IsVisible);
+        Assert.True(select.Geometry.Width > 0, $"select={select.Geometry}, page={select.Parent?.Geometry}");
+        Assert.True(select.Geometry.Height > 0, $"select={select.Geometry}, page={select.Parent?.Geometry}");
+        ((IComponentLifecycle)component).OnDetached();
+    }
+
+    [Fact]
+    public void GeneratedVuePagesLayOutSelectsAfterTabsBecomeVisible()
+    {
+        var component = new VueMain();
+        component.BuildElementTree();
+        ((IComponentLifecycle)component).OnAttached();
+        var root = Assert.IsType<View>(Assert.Single(component.Children));
+        var tabs = Assert.Single(root.QueryAll<VueTabs>());
+        var selects = root.QueryAll<Select>();
+        Assert.Equal(2, selects.Count);
+        var layout = new LayoutEngine();
+
+        tabs.SelectedIndex = 1;
+        CssStyleReconciler.Flush();
+        layout.Measure(root, new Size(900, 980));
+        layout.Arrange(root, new Rect(0, 0, 900, 980));
+        Assert.True(selects[0].Geometry.Width > 0, $"controls select={selects[0].Geometry}");
+        Assert.True(selects[0].Geometry.Height > 0, $"controls select={selects[0].Geometry}");
+        var controlsParent = Assert.IsAssignableFrom<Element>(selects[0].Parent);
+        Assert.True(controlsParent.Geometry.Contains(selects[0].Geometry.Center),
+            $"controls select={selects[0].Geometry}, parent={controlsParent.Geometry}");
+
+        tabs.SelectedIndex = 2;
+        CssStyleReconciler.Flush();
+        layout.Measure(root, new Size(900, 980));
+        layout.Arrange(root, new Rect(0, 0, 900, 980));
+        Assert.True(selects[1].Geometry.Width > 0, $"forms select={selects[1].Geometry}");
+        Assert.True(selects[1].Geometry.Height > 0, $"forms select={selects[1].Geometry}");
+        var formsParent = Assert.IsAssignableFrom<Element>(selects[1].Parent);
+        Assert.True(formsParent.Geometry.Contains(selects[1].Geometry.Center),
+            $"forms select={selects[1].Geometry}, parent={formsParent.Geometry}");
         ((IComponentLifecycle)component).OnDetached();
     }
 

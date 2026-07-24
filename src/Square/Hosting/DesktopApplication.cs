@@ -325,12 +325,12 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             _displayTree.UpdateDirty();
         }
 
-        if (MainWindow.RenderingMode == RenderMode.FullFrame || layoutDirty)
+        if (MainWindow.RenderingMode == RenderMode.FullFrame || layoutDirty || !_renderContext.SupportsPartialRendering)
         {
             MainWindow.LastRenderDiagnostics = new RenderDiagnostics(
                 MainWindow.RenderingMode,
                 true,
-                layoutDirty ? "LayoutDirty" : "ModeFullFrame",
+                layoutDirty ? "LayoutDirty" : !_renderContext.SupportsPartialRendering ? "BackendFullFrame" : "ModeFullFrame",
                 0,
                 1f,
                 new Rect(0, 0, size.Width, size.Height));

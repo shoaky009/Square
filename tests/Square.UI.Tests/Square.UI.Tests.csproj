@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Square\Square.csproj" />
     <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
     <ProjectReference Include="..\..\samples\Square.Sample\Square.Sample.csproj" />
+    <ProjectReference Include="..\..\samples\Square.Sample.Vue\Square.Sample.Vue.csproj" />
   </ItemGroup>
 
   <ItemGroup>

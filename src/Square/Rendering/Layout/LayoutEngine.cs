@@ -232,7 +232,7 @@ public sealed class LayoutEngine
                 for (var j = 0; j < visibleCount; j++)
                 {
                     var child = visibleChildren[j];
-                    if (child is IPopupElement) continue;
+                    if (child is IPopupElement { IsLayoutOverlay: true }) continue;
                     var childNode = CreateYogaSubtree(child, session, refW, refH, isRoot: false);
                     if (element.IsScrollContainer() && child.Style.Get("flex-shrink") == null)
                         YGNodeStyleSetFlexShrink(childNode, 0);
@@ -361,7 +361,7 @@ public sealed class LayoutEngine
             var yogaIndex = 0;
             for (var i = 0; i < visibleCount && yogaIndex < count; i++)
             {
-                if (visibleChildren[i] is IPopupElement) continue;
+                if (visibleChildren[i] is IPopupElement { IsLayoutOverlay: true }) continue;
                 var childYoga = YGNodeGetChild(yoga, (nuint) yogaIndex++);
                 if (childYoga != null)
                     ApplyYogaLayout(visibleChildren[i], childYoga, absX, absY);
@@ -378,7 +378,7 @@ public sealed class LayoutEngine
     {
         foreach (var child in element.Children)
         {
-            if (child is IPopupElement)
+            if (child is IPopupElement { IsLayoutOverlay: true })
             {
                 var measured = child.Measure(new Size(float.MaxValue, float.MaxValue));
                 var width = ResolvePopupDimension(child.Style.Get("width"), measured.Width);

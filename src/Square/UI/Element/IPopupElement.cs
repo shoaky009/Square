@@ -4,6 +4,7 @@ namespace Square.UI;
 
 public interface IPopupElement
 {
+    bool IsLayoutOverlay => true;
     bool IsPopupOpen { get; }
     Rect PopupBounds { get; }
     bool DismissOnPointerDownOutside { get; }

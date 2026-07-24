@@ -392,6 +392,7 @@ public class Radio : UIElement, ITextSelectable
 
 public class Select : UIElement, IPopupElement, ITextSelectable
 {
+    public bool IsLayoutOverlay => false;
     public string Value { get => GetProperty<string>(nameof(Value)) ?? ""; set => SetProperty(nameof(Value), value); }
     public string[] Options { get => GetProperty<string[]>(nameof(Options)) ?? []; set => SetProperty(nameof(Options), value ?? []); }
     public string Placeholder { get => GetProperty<string>(nameof(Placeholder)) ?? "Select"; set => SetProperty(nameof(Placeholder), value); }

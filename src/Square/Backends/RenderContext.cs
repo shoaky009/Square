@@ -8,6 +8,7 @@ namespace Square.Backends;
 
 internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext, IRenderBitmapSource
 {
+    public bool SupportsPartialRendering => true;
     private const int CoverageSampleGrid = 4;
     private const int CoverageSampleCount = CoverageSampleGrid * CoverageSampleGrid;
 
