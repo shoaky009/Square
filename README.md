@@ -93,6 +93,29 @@ dotnet run --project samples/Square.Sample.RichText/Square.Sample.RichText.cspro
 dotnet test Square.slnx
 ```
 
+## NativeAOT 发布
+
+Windows x64：
+
+```bash
+dotnet publish samples/Square.Sample.Vue/Square.Sample.Vue.csproj \
+  -c Release \
+  -r win-x64 \
+  -p:SquareSamplePublishAot=true \
+  --self-contained true
+```
+
+Linux x64 / X11：
+
+```bash
+dotnet publish samples/Square.Sample.Vue/Square.Sample.Vue.csproj \
+  -c Release \
+  -r linux-x64 \
+  -p:SquareSamplePublishAot=true \
+  -p:SquareTargetPlatform=X11 \
+  --self-contained true
+```
+
 ## 文档
 
 - [入门指南](docs/Getting-Started.md)
