@@ -467,7 +467,7 @@ element.SetDebugInfo(ElementDebugInfo.Create(
 ```csharp
 private static readonly DebugSourceFile[] __SquareDebugSources =
 [
-    new(3, "Components/Main.sqx")
+    new(3, "Components/Main.sqv")
 ];
 ```
 
@@ -552,7 +552,7 @@ client point
   "componentName": "Main",
   "bounds": { "x": 24, "y": 96, "width": 128, "height": 36 },
   "source": {
-    "file": "Components/Main.sqx",
+    "file": "Components/Main.sqv",
     "startLine": 12,
     "startColumn": 5,
     "endLine": 18,
@@ -588,7 +588,7 @@ client point
 DevTools 只返回源码位置，不直接假设 IDE。外部工具可以按响应中的 source location 调用 IDE：
 
 ```text
-file: Components/Main.sqx
+file: Components/Main.sqv
 line: 12
 column: 5
 ```

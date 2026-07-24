@@ -1,9 +1,9 @@
 # 入门指南
 
 > Version: 0.3
-> 配套：`Architecture.md`、`Sqx-Spec.md`、`API-Reference.md`
+> 配套：`vue-plan.md`、`Architecture.md`、`Sqx-Spec.md`、`API-Reference.md`
 
-本文带你从零创建一个 Square 桌面应用，涵盖项目搭建、SQX 组件编写、事件处理、样式和发布。
+本文带你从零创建一个 Square 桌面应用，默认使用 `.sqv` 的 Vue 模板语法编写组件。`.sqx` 原生语法仍可用，详见 `Sqx-Spec.md`。
 
 ---
 
@@ -50,7 +50,7 @@ cd MyApp
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="**\*.sqx" />
+    <AdditionalFiles Include="**\*.sqv" />
   </ItemGroup>
 
 </Project>
@@ -65,7 +65,7 @@ cd MyApp
 | `OutputType=WinExe` | Windows 桌面应用，不弹出控制台窗口 |
 | `PublishAot=true` | 启用 NativeAOT 发布 |
 | `OutputItemType="Analyzer"` | Source Generator 作为分析器引用，不输出程序集 |
-| `AdditionalFiles Include="**\*.sqx"` | 将 `.sqx` 文件注册为 Source Generator 输入 |
+| `AdditionalFiles Include="**\*.sqv"` | 将 `.sqv` 文件注册为 Source Generator 输入 |
 
 `Square` 包含桌面运行时、控件、CSS、路由、布局和软件渲染。窗口宿主由 `Square.Platform.Win32` 或 `Square.Platform.X11` 提供；Vulkan、Extensions 与 DevTools 仍按需单独引用。
 
@@ -84,25 +84,23 @@ new DesktopApplication(window).Run();
 
 Windows 项目引用 `Square.Platform.Win32`，Linux 项目引用 `Square.Platform.X11`。平台包自动注册默认宿主，不需要在 `Program.cs` 中调用 `PlatformRegistry.Register(...)`。
 
-`Main` 是由 `Main.sqx` 在编译期生成的组件类。`AppWindow` 负责窗口内容、尺寸、标题栏和渲染配置；`DesktopApplication` 负责应用生命周期和消息循环。
+`Main` 是由 `Main.sqv` 在编译期生成的组件类。`AppWindow` 负责窗口内容、尺寸、标题栏和渲染配置；`DesktopApplication` 负责应用生命周期和消息循环。
 
 ---
 
 ## 3. 编写第一个组件
 
-### 3.1 创建 Main.sqx
+### 3.1 创建 Main.sqv
 
-在项目根目录创建 `Main.sqx`：
+在项目根目录创建 `Main.sqv`：
 
-```xml
+```vue
 <template>
   <View class="container">
     <Text class="title">Hello Square</Text>
-    <Input value={Name} onInput={OnNameChanged} placeholder="输入你的名字" />
-    <Button onClick={OnGreet} class="greet-btn">打招呼</Button>
-    <Show when={Greeted}>
-      <Text class="greeting">你好，{Name.Value}！</Text>
-    </Show>
+    <Input :value="Name" @input="OnNameChanged" placeholder="输入你的名字" />
+    <Button @click="OnGreet" class="greet-btn">打招呼</Button>
+    <Text v-if="Greeted.Value" class="greeting">你好，{{ Name.Value }}！</Text>
   </View>
 </template>
 
@@ -152,7 +150,7 @@ Windows 项目引用 `Square.Platform.Win32`，Linux 项目引用 `Square.Platfo
 MyApp/
   MyApp.csproj
   Program.cs
-  Main.sqx
+  Main.sqv
 ```
 
 ### 3.3 构建和运行
@@ -162,17 +160,17 @@ dotnet build
 dotnet run
 ```
 
-如果 `.sqx` 有语法错误，编译时会直接报错并指向文件和行列号。运行后应看到一个窗口，包含标题、输入框、按钮和条件问候文本。
+如果 `.sqv` 有语法错误，编译时会直接报错并指向文件和行列号。运行后应看到一个窗口，包含标题、输入框、按钮和条件问候文本。
 
 ---
 
-## 4. 理解 SQX 组件结构
+## 4. 理解 SQV 组件结构
 
-`.sqx` 文件由三个顶级 section 组成，Source Generator 将它们编译为同一个 `partial` 组件类：
+`.sqv` 文件使用 Vue 模板语法，并保留 Square 的三个顶级 section。Source Generator 将它们编译为同一个 `partial` 组件类：
 
 ```xml
 <template>
-  <!-- 结构 + 绑定 + 流程控制 -->
+  <!-- Vue 风格结构、绑定、事件和流程控制 -->
 </template>
 
 <script lang="csharp">
@@ -220,7 +218,7 @@ public partial class Main : UIElement
 }
 ```
 
-运行时零解析——所有 UI 在编译期已生成普通 C# 类型。
+运行时零解析，不引入 Vue 运行时或 JavaScript 引擎。所有 UI 在编译期已生成普通 C# 类型。
 
 ---
 
@@ -238,28 +236,28 @@ public ObservableValue<bool> Visible = new(true);
 
 ### 5.2 文本插值
 
-```xml
-<Text>你好，{Name}</Text>
-<Text>{Count} 次点击</Text>
+```vue
+<Text>你好，{{ Name.Value }}</Text>
+<Text>{{ Count.Value }} 次点击</Text>
 ```
 
-`{expr}` 在编译期解析为 `ObservableValue<T>.Value` 读取并自动订阅。
+`{{ expr }}` 在编译期解析为 C# 表达式，并由生成器建立订阅。
 
 ### 5.3 属性绑定
 
-```xml
-<Text text={Title} />
-<View class={ActiveClass} />
+```vue
+<Text :text="Title" />
+<View :class="ActiveClass" />
 ```
 
 ### 5.4 事件处理
 
-```xml
-<Button onClick={OnClick}>Click</Button>
-<Input onInput={OnInput} />
+```vue
+<Button @click="OnClick">Click</Button>
+<Input @input="OnInput" />
 ```
 
-事件名首字母大写：`click` → `onClick`。Handler 支持三种签名：
+SQV 使用 Vue 风格事件绑定：`@click="OnClick"`。Handler 支持三种签名：
 
 ```csharp
 private void OnClick() { }
@@ -271,8 +269,8 @@ private void OnClick(Event e) { }
 
 Square 不提供隐式双向绑定。单向属性绑定 + 事件回写：
 
-```xml
-<Input value={Name} onInput={OnNameChanged} />
+```vue
+<Input :value="Name" @input="OnNameChanged" />
 ```
 
 ```csharp
@@ -323,7 +321,7 @@ protected override void OnPropChanged(string name)
 
 ### 6.4 编译期校验
 
-必填 Prop 缺失时，编译期报诊断（带 `.sqx` 行列号）。
+必填 Prop 缺失时，编译期报诊断（带 `.sqv` / `.sqx` 行列号）。
 
 ---
 
@@ -331,23 +329,21 @@ protected override void OnPropChanged(string name)
 
 ### 7.1 条件渲染
 
-```xml
-<Show when={IsLoggedIn}>
-  <Text>欢迎回来</Text>
-</Show>
+```vue
+<Text v-if="IsLoggedIn.Value">欢迎回来</Text>
 ```
 
-`when` 绑定 `ObservableValue<bool>`。条件变化时增删 Element 子树。
+`v-if` 绑定 C# 布尔表达式。条件变化时增删 Element 子树。
 
 ### 7.2 列表渲染
 
-```xml
-<For each={Items}>{(it)=>
-  <Text>{it.Name}</Text>
-}</For>
+```vue
+<Text v-for="item in Items" :key="item.Id">
+  {{ item.Name }}
+</Text>
 ```
 
-`each` 绑定 `ObservableCollection<T>`。`it` 为列表项。引用键增量更新，项移动时节点不重建。
+`v-for` 绑定 `ObservableCollection<T>`。引用键增量更新，项移动时节点不重建。
 
 声明集合：
 
@@ -357,11 +353,10 @@ public ObservableCollection<TodoItem> Items = new();
 
 ### 7.3 多分支
 
-```xml
-<Switch fallback={<>未知状态</>}>
-  <Match when={Status == "loading"}><Text>加载中</Text></Match>
-  <Match when={Status == "done"}><Text>完成</Text></Match>
-</Switch>
+```vue
+<Text v-if="Status.Value == &quot;loading&quot;">加载中</Text>
+<Text v-else-if="Status.Value == &quot;done&quot;">完成</Text>
+<Text v-else>未知状态</Text>
 ```
 
 ---
@@ -371,7 +366,7 @@ public ObservableCollection<TodoItem> Items = new();
 ### 8.1 默认插槽
 
 ```xml
-<!-- Card.sqx -->
+<!-- Card.sqv -->
 <View class="card">
   <View class="card-body">
     <Slot />
@@ -388,7 +383,7 @@ public ObservableCollection<TodoItem> Items = new();
 ### 8.2 具名插槽
 
 ```xml
-<!-- Panel.sqx -->
+<!-- Panel.sqv -->
 <View class="panel">
   <View class="panel-header"><Slot name="header"><Text>默认标题</Text></Slot></View>
   <View class="panel-content"><Slot /></View>
@@ -543,8 +538,8 @@ protected override void OnDetachedCore()
 
 ### 12.1 ref 引用
 
-```xml
-<Button ref={MyBtn}>Click</Button>
+```vue
+<Button ref="MyBtn">Click</Button>
 ```
 
 生成器产出强类型字段 `internal Button MyBtn;`，挂载时赋值，卸载时置 null。
@@ -699,8 +694,9 @@ app.Run();
 ## 16. 下一步
 
 - [API 参考](API-Reference.md) — 完整类型与方法签名
-- [SQX 语言规范](Sqx-Spec.md) — 语法细节
+- [SQV / Vue 模板语法](vue-plan.md) — 默认模板语法
+- [SQX 语言规范](Sqx-Spec.md) — Square 原生语法
 - [CSS 规范](CSS-Spec.md) — 样式引擎支持范围
 - [组件组合与信号](Composition-and-Signals.md) — Slot、自定义 Tabs 示例、Signal
 - [总体架构](Architecture.md) — 模块划分与设计决策
-- [示例代码](../samples/Square.Sample/) — 完整示例应用
+- [Vue 示例代码](../samples/Square.Sample.Vue/) — 默认示例应用
