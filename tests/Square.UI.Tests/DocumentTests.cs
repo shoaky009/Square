@@ -12,6 +12,21 @@ namespace Square.UI.Tests;
 
 public class DocumentTests
 {
+    [Theory]
+    [InlineData(885f, 943f, 885.3333f, 942.6667f, true)]
+    [InlineData(885f, 943f, 887f, 943f, false)]
+    public void LayoutSizeComparisonAllowsSubpixelDpiRounding(
+        float actualWidth, float actualHeight, float requestedWidth, float requestedHeight, bool expected)
+    {
+        var method = typeof(DesktopApplication).GetMethod(
+            "AreLayoutSizesEquivalent",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+        Assert.Equal(expected, method!.Invoke(null,
+            [new Square.Graphics.Size(actualWidth, actualHeight), new Square.Graphics.Size(requestedWidth, requestedHeight)]));
+    }
+
     public DocumentTests()
     {
         ControlRegistration.RegisterDefaults();

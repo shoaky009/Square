@@ -891,7 +891,7 @@ public class Dialog : Popup
             element is Button or Input or TextArea or CheckBox or Radio or Select or Link);
 }
 
-public class Image : UIElement, ITextSelectable
+public class Image : UIElement, ITextSelectable, IFrameScheduledElement
 {
     private IImageFrameSource? _frameSource;
     private Bitmap? _sourceSurface;
@@ -966,7 +966,6 @@ public class Image : UIElement, ITextSelectable
 
     public override void Paint(IRenderContext ctx)
     {
-        AdvanceAnimationIfDue();
         var image = DisplayImage;
         if (image is VectorImage vectorImage)
         {
@@ -1123,6 +1122,12 @@ public class Image : UIElement, ITextSelectable
         _frameScheduled = true;
         DispatchEvent(StandardEvents.CreateRequestFrame(
             TimeSpan.FromSeconds(Math.Max(0, _frameDeadline - now) / (double)Stopwatch.Frequency)));
+    }
+
+    void IFrameScheduledElement.OnFrameDue()
+    {
+        AdvanceAnimationIfDue();
+        InvalidatePaint();
     }
 
     private bool CanAnimate() => IsAttached && IsVisible && _frameSource is { FrameCount: > 1 };

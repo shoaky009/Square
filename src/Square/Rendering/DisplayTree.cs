@@ -54,9 +54,9 @@ public sealed class DisplayTree
             _dirtyRects.Add(rect);
     }
 
-    public void UpdateDirty() => UpdateDirty(_root);
+    public void UpdateDirty() => UpdateDirty(_root, default);
 
-    private void UpdateDirty(DisplayNode node)
+    private void UpdateDirty(DisplayNode node, Point visualOffset)
     {
         if (node.Element != null)
         {
@@ -65,14 +65,14 @@ public sealed class DisplayTree
             var oldPopupBounds = node.PopupBounds;
             if (node.Bounds != bounds)
             {
-                _dirtyRects.Add(PadAndSnap(Union(oldVisualBounds, bounds)));
+                _dirtyRects.Add(PadAndSnap(Translate(Union(oldVisualBounds, bounds), visualOffset)));
                 node.Bounds = bounds;
             }
             if (node.Element.NeedsPaint)
             {
                 node.IsDirty = true;
                 node.RebuildCommands();
-                _dirtyRects.Add(PadAndSnap(Union(oldVisualBounds, node.VisualBounds)));
+                _dirtyRects.Add(PadAndSnap(Translate(Union(oldVisualBounds, node.VisualBounds), visualOffset)));
             }
 
             var popupBounds = GetPopupVisualBounds(node.Element);
@@ -82,8 +82,9 @@ public sealed class DisplayTree
                 node.PopupBounds = popupBounds;
             }
         }
+        var childOffset = GetChildVisualOffset(node, visualOffset);
         foreach (var child in node.Children)
-            UpdateDirty(child);
+            UpdateDirty(child, childOffset);
     }
 
     private void RebuildPopupList()
@@ -105,13 +106,13 @@ public sealed class DisplayTree
     /// </summary>
     public List<Rect> CollectDirtyRects()
     {
-        CollectDirtyRects(_root, _dirtyRects);
+        CollectDirtyRects(_root, _dirtyRects, default);
         var dirty = MergeDirtyRects(_dirtyRects);
         _dirtyRects.Clear();
         return dirty;
     }
 
-    private static bool CollectDirtyRects(DisplayNode node, List<Rect> dest)
+    private static bool CollectDirtyRects(DisplayNode node, List<Rect> dest, Point visualOffset)
     {
         var subtreeDirty = node.IsDirty || (node.Element != null && node.Element.NeedsPaint);
         if (subtreeDirty)
@@ -119,12 +120,13 @@ public sealed class DisplayTree
             var g = node.VisualBounds.IsEmpty ? node.Element?.Geometry ?? node.Bounds : node.VisualBounds;
             // Geometry 尚未 arrange 时用 Bounds；仍空则跳过（父/兄弟可能有有效区）
             if (!g.IsEmpty)
-                dest.Add(PadAndSnap(g));
+                dest.Add(PadAndSnap(Translate(g, visualOffset)));
             var popupBounds = GetPopupVisualBounds(node.Element);
             if (!popupBounds.IsEmpty) dest.Add(PadAndSnap(popupBounds));
         }
+        var childOffset = GetChildVisualOffset(node, visualOffset);
         foreach (var child in node.Children)
-            subtreeDirty |= CollectDirtyRects(child, dest);
+            subtreeDirty |= CollectDirtyRects(child, dest, childOffset);
         if (subtreeDirty && node.Element is IPopupElement { IsPopupOpen: true })
         {
             var popupBounds = GetPopupVisualBounds(node.Element);
@@ -132,6 +134,15 @@ public sealed class DisplayTree
         }
         return subtreeDirty;
     }
+
+    private static Point GetChildVisualOffset(DisplayNode node, Point current)
+    {
+        if (node.Element?.MapsScrollOffsetForChildren() != true) return current;
+        return new Point(current.X - node.Element.ScrollLeft, current.Y - node.Element.ScrollTop);
+    }
+
+    private static Rect Translate(Rect rect, Point offset) =>
+        new(rect.X + offset.X, rect.Y + offset.Y, rect.Width, rect.Height);
 
     /// <summary>外扩 1 逻辑像素并 snap 到整数像素，减少抗锯齿残影。</summary>
     private static Rect PadAndSnap(Rect g)

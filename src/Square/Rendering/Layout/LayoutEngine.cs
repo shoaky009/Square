@@ -119,6 +119,34 @@ public sealed class LayoutEngine
         ClearDirtyRecursive(element);
     }
 
+    /// <summary>在可用尺寸等于最终尺寸时复用同一棵 Yoga 树完成测量和排列。</summary>
+    public void MeasureAndArrange(Element element, Size availableSize)
+    {
+        var style = GetComputedStyle(element, availableSize.Width, availableSize.Height);
+        if (!element.IsVisible || style.Display == DisplayMode.None)
+        {
+            element.ClearLayoutDirty();
+            element.Arrange(new Rect(0, 0, 0, 0));
+            return;
+        }
+
+        if (style.Display == DisplayMode.Grid)
+        {
+            MeasureGrid(element, style, availableSize);
+            var inner = Inset(new Rect(0, 0, availableSize.Width, availableSize.Height),
+                style.PaddingLeft, style.PaddingTop, style.PaddingRight, style.PaddingBottom);
+            ArrangeGrid(element, style, inner);
+            element.Arrange(new Rect(0, 0, availableSize.Width, availableSize.Height));
+            element.ClearLayoutDirty();
+            return;
+        }
+
+        using var session = BuildYogaTree(element, availableSize.Width, availableSize.Height);
+        ApplyYogaLayout(element, session.Root, 0, 0);
+        ArrangePopupSubtrees(element);
+        ClearDirtyRecursive(element);
+    }
+
     // ——— Yoga Flex/Block ———
 
     private YogaSession BuildYogaTree(Element root, float width, float height)

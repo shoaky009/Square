@@ -53,8 +53,11 @@ public sealed class DisplayNode
         var scrollOffset = Element?.ScrollOffset ?? default;
         var scrollsChildren = Element?.MapsScrollOffsetForChildren() == true;
         if (scrollsChildren) ctx.PushTransform(Matrix3x2.CreateTranslation(-scrollOffset.X, -scrollOffset.Y));
+        var childDirtyClip = scrollsChildren && dirtyClip is { } clip
+            ? new Rect(clip.X + scrollOffset.X, clip.Y + scrollOffset.Y, clip.Width, clip.Height)
+            : dirtyClip;
         foreach (var child in Children)
-            child.Render(ctx, dirtyClip);
+            child.Render(ctx, childDirtyClip);
         if (scrollsChildren) ctx.PopTransform();
         if (clipsChildren) ctx.PopClip();
     }

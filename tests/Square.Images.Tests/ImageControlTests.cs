@@ -87,8 +87,9 @@ public sealed class ImageControlTests
         }
     }
 
+
     [Fact]
-    public void AnimatedSourceRequestsAnotherFrameAfterAdvancingWhileIdle()
+    public void ScheduledAnimatedFrameAdvancesWithoutPaintAndRequestsNextFrame()
     {
         ImageSourceRegistration.RegisterDefaults();
         var palette = new byte[] { 255, 0, 0, 0, 255, 0 };
@@ -114,9 +115,11 @@ public sealed class ImageControlTests
             Assert.True(loaded, image.Error?.ToString());
             var initialRequests = requests.Count;
             Thread.Sleep(30);
-            image.Paint(new RecordingRenderContext());
+
+            ((IFrameScheduledElement)image).OnFrameDue();
 
             Assert.True(requests.Count > initialRequests);
+            Assert.True(image.NeedsPaint);
         }
         finally
         {

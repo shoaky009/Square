@@ -1,5 +1,10 @@
 namespace Square.Events;
 
+public interface IFrameScheduledElement
+{
+    void OnFrameDue();
+}
+
 /// <summary>
 /// 请求下一帧渲染的事件（Square 扩展类型 <c>requestframe</c>，非标准 DOM）。
 /// 由 Canvas 等控件派发，宿主合并调度。

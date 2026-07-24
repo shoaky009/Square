@@ -362,6 +362,91 @@ public class DirtyPartialPresentTests
         Assert.Equal(1, context.FillCount);
     }
 
+    [Fact]
+    public void DirtyRenderUsesViewportCoordinatesForScrolledChildren()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 60) };
+        root.Style.Set("overflow-y", "auto");
+        root.SetScrollContentSize(new Size(100, 160));
+        var child = new CountingPaintElement { Geometry = new Rect(0, 100, 100, 20) };
+        root.Children.Add(child);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        using var context = new CountingRenderContext();
+
+        root.ScrollTop = 80;
+        tree.UpdateDirty();
+        tree.Render(context, new Rect(0, 20, 100, 20));
+
+        Assert.Equal(1, context.FillCount);
+    }
+
+    [Fact]
+    public void DirtyRectsUseViewportCoordinatesForScrolledChildren()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 60) };
+        root.Style.Set("overflow-y", "auto");
+        root.SetScrollContentSize(new Size(100, 160));
+        var child = new CountingPaintElement { Geometry = new Rect(0, 100, 100, 20) };
+        root.Children.Add(child);
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        tree.Render(new CountingRenderContext());
+        root.ClearPaintDirty();
+        child.ClearPaintDirty();
+
+        root.ScrollTop = 80;
+        tree.UpdateDirty();
+        _ = tree.CollectDirtyRects();
+        root.ClearPaintDirty();
+        child.InvalidatePaint();
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+
+        Assert.Contains(dirty, rect => rect.Top <= 20 && rect.Bottom >= 40);
+        Assert.DoesNotContain(dirty, rect => rect.Top >= 90);
+    }
+
+    [Fact]
+    public void ScrolledDirtyRenderMatchesFullFramePixels()
+    {
+        var root = CreateScrolledPixelTree();
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        using var bitmap = new Bitmap(100, 60);
+        using var context = new RenderContext(bitmap, 1f);
+        context.Clear(Color.White);
+        tree.Render(context);
+
+        root.ScrollTop = 80;
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+        var union = dirty.Aggregate(DisplayTree.Union);
+        context.Clear(Color.White, union);
+        tree.Render(context, union);
+
+        var expectedRoot = CreateScrolledPixelTree();
+        expectedRoot.ScrollTop = 80;
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expectedRoot);
+        using var expectedBitmap = new Bitmap(100, 60);
+        using var expectedContext = new RenderContext(expectedBitmap, 1f);
+        expectedContext.Clear(Color.White);
+        expectedTree.Render(expectedContext);
+
+        Assert.Equal(expectedBitmap.Pixels, bitmap.Pixels);
+    }
+
+    private static View CreateScrolledPixelTree()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 100, 60) };
+        root.Style.Set("overflow-y", "auto");
+        root.SetScrollContentSize(new Size(100, 160));
+        root.Children.Add(new ColorPaintElement(Color.Red) { Geometry = new Rect(0, 0, 100, 60) });
+        root.Children.Add(new ColorPaintElement(Color.Blue) { Geometry = new Rect(0, 100, 100, 20) });
+        return root;
+    }
+
     private sealed class PathPaintElement : UIElement
     {
         public override void Paint(IRenderContext ctx)
@@ -377,6 +462,11 @@ public class DirtyPartialPresentTests
     private sealed class CountingPaintElement : UIElement
     {
         public override void Paint(IRenderContext ctx) => ctx.FillRect(Geometry, Brush.FromColor(Color.Red));
+    }
+
+    private sealed class ColorPaintElement(Color color) : UIElement
+    {
+        public override void Paint(IRenderContext ctx) => ctx.FillRect(Geometry, Brush.FromColor(color));
     }
 
     private sealed class ReinvalidatingElement : UIElement

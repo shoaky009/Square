@@ -313,11 +313,10 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         }
 
         var size = _host.ClientSize;
-        var layoutDirty = _root.IsLayoutDirty || _root.Geometry.Size != size;
+        var layoutDirty = _root.IsLayoutDirty || !AreLayoutSizesEquivalent(_root.Geometry.Size, size);
         if (layoutDirty)
         {
-            _layout.Measure(_root, size);
-            _layout.Arrange(_root, new Rect(0, 0, size.Width, size.Height));
+            _layout.MeasureAndArrange(_root, size);
             ArrangeWindowShell(size);
             _displayTree.BuildFrom(_root);
         }
@@ -480,6 +479,10 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
     }
 
     private Element? HitTest(Point point) => _displayTree.HitTestPopups(point) ?? _root.HitTest(point);
+
+    private static bool AreLayoutSizesEquivalent(Size actual, Size requested) =>
+        MathF.Abs(actual.Width - requested.Width) < 0.5f &&
+        MathF.Abs(actual.Height - requested.Height) < 0.5f;
 
     private void ArrangeWindowShell(Size size)
     {
@@ -1419,7 +1422,10 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             foreach (var target in dueTargets)
             {
                 _scheduledFrames.Remove(target);
-                target.InvalidatePaint();
+                if (target is IFrameScheduledElement scheduled)
+                    scheduled.OnFrameDue();
+                else
+                    target.InvalidatePaint();
             }
         }
 
