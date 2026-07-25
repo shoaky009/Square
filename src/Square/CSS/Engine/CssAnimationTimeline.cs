@@ -67,30 +67,52 @@ public sealed class CssAnimationTimeline
     {
         foreach (var track in _tracks)
         {
-            var value = track.From + (track.To - track.From) * progress;
+            var value = track.ValueAt(progress);
             _visual.Style.Set(track.Property, FormatNumber(value));
         }
     }
 
     private static List<AnimationTrack> BuildTracks(KeyFramesRule keyFrames)
     {
-        var from = FindStop(keyFrames, "from") ?? FindStop(keyFrames, "0%") ?? keyFrames.Stops.FirstOrDefault();
-        var to = FindStop(keyFrames, "to") ?? FindStop(keyFrames, "100%") ?? keyFrames.Stops.LastOrDefault();
-        if (from == null || to == null) return [];
-
-        var tracks = new List<AnimationTrack>();
-        foreach (var start in from.Declarations)
+        var values = new Dictionary<string, List<AnimationStop>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var stop in keyFrames.Stops)
         {
-            var end = to.Declarations.FirstOrDefault(d => string.Equals(d.Property, start.Property, StringComparison.OrdinalIgnoreCase));
-            if (end == null) continue;
-            if (!TryParseFloat(start.Value, out var startValue) || !TryParseFloat(end.Value, out var endValue)) continue;
-            tracks.Add(new AnimationTrack(start.Property, startValue, endValue));
+            if (!TryParseProgress(stop.Selector, out var progress)) continue;
+            foreach (var declaration in stop.Declarations)
+            {
+                if (!TryParseFloat(declaration.Value, out var value)) continue;
+                if (!values.TryGetValue(declaration.Property, out var stops))
+                    values.Add(declaration.Property, stops = []);
+                stops.Add(new AnimationStop(progress, value));
+            }
         }
-        return tracks;
+        return values
+            .Where(pair => pair.Value.Count >= 2)
+            .Select(pair => new AnimationTrack(pair.Key, pair.Value.OrderBy(stop => stop.Progress).ToArray()))
+            .ToList();
     }
 
-    private static KeyFrameStop? FindStop(KeyFramesRule keyFrames, string selector) =>
-        keyFrames.Stops.FirstOrDefault(stop => string.Equals(stop.Selector, selector, StringComparison.OrdinalIgnoreCase));
+    private static bool TryParseProgress(string selector, out float progress)
+    {
+        if (string.Equals(selector, "from", StringComparison.OrdinalIgnoreCase))
+        {
+            progress = 0;
+            return true;
+        }
+        if (string.Equals(selector, "to", StringComparison.OrdinalIgnoreCase))
+        {
+            progress = 1;
+            return true;
+        }
+        if (selector.EndsWith("%", StringComparison.Ordinal) &&
+            float.TryParse(selector[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var percent))
+        {
+            progress = Math.Clamp(percent / 100f, 0f, 1f);
+            return true;
+        }
+        progress = 0;
+        return false;
+    }
 
     private static bool TryParseFloat(string value, out float result)
     {
@@ -102,7 +124,24 @@ public sealed class CssAnimationTimeline
     private static string FormatNumber(float value) =>
         value.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private sealed record AnimationTrack(string Property, float From, float To);
+    private sealed record AnimationTrack(string Property, AnimationStop[] Stops)
+    {
+        public float ValueAt(float progress)
+        {
+            if (progress <= Stops[0].Progress) return Stops[0].Value;
+            for (var index = 1; index < Stops.Length; index++)
+            {
+                var end = Stops[index];
+                if (progress > end.Progress) continue;
+                var start = Stops[index - 1];
+                var range = end.Progress - start.Progress;
+                return range <= 0 ? end.Value : start.Value + (end.Value - start.Value) * ((progress - start.Progress) / range);
+            }
+            return Stops[^1].Value;
+        }
+    }
+
+    private readonly record struct AnimationStop(float Progress, float Value);
     private enum AnimationDirection { Normal, Reverse, Alternate, AlternateReverse }
 
     private static AnimationDirection ParseDirection(string value) => value.Trim().ToLowerInvariant() switch

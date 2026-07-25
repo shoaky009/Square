@@ -245,6 +245,36 @@ public class RichTextDocumentTests
     }
 
     [Fact]
+    public void EditorStateAppliesActiveMarksWhenTypingAtCollapsedSelection()
+    {
+        var state = new RichTextEditorState(RichTextDocument.FromPlainText("hello"));
+        state.SetSelection(RichTextSelection.Collapsed(new RichTextPosition(0, 2)));
+
+        state.ToggleMarks(new RichTextMarks(Bold: true, Italic: true));
+        state.InsertText("X");
+
+        var run = Assert.Single(state.Document.Blocks[0].Inlines,
+            inline => inline is RichTextRun { Text: "X" });
+        Assert.True(Assert.IsType<RichTextRun>(run).Marks.Bold);
+        Assert.True(Assert.IsType<RichTextRun>(run).Marks.Italic);
+    }
+
+    [Fact]
+    public void EditorStateInheritsMarksFromPrecedingRunAtCollapsedSelection()
+    {
+        var state = new RichTextEditorState(new RichTextDocument([
+            RichTextBlock.Paragraph(new RichTextRun("bold", new RichTextMarks(Bold: true)))
+        ]));
+        state.SetSelection(RichTextSelection.Collapsed(new RichTextPosition(0, 4)));
+
+        state.InsertText("!");
+
+        var run = Assert.IsType<RichTextRun>(Assert.Single(state.Document.Blocks[0].Inlines));
+        Assert.Equal("bold!", run.Text);
+        Assert.True(run.Marks.Bold);
+    }
+
+    [Fact]
     public void RichTextEditorCtrlBTogglesBoldOnSelection()
     {
         var editor = new RichTextEditor(RichTextDocument.FromPlainText("hello"))

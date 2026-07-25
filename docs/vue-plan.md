@@ -439,7 +439,7 @@ Card
 - `v-for="item in Items"` 生成 `ForNode.Create`。
 - `v-for="(item, index) in Items"` 生成索引重载。
 - `v-show` 绑定 `IsVisible`。
-- 嵌套 `v-for` + `v-if` 生成独立节点。
+- 嵌套 `v-for` + `v-if` 生成独立节点，并通过生成后 C# 编译回归覆盖字段计数与嵌套 ref。
 - `v-slot` / `#name` 具名插槽。
 - `v-model`（`Input`/`CheckBox`/`Select`）及 `.trim`/`.number`/`.lazy` 修饰符。
 - `ref="Name"` 生成 ref 字段。
@@ -456,10 +456,10 @@ Card
 待补充：
 
 - 解析器单元测试（`SqvLexer`/`SqvTemplateParser` 独立于生成器）。
-- 源码区间（行/列）保留测试。
+- 更完整的源码区间（行/列）保留测试。
 - 不支持特性的诊断测试（里程碑 G）。
 
-已新增生成器级错误模板与诊断回归测试，以及 `SqvLexer` / `SqvTemplateParser` 的 token、源码位置、指令重写和嵌套重复绑定测试；更完整的词法与源码区间矩阵仍待补充。
+已新增生成器级错误模板与诊断回归测试，以及 `SqvLexer` / `SqvTemplateParser` 的 token、源码位置、指令重写和嵌套重复绑定测试；SQV 文档也会保留 `SourcePath` 供生成的 Element 调试信息使用。更完整的词法与源码区间矩阵仍待补充。
 
 命令：
 

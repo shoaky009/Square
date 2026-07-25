@@ -769,6 +769,38 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvNestedVForAndVIfGeneratedCodeCompiles()
+    {
+        const string template = """
+            <template>
+              <View v-for="row in Rows">
+                <Text v-if="row.Active" ref="ActiveText">{{ row.Name }}</Text>
+              </View>
+            </template>
+            <script namespace="TestApp"></script>
+            """;
+        const string codeBehind = """
+            using Square.Runtime.Binding;
+            namespace TestApp;
+            public partial class Nested
+            {
+                public ObservableCollection<Row> Rows = new();
+            }
+            public sealed record Row(bool Active, string Name);
+            """;
+
+        var compilation = CreateCompilation(codeBehind);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            [new SqxGenerator().AsSourceGenerator()],
+            [new InMemoryAdditionalText("Nested.sqv", template)],
+            (CSharpParseOptions?)compilation.SyntaxTrees.First().Options);
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
     public void SqxControlFlowFallbackAndIndexGenerateExpectedNodes()
     {
         const string source = """

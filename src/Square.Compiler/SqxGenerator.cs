@@ -375,10 +375,23 @@ public sealed class SqxGenerator : IIncrementalGenerator
     {
         foreach (var node in nodes)
         {
-            if (node is not SqxElement element) continue;
-            yield return element;
-            foreach (var child in EnumerateElements(element.Children))
-                yield return child;
+            if (node is SqxElement element)
+            {
+                yield return element;
+                foreach (var child in EnumerateElements(element.Children))
+                    yield return child;
+            }
+            else if (node is SqvForDirective forDirective)
+            {
+                foreach (var child in EnumerateElements(forDirective.Children))
+                    yield return child;
+            }
+            else if (node is SqvIfChainDirective ifChain)
+            {
+                foreach (var branch in ifChain.Branches)
+                foreach (var child in EnumerateElements(branch.Children))
+                    yield return child;
+            }
         }
     }
 

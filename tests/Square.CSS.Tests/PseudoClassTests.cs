@@ -440,4 +440,25 @@ public class PseudoClassTests
         Assert.Equal("1", text.Style.Get("opacity"));
         Assert.False(manager.HasRunningAnimations);
     }
+
+    [Fact]
+    public void AnimationTimelineInterpolatesAcrossIntermediateKeyframes()
+    {
+        var css = "@keyframes pulse { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } } Text { animation: pulse 1s linear; }";
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
+        var text = new Square.Controls.Text();
+        engine.ApplyStyles(text);
+        var timeline = engine.CreateAnimationTimeline(text)!;
+
+        timeline.Start();
+        timeline.Tick(0.25f);
+        Assert.Equal("0.5", text.Style.Get("opacity"));
+
+        timeline.Tick(0.25f);
+        Assert.Equal("1", text.Style.Get("opacity"));
+
+        timeline.Tick(0.25f);
+        Assert.Equal("0.5", text.Style.Get("opacity"));
+    }
 }

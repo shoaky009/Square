@@ -10,10 +10,12 @@ public sealed class RichTextEditorState
         Document = document ?? new RichTextDocument();
         Document.Normalize();
         Selection = RichTextSelection.Collapsed(new RichTextPosition(0, 0));
+        ActiveMarks = ResolveMarksAt(Selection.Start);
     }
 
     public RichTextDocument Document { get; }
     public RichTextSelection Selection { get; private set; }
+    public RichTextMarks ActiveMarks { get; private set; }
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
 
@@ -22,6 +24,8 @@ public sealed class RichTextEditorState
         ValidatePosition(selection.Anchor);
         ValidatePosition(selection.Focus);
         Selection = selection;
+        if (selection.IsCollapsed)
+            ActiveMarks = ResolveMarksAt(selection.Start);
     }
 
     public void InsertText(string text, RichTextMarks? marks = null)
@@ -37,7 +41,7 @@ public sealed class RichTextEditorState
                 var part = parts[i];
                 if (part.Length > 0)
                 {
-                    InsertTextCore(position, part, marks ?? RichTextMarks.Empty);
+                    InsertTextCore(position, part, marks ?? ActiveMarks);
                     position = new RichTextPosition(position.BlockIndex, position.Offset + part.Length);
                 }
 
@@ -45,6 +49,7 @@ public sealed class RichTextEditorState
                     position = SplitBlockCore(position);
             }
             Selection = RichTextSelection.Collapsed(position);
+            ActiveMarks = marks ?? ActiveMarks;
         });
     }
 
@@ -148,13 +153,21 @@ public sealed class RichTextEditorState
 
     public void ToggleMarks(RichTextMarks marks)
     {
-        if (Selection.IsCollapsed) return;
+        if (Selection.IsCollapsed)
+        {
+            ActiveMarks = MergeMarks(ActiveMarks, marks, ResolveToggleMarks(ActiveMarks, marks));
+            return;
+        }
         Execute(() => ApplyMarksCore(Selection, marks, ResolveToggleMarks(Selection, marks)));
     }
 
     public void SetMarks(RichTextMarks marks)
     {
-        if (Selection.IsCollapsed) return;
+        if (Selection.IsCollapsed)
+        {
+            ActiveMarks = marks;
+            return;
+        }
         Execute(() => SetMarksCore(Selection, marks));
     }
 
@@ -333,6 +346,29 @@ public sealed class RichTextEditorState
         };
     }
 
+    private static RichTextMarks ResolveToggleMarks(RichTextMarks current, RichTextMarks requested) => requested with
+    {
+        Bold = requested.Bold && !current.Bold,
+        Italic = requested.Italic && !current.Italic,
+        Underline = requested.Underline && !current.Underline
+    };
+
+    private RichTextMarks ResolveMarksAt(RichTextPosition position)
+    {
+        var block = Document.Blocks[position.BlockIndex];
+        var cursor = 0;
+        RichTextMarks? previous = null;
+        foreach (var inline in block.Inlines)
+        {
+            if (inline is not RichTextRun run) continue;
+            var end = cursor + run.Text.Length;
+            if (position.Offset < end) return run.Marks;
+            previous = run.Marks;
+            cursor = end;
+        }
+        return previous ?? RichTextMarks.Empty;
+    }
+
     private IEnumerable<RichTextRun> EnumerateSelectedRuns(RichTextSelection selection)
     {
         var start = selection.Start;
@@ -409,13 +445,14 @@ public sealed class RichTextEditorState
             throw new ArgumentOutOfRangeException(nameof(position.Offset));
     }
 
-    private Snapshot Capture() => new(CloneBlocks(Document.Blocks), Selection);
+    private Snapshot Capture() => new(CloneBlocks(Document.Blocks), Selection, ActiveMarks);
 
     private void Restore(Snapshot snapshot)
     {
         Document.Blocks.Clear();
         Document.Blocks.AddRange(CloneBlocks(snapshot.Blocks));
         Selection = snapshot.Selection;
+        ActiveMarks = snapshot.ActiveMarks;
     }
 
     private static List<RichTextBlock> CloneBlocks(IEnumerable<RichTextBlock> blocks) =>
@@ -430,5 +467,5 @@ public sealed class RichTextEditorState
 
     private static string NormalizeNewlines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
 
-    private sealed record Snapshot(List<RichTextBlock> Blocks, RichTextSelection Selection);
+    private sealed record Snapshot(List<RichTextBlock> Blocks, RichTextSelection Selection, RichTextMarks ActiveMarks);
 }

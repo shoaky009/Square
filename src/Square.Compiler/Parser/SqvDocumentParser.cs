@@ -20,6 +20,7 @@ internal static class SqvDocumentParser
         var document = new SqxDocument
         {
             Name = string.IsNullOrEmpty(fileName) ? "Component" : Path.GetFileNameWithoutExtension(fileName),
+            SourcePath = fileName,
             Template = new SqxTemplate { Roots = roots }
         };
 

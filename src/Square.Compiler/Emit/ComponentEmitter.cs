@@ -94,14 +94,21 @@ namespace Square.Compiler.Emit
         {
             foreach (var node in nodes)
             {
-                if (node is not SqxElement element) continue;
-                var refAttr = FindAttr(element, "ref");
-                if (refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue) &&
-                    !_refs.Exists(item => item.Name == refAttr.RawValue))
+                if (node is SqxElement element)
                 {
-                    _refs.Add(new RefInfo(refAttr.RawValue, MapTagName(element.TagName)));
+                    var refAttr = FindAttr(element, "ref");
+                    if (refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue) &&
+                        !_refs.Exists(item => item.Name == refAttr.RawValue))
+                    {
+                        _refs.Add(new RefInfo(refAttr.RawValue, MapTagName(element.TagName)));
+                    }
+                    CollectRefs(element.Children);
                 }
-                CollectRefs(element.Children);
+                else if (node is SqvForDirective forDirective)
+                    CollectRefs(forDirective.Children);
+                else if (node is SqvIfChainDirective ifChain)
+                    foreach (var branch in ifChain.Branches)
+                        CollectRefs(branch.Children);
             }
         }
 
@@ -124,10 +131,13 @@ namespace Square.Compiler.Emit
                 else if (node is SqvForDirective)
                 {
                     _structCounts["_vfor"] = (_structCounts.TryGetValue("_vfor", out var c) ? c : 0) + 1;
+                    CountStructs(((SqvForDirective)node).Children);
                 }
                 else if (node is SqvIfChainDirective ifChain)
                 {
                     _structCounts["_vif"] = (_structCounts.TryGetValue("_vif", out var c2) ? c2 : 0) + ifChain.Branches.Count;
+                    foreach (var branch in ifChain.Branches)
+                        CountStructs(branch.Children);
                 }
             }
         }

@@ -130,7 +130,7 @@ M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文�
 - Vulkan NativeAOT：Windows x64 原生发布、启动、GPU readback 与截图回归验证已通过
 - M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
 - M9 多目标输出：WinUI host + Software bitmap、SVG exporter、NativeUiNode 原型、Godot 嵌入宿主（见 `docs/Rendering-Targets.md`）
-- M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射、输入/删除样式继承、基础加粗/下划线/斜体操作（基于已落地的 `Range` 与 `TextFragment`）
+- M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射；折叠选区已支持活动样式、相邻 run 样式继承及基础加粗/下划线/斜体操作，DOM `Range` 映射、BiDi 与复杂文本布局仍待完成
 - `.sqv` 前端继续推进：`v-model` 与基础 slots 已落地；下一步是独立 Template IR、scoped slot props、动态参数与解析器归属清理（见 `docs/vue-plan.md` 里程碑 A、E–G）
 - 继续扩展 CSS Grid / Animation 到更完整规范
 
