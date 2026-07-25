@@ -288,6 +288,24 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void VueTabsCanNavigateFromMediaToMarkdown()
+    {
+        var component = new VueMain();
+        component.BuildElementTree();
+        ((IComponentLifecycle)component).OnAttached();
+        var tabs = Assert.Single(component.QueryAll<VueTabs>());
+
+        tabs.SelectedIndex = 3;
+        Assert.Single(component.QueryAll<Square.Sample.Vue.Components.MediaSamplesPage>());
+
+        tabs.SelectedIndex = 4;
+        Assert.Empty(component.QueryAll<Square.Sample.Vue.Components.MediaSamplesPage>());
+        Assert.Single(component.QueryAll<Square.Sample.Vue.Components.MarkdownSamplesPage>());
+
+        ((IComponentLifecycle)component).OnDetached();
+    }
+
+    [Fact]
     public void TextInputsAcceptChineseAndJapaneseText()
     {
         var input = new Input();

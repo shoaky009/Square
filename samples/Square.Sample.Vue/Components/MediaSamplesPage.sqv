@@ -75,7 +75,6 @@
     _clock.Stop();
     _introAnimation?.Stop();
     _secondSweepAnimation?.Stop();
-    DemoCanvas.CancelAnimationFrame();
   }
 
   private void DrawClock(IRenderContext context, Rect bounds)
