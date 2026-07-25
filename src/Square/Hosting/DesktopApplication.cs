@@ -25,6 +25,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
     private readonly DisplayTree _displayTree = new();
     private readonly Dictionary<Element, double> _scheduledFrames = [];
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private double _lastAnimationTickSeconds;
     private IPlatformHost? _host;
     private IRenderContext? _renderContext;
     private UIElement? _focusedInput;
@@ -1408,6 +1409,9 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
     private void HandleTick()
     {
         var now = _clock.Elapsed.TotalSeconds;
+        var animationDelta = (float)Math.Max(0, now - _lastAnimationTickSeconds);
+        _lastAnimationTickSeconds = now;
+        var animationsRunning = CssStyleReconciler.TickAnimations(_root, animationDelta);
         // 避免每 tick 分配 LINQ 数组
         List<Element>? dueTargets = null;
         foreach (var pair in _scheduledFrames)
@@ -1430,6 +1434,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         }
 
         var needsRender = (dueTargets != null && dueTargets.Count > 0)
+                          || animationsRunning
                           || _renderRequested
                           || _document.Context.Reconciler.HasWork
                           || CssStyleReconciler.HasWork

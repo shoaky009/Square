@@ -66,7 +66,10 @@ public static class CssStyleReconciler
                         ClearCascadedSubtree(root);
 
                     foreach (var scope in scopes)
+                    {
                         scope.Engine.ApplyStylesToTreeCore(scope.Root);
+                        scope.Animations.Attach(scope.Root);
+                    }
                 }
 
                 foreach (var snapshot in styleSnapshots)
@@ -77,6 +80,36 @@ public static class CssStyleReconciler
                 _applying--;
             }
         }
+    }
+
+    internal static void RefreshAnimations(CssEngine engine, Element root)
+    {
+        lock (Gate)
+        {
+            foreach (var scope in Scopes)
+            {
+                if (!ReferenceEquals(scope.Engine, engine) || !ReferenceEquals(scope.Root, root)) continue;
+                scope.Animations.Attach(root);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Advances animations owned by CSS scopes in the supplied element tree.</summary>
+    public static bool TickAnimations(Element root, float deltaSeconds)
+    {
+        StyleScope[] scopes;
+        lock (Gate)
+            scopes = Scopes.Where(scope => ReferenceEquals(FindTreeRoot(scope.Root), root)).ToArray();
+
+        var running = false;
+        foreach (var scope in scopes)
+        {
+            if (!scope.Animations.HasRunningAnimations) continue;
+            running = true; // The final tick still needs a frame to present its terminal value.
+            scope.Animations.Tick(deltaSeconds);
+        }
+        return running;
     }
 
     private static void MarkDirty(Element element)
@@ -132,5 +165,17 @@ public static class CssStyleReconciler
         IReadOnlyDictionary<string, string> Properties,
         IReadOnlyList<StyleSnapshot> Children);
 
-    private readonly record struct StyleScope(CssEngine Engine, Element Root);
+    private sealed class StyleScope
+    {
+        public StyleScope(CssEngine engine, Element root)
+        {
+            Engine = engine;
+            Root = root;
+            Animations = new CssAnimationManager(engine);
+        }
+
+        public CssEngine Engine { get; }
+        public Element Root { get; }
+        public CssAnimationManager Animations { get; }
+    }
 }

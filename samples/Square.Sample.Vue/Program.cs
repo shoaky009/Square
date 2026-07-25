@@ -13,8 +13,8 @@ public static class Program
         System.Console.WriteLine("Square Vue Template Sample");
         ImageSourceRegistration.RegisterDefaults();
         var window = new AppWindow("Square Vue Template Sample", 900, 980);
-        window.UseVulkanBackend();
-        //window.RenderingMode = RenderMode.DirtyRegion;
+        //window.UseVulkanBackend();
+        window.RenderingMode = RenderMode.DirtyRegion;
         window.Load(new Main());
         var app = new DesktopApplication(window);
         ConfigureRendering(window, args);
@@ -40,4 +40,5 @@ public static class Program
         }
         return null;
     }
+
 }

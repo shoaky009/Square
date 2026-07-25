@@ -236,9 +236,9 @@ Text {
 
 - `@keyframes` 定义
 - `animation` 简写：`name duration timing-function delay iteration-count direction`
-- CSS 动画 timeline 可从 Element Tree 自动收集并 tick
-- 当前支持数值属性 from/to 插值、delay、有限 iteration-count、normal/reverse/alternate/alternate-reverse 基础方向
-- 颜色、transform、复杂百分比关键帧与完整浏览器级动画模型后续扩展
+- CSS 动画 timeline 在样式作用域应用或重新级联后从 Element Tree 自动收集，并由桌面帧循环 tick
+- 当前支持数值属性的分段关键帧插值（`from` / `to` / 百分比 stop）、delay、有限 iteration-count、normal/reverse/alternate/alternate-reverse 基础方向
+- 颜色、transform 与完整浏览器级动画模型后续扩展
 
 ---
 

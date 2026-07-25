@@ -68,7 +68,7 @@ public sealed class CssAnimationTimeline
         foreach (var track in _tracks)
         {
             var value = track.ValueAt(progress);
-            _visual.Style.Set(track.Property, FormatNumber(value));
+            _visual.Style.SetAnimated(track.Property, FormatNumber(value));
         }
     }
 

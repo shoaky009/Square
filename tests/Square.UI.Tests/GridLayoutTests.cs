@@ -356,6 +356,31 @@ public class GridLayoutTests
     }
 
     [Fact]
+    public void GridNumericEndLinesAndAutoPlacementAvoidExplicitCells()
+    {
+        var root = new View();
+        root.Style.Set("display", "grid");
+        root.Style.Set("grid-template-columns", "100px 100px");
+        root.Style.Set("grid-template-rows", "40px 40px");
+        var explicitCell = new MeasuredBox(1, 1);
+        explicitCell.Style.Set("grid-column", "2 / 3");
+        explicitCell.Style.Set("grid-row", "1 / 2");
+        var firstAuto = new MeasuredBox(1, 1);
+        var secondAuto = new MeasuredBox(1, 1);
+        root.Children.Add(explicitCell);
+        root.Children.Add(firstAuto);
+        root.Children.Add(secondAuto);
+
+        var layout = new LayoutEngine();
+        layout.Measure(root, new Size(200, 80));
+        layout.Arrange(root, new Rect(0, 0, 200, 80));
+
+        Assert.Equal(new Rect(100, 0, 100, 40), explicitCell.Geometry);
+        Assert.Equal(new Rect(0, 0, 100, 40), firstAuto.Geometry);
+        Assert.Equal(new Rect(0, 40, 100, 40), secondAuto.Geometry);
+    }
+
+    [Fact]
     public void GridTemplateAreasPlaceChildrenByNamedArea()
     {
         var root = new View();

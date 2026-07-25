@@ -461,4 +461,23 @@ public class PseudoClassTests
         timeline.Tick(0.25f);
         Assert.Equal("0.5", text.Style.Get("opacity"));
     }
+
+    [Fact]
+    public void StyleScopeTicksAnimationsAfterStylesAreApplied()
+    {
+        var css = "@keyframes fade { from { opacity: 0; } to { opacity: 1; } } Text { animation: fade 1s linear; }";
+        var engine = new CssEngine();
+        engine.LoadStyleSheet(new CssParser(new CssTokenizer(css).Tokenize()).Parse());
+        var root = new Square.Controls.View();
+        var text = new Square.Controls.Text("animated");
+        root.Children.Add(text);
+
+        engine.ApplyStylesToTree(root);
+
+        Assert.True(CssStyleReconciler.TickAnimations(root, 0.25f));
+        Assert.Equal("0.25", text.Style.Get("opacity"));
+        Assert.True(CssStyleReconciler.TickAnimations(root, 0.75f));
+        Assert.Equal("1", text.Style.Get("opacity"));
+        Assert.False(CssStyleReconciler.TickAnimations(root, 0.1f));
+    }
 }

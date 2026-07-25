@@ -211,6 +211,8 @@ Square 使用 Yoga Web Defaults，但对显式主轴尺寸采用更适合桌面 
 | `grid-column-span` | 列跨度 |
 | `grid-row-span` | 行跨度 |
 
+数值放置支持 CSS line 语义：`grid-column: 2 / 3` 表示从第 2 条线到第 3 条线（一个轨道），`span N` 表示跨度。自动放置按行扫描空闲单元格，并避开已显式放置或命名区域占用的格。
+
 ---
 
 ## 11. 后续

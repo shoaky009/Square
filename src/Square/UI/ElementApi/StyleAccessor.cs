@@ -99,6 +99,19 @@ public sealed class StyleAccessor
         SetCascaded(NormalizePropertyName(property), value, int.MaxValue);
     }
 
+    /// <summary>Sets a value produced by an animation without scheduling a cascade pass for every frame.</summary>
+    public bool SetAnimated(string property, string value)
+    {
+        property = NormalizePropertyName(property);
+        _styles ??= [];
+        if (_styles.TryGetValue(property, out var current) &&
+            current.Value == value && current.Specificity == int.MaxValue - 1)
+            return false;
+        _styles[property] = new StyleEntry(value, int.MaxValue - 1);
+        _owner.InvalidatePaint();
+        return true;
+    }
+
     /// <summary>
     /// 按 specificity 写入级联样式；若现有条目优先级更高则忽略并返回 false。
     /// </summary>

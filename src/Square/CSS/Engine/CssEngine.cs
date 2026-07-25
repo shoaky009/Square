@@ -76,6 +76,7 @@ public sealed class CssEngine
     {
         CssStyleReconciler.RegisterScope(this, Element);
         ApplyStylesToTreeCore(Element);
+        CssStyleReconciler.RefreshAnimations(this, Element);
     }
 
     internal void ApplyStylesToTreeCore(Element Element)

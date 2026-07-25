@@ -695,13 +695,10 @@ public sealed class LayoutEngine
         for (int i = 0; i < rowCount; i++)
             effectiveRows[i] = rows.Length > i ? rows[i] : Math.Max(0, available.Height - gap * Math.Max(0, rowCount - 1)) / rowCount;
 
-        var visibleChildren = CollectVisibleChildrenList(element);
         var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
-        for (var childIndex = 0; childIndex < visibleChildren.Count; childIndex++)
+        var placements = ResolveGridPlacements(element, available.Width, available.Height, colCount, rowCount, areas);
+        foreach (var (child, cs) in placements)
         {
-            var child = visibleChildren[childIndex];
-            var cs = GetComputedStyle(child, available.Width, available.Height);
-            ApplyAutoOrAreaPlacement(child, childIndex, colCount, cs, areas);
             var col = Math.Min(Math.Max(0, cs.GridColumn - 1), colCount - 1);
             var row = Math.Min(Math.Max(0, cs.GridRow - 1), rowCount - 1);
             var colSpan = Math.Min(cs.GridColumnSpan, colCount - col);
@@ -735,13 +732,10 @@ public sealed class LayoutEngine
         for (int i = 0; i < rowCount; i++)
             rowY[i + 1] = rowY[i] + (rows.Length > i ? rows[i] : Math.Max(0, inner.Height - gap * Math.Max(0, rowCount - 1)) / rowCount) + gap;
 
-        var visibleChildren = CollectVisibleChildrenList(element);
         var areas = ParseGridAreas(element.Style.Get("grid-template-areas"));
-        for (var childIndex = 0; childIndex < visibleChildren.Count; childIndex++)
+        var placements = ResolveGridPlacements(element, inner.Width, inner.Height, colCount, rowCount, areas);
+        foreach (var (child, cs) in placements)
         {
-            var child = visibleChildren[childIndex];
-            var cs = GetComputedStyle(child, inner.Width, inner.Height);
-            ApplyAutoOrAreaPlacement(child, childIndex, colCount, cs, areas);
             var col = Math.Min(Math.Max(0, cs.GridColumn - 1), colCount - 1);
             var row = Math.Min(Math.Max(0, cs.GridRow - 1), rowCount - 1);
             var colEnd = Math.Min(col + cs.GridColumnSpan, colCount);
@@ -898,24 +892,91 @@ public sealed class LayoutEngine
         }
     }
 
-    private static void ApplyAutoOrAreaPlacement(
-        Element child, int childIndex, int colCount, ComputedStyle style,
+    private static List<(Element Child, ComputedStyle Style)> ResolveGridPlacements(
+        Element element, float width, float height, int colCount, int rowCount,
         Dictionary<string, (int col, int row, int colSpan, int rowSpan)> areas)
     {
-        if (!string.IsNullOrWhiteSpace(style.GridArea) &&
-            !style.GridArea.Contains('/') &&
-            areas.TryGetValue(style.GridArea.Trim(), out var area))
+        var placements = CollectVisibleChildrenList(element)
+            .Select(child => (Child: child, Style: GetComputedStyle(child, width, height)))
+            .ToList();
+        var occupied = new bool[rowCount, colCount];
+
+        foreach (var (child, style) in placements)
         {
-            style.GridColumn = area.col;
-            style.GridRow = area.row;
-            style.GridColumnSpan = area.colSpan;
-            style.GridRowSpan = area.rowSpan;
-            return;
+            ApplyAreaPlacement(style, areas);
+            if (child.Style.Get("grid-column") == null && child.Style.Get("grid-row") == null &&
+                string.IsNullOrWhiteSpace(style.GridArea))
+                continue;
+            if (child.Style.Get("grid-column") == null || child.Style.Get("grid-row") == null)
+                continue;
+            MarkOccupied(occupied, style, colCount, rowCount);
         }
 
-        if (child.Style.Get("grid-column") != null || child.Style.Get("grid-row") != null) return;
-        style.GridColumn = childIndex % Math.Max(1, colCount) + 1;
-        style.GridRow = childIndex / Math.Max(1, colCount) + 1;
+        foreach (var (child, style) in placements)
+        {
+            ApplyAreaPlacement(style, areas);
+            var hasColumn = child.Style.Get("grid-column") != null ||
+                            !string.IsNullOrWhiteSpace(style.GridArea) && areas.ContainsKey(style.GridArea.Trim());
+            var hasRow = child.Style.Get("grid-row") != null ||
+                         !string.IsNullOrWhiteSpace(style.GridArea) && areas.ContainsKey(style.GridArea.Trim());
+            if (!hasColumn || !hasRow)
+            {
+                var (column, row) = FindAvailableCell(occupied, style, colCount, rowCount, hasColumn, hasRow);
+                style.GridColumn = column + 1;
+                style.GridRow = row + 1;
+            }
+            MarkOccupied(occupied, style, colCount, rowCount);
+        }
+        return placements;
+    }
+
+    private static void ApplyAreaPlacement(ComputedStyle style,
+        Dictionary<string, (int col, int row, int colSpan, int rowSpan)> areas)
+    {
+        if (string.IsNullOrWhiteSpace(style.GridArea) || style.GridArea.Contains('/') ||
+            !areas.TryGetValue(style.GridArea.Trim(), out var area)) return;
+        style.GridColumn = area.col;
+        style.GridRow = area.row;
+        style.GridColumnSpan = area.colSpan;
+        style.GridRowSpan = area.rowSpan;
+    }
+
+    private static (int Column, int Row) FindAvailableCell(bool[,] occupied, ComputedStyle style,
+        int colCount, int rowCount, bool hasColumn, bool hasRow)
+    {
+        for (var row = 0; row < rowCount; row++)
+        for (var column = 0; column < colCount; column++)
+        {
+            if (hasColumn && column != Math.Clamp(style.GridColumn - 1, 0, colCount - 1)) continue;
+            if (hasRow && row != Math.Clamp(style.GridRow - 1, 0, rowCount - 1)) continue;
+            if (Fits(occupied, column, row, style.GridColumnSpan, style.GridRowSpan))
+                return (column, row);
+        }
+        return (hasColumn ? Math.Clamp(style.GridColumn - 1, 0, colCount - 1) : 0,
+            hasRow ? Math.Clamp(style.GridRow - 1, 0, rowCount - 1) : 0);
+    }
+
+    private static bool Fits(bool[,] occupied, int column, int row, int columnSpan, int rowSpan)
+    {
+        var colEnd = Math.Min(occupied.GetLength(1), column + Math.Max(1, columnSpan));
+        var rowEnd = Math.Min(occupied.GetLength(0), row + Math.Max(1, rowSpan));
+        if (column + Math.Max(1, columnSpan) > occupied.GetLength(1) ||
+            row + Math.Max(1, rowSpan) > occupied.GetLength(0)) return false;
+        for (var y = row; y < rowEnd; y++)
+        for (var x = column; x < colEnd; x++)
+            if (occupied[y, x]) return false;
+        return true;
+    }
+
+    private static void MarkOccupied(bool[,] occupied, ComputedStyle style, int colCount, int rowCount)
+    {
+        var column = Math.Clamp(style.GridColumn - 1, 0, colCount - 1);
+        var row = Math.Clamp(style.GridRow - 1, 0, rowCount - 1);
+        var colEnd = Math.Min(colCount, column + Math.Max(1, style.GridColumnSpan));
+        var rowEnd = Math.Min(rowCount, row + Math.Max(1, style.GridRowSpan));
+        for (var y = row; y < rowEnd; y++)
+        for (var x = column; x < colEnd; x++)
+            occupied[y, x] = true;
     }
 
     private static Dictionary<string, (int col, int row, int colSpan, int rowSpan)> ParseGridAreas(string? value)
@@ -1076,7 +1137,11 @@ public sealed class LayoutEngine
         var spanPart = parts[1];
         if (spanPart.StartsWith("span ", StringComparison.OrdinalIgnoreCase))
             spanPart = spanPart[5..].Trim();
-        if (int.TryParse(spanPart, out var span)) setSpan(Math.Max(1, span));
+        if (!int.TryParse(spanPart, out var endOrSpan)) return;
+        if (parts[1].StartsWith("span ", StringComparison.OrdinalIgnoreCase))
+            setSpan(Math.Max(1, endOrSpan));
+        else if (parts.Length > 0 && int.TryParse(parts[0], out var startLine))
+            setSpan(Math.Max(1, endOrSpan - startLine));
     }
 
     private static void ApplyDim(string? value, float parentW, float parentH, float em, float rem, float paddingAdjustment,

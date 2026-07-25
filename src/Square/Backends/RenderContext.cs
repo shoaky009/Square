@@ -18,7 +18,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private byte[] _bitmapPixels;
     private int _bitmapStride;
     private bool _hasClip;
+    private bool _hasGeometryClip;
     private float _clipLeft, _clipTop, _clipRight, _clipBottom;
+    private Func<float, float, bool>? _clipContains;
     private Size _canvasSize;
     private float _dpiScale;
     private readonly PresentFrameHandler? _presentFrame;
@@ -120,15 +122,20 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         if (_clipStack.Count > 0)
         {
             _hasClip = true;
-            var clip = _clipStack.Peek().Bounds;
+            var region = _clipStack.Peek();
+            var clip = region.Bounds;
             _clipLeft = clip.X;
             _clipTop = clip.Y;
             _clipRight = clip.Right;
             _clipBottom = clip.Bottom;
+            _hasGeometryClip = !region.IsRect;
+            _clipContains = region.Contains;
         }
         else
         {
             _hasClip = false;
+            _hasGeometryClip = false;
+            _clipContains = null;
         }
     }
 
@@ -452,14 +459,18 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     {
         if ((uint)x >= (uint)_bitmapWidth || (uint)y >= (uint)_bitmapHeight) return;
         if (!IsPointVisible(x + 0.5f, y + 0.5f)) return;
+        color = ApplyOpacity(color);
+        BlendPixelCore(x, y, color.R, color.G, color.B, color.A);
+    }
+
+    private void BlendPixelCore(int x, int y, byte red, byte green, byte blue, byte alpha)
+    {
+        if (alpha == 0) return;
         var idx = y * _bitmapStride + x * 4;
         var span = _bitmapPixels.AsSpan(idx, 4);
-        color = ApplyOpacity(color);
-        var alpha = color.A;
-        if (alpha == 0) return;
-        var pr = (byte)(color.R * alpha / 255);
-        var pg = (byte)(color.G * alpha / 255);
-        var pb = (byte)(color.B * alpha / 255);
+        var pr = (byte)(red * alpha / 255);
+        var pg = (byte)(green * alpha / 255);
+        var pb = (byte)(blue * alpha / 255);
         if (alpha == 255)
         {
             span[0] = pb; span[1] = pg; span[2] = pr; span[3] = 255;
@@ -502,7 +513,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     }
 
     private bool IsPointVisible(float x, float y)
-        => !_hasClip || _clipStack.Peek().ContainsPoint(x, y);
+    {
+        if (!_hasClip) return true;
+        if (x < _clipLeft || x >= _clipRight || y < _clipTop || y >= _clipBottom) return false;
+        return !_hasGeometryClip || _clipContains?.Invoke(x, y) == true;
+    }
 
     private void BlendBrush(Rect bounds, Brush brush, Matrix3x2 inverse)
         => FillBrushShape(bounds, brush, inverse, static _ => true);
@@ -946,6 +961,14 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         minY = Math.Max(0, minY);
         maxX = Math.Min(_bitmap.Width - 1, maxX);
         maxY = Math.Min(_bitmap.Height - 1, maxY);
+        if (_hasClip)
+        {
+            minX = Math.Max(minX, (int)MathF.Floor(_clipLeft));
+            minY = Math.Max(minY, (int)MathF.Floor(_clipTop));
+            maxX = Math.Min(maxX, (int)MathF.Ceiling(_clipRight) - 1);
+            maxY = Math.Min(maxY, (int)MathF.Ceiling(_clipBottom) - 1);
+        }
+        if (minX > maxX || minY > maxY) return;
 
         for (var y = minY; y <= maxY; y++)
         {
@@ -1200,7 +1223,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         if (coveredSamples <= 0) return;
         var alpha = (byte)Math.Clamp(
             (color.A * coveredSamples + sampleCount / 2) / sampleCount, 0, 255);
-        BlendPixel(x, y, new Color(color.R, color.G, color.B, alpha));
+        if ((uint)x >= (uint)_bitmapWidth || (uint)y >= (uint)_bitmapHeight) return;
+        if (!IsPointVisible(x + 0.5f, y + 0.5f)) return;
+        BlendPixelCore(x, y, color.R, color.G, color.B, ApplyOpacity(alpha));
     }
 
     private void DrawPolyline(List<(double x, double y)> points, float width, Color color)
