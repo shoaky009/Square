@@ -51,6 +51,14 @@ public sealed class Router : View
         Start();
     }
 
+    protected override void OnDetachedCore()
+    {
+        if (_started && History != null)
+            History.Changed -= Activate;
+        _started = false;
+        base.OnDetachedCore();
+    }
+
     private void EnsureStarted()
     {
         if (!_started) Start();

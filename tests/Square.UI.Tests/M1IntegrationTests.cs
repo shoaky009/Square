@@ -23,6 +23,33 @@ namespace Square.UI.Tests;
 
 public class M1IntegrationTests
 {
+    private sealed class RecordingRenderContext : IRenderContext
+    {
+        public Size CanvasSize => new(100, 100);
+        public float DpiScale => 1f;
+        public void PushTransform(System.Numerics.Matrix3x2 matrix) { }
+        public void PopTransform() { }
+        public void PushClip(Rect rect) { }
+        public void PushClip(Geometry geometry) { }
+        public void PopClip() { }
+        public void FillRect(Rect rect, Brush brush) { }
+        public void DrawRect(Rect rect, Pen pen) { }
+        public void FillPath(PathGeometry path, Brush brush) { }
+        public void DrawPath(PathGeometry path, Pen pen) { }
+        public void FillGeometry(Geometry geometry, Brush brush) { }
+        public void DrawGeometry(Geometry geometry, Pen pen) { }
+        public void DrawText(TextLayout text, Point origin, Brush brush) { }
+        public void DrawImage(Square.Graphics.Image image, Rect dest, Rect? source = null) { }
+        public void PushLayer(Rect bounds, float opacity) { }
+        public void PopLayer() { }
+        public void Clear(Color color) { }
+        public void Clear(Color color, Rect rect) { }
+        public void Flush() { }
+        public void Present() { }
+        public void Present(IReadOnlyList<Rect>? dirtyRects) { }
+        public void Dispose() { }
+    }
+
     [Fact]
     public void TextMeasuresWithinAvailableWidthAndWrapsHeight()
     {
@@ -234,29 +261,29 @@ public class M1IntegrationTests
         ((IComponentLifecycle)component).OnAttached();
         var root = Assert.IsType<View>(Assert.Single(component.Children));
         var tabs = Assert.Single(root.QueryAll<VueTabs>());
-        var selects = root.QueryAll<Select>();
-        Assert.Equal(2, selects.Count);
         var layout = new LayoutEngine();
 
         tabs.SelectedIndex = 1;
         CssStyleReconciler.Flush();
         layout.Measure(root, new Size(900, 980));
         layout.Arrange(root, new Rect(0, 0, 900, 980));
-        Assert.True(selects[0].Geometry.Width > 0, $"controls select={selects[0].Geometry}");
-        Assert.True(selects[0].Geometry.Height > 0, $"controls select={selects[0].Geometry}");
-        var controlsParent = Assert.IsAssignableFrom<Element>(selects[0].Parent);
-        Assert.True(controlsParent.Geometry.Contains(selects[0].Geometry.Center),
-            $"controls select={selects[0].Geometry}, parent={controlsParent.Geometry}");
+        var controlsSelect = Assert.Single(root.QueryAll<Select>());
+        Assert.True(controlsSelect.Geometry.Width > 0, $"controls select={controlsSelect.Geometry}");
+        Assert.True(controlsSelect.Geometry.Height > 0, $"controls select={controlsSelect.Geometry}");
+        var controlsParent = Assert.IsAssignableFrom<Element>(controlsSelect.Parent);
+        Assert.True(controlsParent.Geometry.Contains(controlsSelect.Geometry.Center),
+            $"controls select={controlsSelect.Geometry}, parent={controlsParent.Geometry}");
 
         tabs.SelectedIndex = 2;
         CssStyleReconciler.Flush();
         layout.Measure(root, new Size(900, 980));
         layout.Arrange(root, new Rect(0, 0, 900, 980));
-        Assert.True(selects[1].Geometry.Width > 0, $"forms select={selects[1].Geometry}");
-        Assert.True(selects[1].Geometry.Height > 0, $"forms select={selects[1].Geometry}");
-        var formsParent = Assert.IsAssignableFrom<Element>(selects[1].Parent);
-        Assert.True(formsParent.Geometry.Contains(selects[1].Geometry.Center),
-            $"forms select={selects[1].Geometry}, parent={formsParent.Geometry}");
+        var formsSelect = Assert.Single(root.QueryAll<Select>());
+        Assert.True(formsSelect.Geometry.Width > 0, $"forms select={formsSelect.Geometry}");
+        Assert.True(formsSelect.Geometry.Height > 0, $"forms select={formsSelect.Geometry}");
+        var formsParent = Assert.IsAssignableFrom<Element>(formsSelect.Parent);
+        Assert.True(formsParent.Geometry.Contains(formsSelect.Geometry.Center),
+            $"forms select={formsSelect.Geometry}, parent={formsParent.Geometry}");
         ((IComponentLifecycle)component).OnDetached();
     }
 
@@ -671,6 +698,29 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void RouterUnsubscribesFromHistoryWhileDetached()
+    {
+        var history = new MemoryNavigationHistory("/");
+        var router = new RouterControl { History = history };
+        router.Routes.Add(new RouteDefinition("/", () => new View()));
+        router.Routes.Add(new RouteDefinition("other", () => new View()));
+        var navigations = 0;
+        router.Navigated += _ => navigations++;
+
+        ((IComponentLifecycle)router).OnAttached();
+        Assert.Equal(1, navigations);
+        ((IComponentLifecycle)router).OnDetached();
+
+        history.Push("/other");
+        Assert.Equal(1, navigations);
+
+        ((IComponentLifecycle)router).OnAttached();
+        Assert.Equal(2, navigations);
+        history.Push("/");
+        Assert.Equal(3, navigations);
+    }
+
+    [Fact]
     public void HitTestAndDispatchEventReachButton()
     {
         var root = new View { Geometry = new Rect(0, 0, 200, 100) };
@@ -975,6 +1025,35 @@ public class M1IntegrationTests
         Assert.NotNull(request);
         Assert.Equal(5, request!.FramesPerSecond);
         Assert.Same(canvas, request.Target);
+    }
+
+    [Fact]
+    public void CanvasCancelAnimationFrameDropsPendingCallback()
+    {
+        var canvas = new Canvas { Geometry = new Rect(0, 0, 100, 100) };
+        var calls = 0;
+        canvas.RequestAnimationFrame((_, _) => calls++);
+
+        canvas.CancelAnimationFrame();
+        canvas.Paint(new RecordingRenderContext());
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void CanvasDetachDropsPendingCallback()
+    {
+        var root = new View();
+        var canvas = new Canvas { Geometry = new Rect(0, 0, 100, 100) };
+        root.Children.Add(canvas);
+        ((IComponentLifecycle)root).OnAttached();
+        var calls = 0;
+        canvas.RequestAnimationFrame((_, _) => calls++);
+
+        ((IComponentLifecycle)root).OnDetached();
+        canvas.Paint(new RecordingRenderContext());
+
+        Assert.Equal(0, calls);
     }
 
     [Fact]
@@ -1624,22 +1703,21 @@ public class M1IntegrationTests
     }
 
     [Fact]
-    public void TabsSelectionInvalidatesLayoutForRetainedRenderTreeRebuild()
+    public void VueTabsSelectionNavigatesAndInvalidatesLayout()
     {
-        var tabs = new Tabs();
-        var firstButton = new Button("First");
-        var secondButton = new Button("Second");
         var firstPage = new View();
         var secondPage = new View();
+        var tabs = new VueTabs
+        {
+            Paths = ["/first", "/second"],
+            PageFactories = [() => firstPage, () => secondPage]
+        };
+        var firstButton = new Button("First");
+        var secondButton = new Button("Second");
         tabs.Slots.Set("tabs", parent =>
         {
             parent.Children.Add(firstButton);
             parent.Children.Add(secondButton);
-        });
-        tabs.Slots.Set("", parent =>
-        {
-            parent.Children.Add(firstPage);
-            parent.Children.Add(secondPage);
         });
         tabs.BuildElementTree();
         ((IComponentLifecycle)tabs).OnAttached();
@@ -1652,53 +1730,72 @@ public class M1IntegrationTests
         secondButton.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.True(tabs.IsLayoutDirty);
-        Assert.False(firstPage.IsVisible);
-        Assert.True(secondPage.IsVisible);
+        Assert.DoesNotContain(firstPage, tabs.QueryAll<View>());
+        Assert.Contains(secondPage, tabs.QueryAll<View>());
         ((IComponentLifecycle)tabs).OnDetached();
     }
 
     [Fact]
-    public void TabsUseNamedAndDefaultSlotsAndPreservePageInstances()
+    public void VueTabsUseRouterFactories()
     {
-        var tabs = new Tabs();
         var firstButton = new Button("First");
         var secondButton = new Button("Second");
-        var firstPage = new View();
-        var secondPage = new View();
+        var firstPages = new List<View>();
+        var secondPages = new List<View>();
+        var tabs = new VueTabs
+        {
+            Paths = ["/first", "/second"],
+            PageFactories =
+            [
+                () =>
+                {
+                    var page = new View();
+                    firstPages.Add(page);
+                    return page;
+                },
+                () =>
+                {
+                    var page = new View();
+                    secondPages.Add(page);
+                    return page;
+                }
+            ]
+        };
         tabs.Slots.Set("tabs", parent =>
         {
             parent.Children.Add(firstButton);
             parent.Children.Add(secondButton);
         });
-        tabs.Slots.Set("", parent =>
-        {
-            parent.Children.Add(firstPage);
-            parent.Children.Add(secondPage);
-        });
 
         tabs.BuildElementTree();
         ((IComponentLifecycle)tabs).OnAttached();
 
-        Assert.True(firstPage.IsVisible);
-        Assert.False(secondPage.IsVisible);
+        var firstPage = Assert.Single(firstPages);
+        Assert.Contains(firstPage, tabs.QueryAll<View>());
+        Assert.Empty(secondPages);
         Assert.True(firstButton.ClassList.Contains("selected"));
 
         var layout = new LayoutEngine();
         layout.Measure(tabs, new Size(600, 500));
         layout.Arrange(tabs, new Rect(0, 0, 600, 500));
-        Assert.True(secondPage.Geometry.IsEmpty);
-
         secondButton.DispatchEvent(StandardEvents.CreateClick());
         layout.Measure(tabs, new Size(600, 500));
         layout.Arrange(tabs, new Rect(0, 0, 600, 500));
 
-        Assert.False(firstPage.IsVisible);
-        Assert.True(secondPage.IsVisible);
+        var secondPage = Assert.Single(secondPages);
+        Assert.DoesNotContain(firstPage, tabs.QueryAll<View>());
+        Assert.Contains(secondPage, tabs.QueryAll<View>());
         Assert.False(secondPage.Geometry.IsEmpty);
         Assert.InRange(secondPage.Geometry.Y, 0, 500);
         Assert.Same(secondPage, tabs.QueryAll<View>().Single(view => view == secondPage));
         Assert.Equal(1, tabs.SelectedIndex);
         Assert.Equal("#ffffff", secondButton.Style.Get("background"));
+
+        var router = Assert.Single(tabs.QueryAll<RouterControl>());
+        Assert.True(router.Back());
+        Assert.Equal(2, firstPages.Count);
+        Assert.Contains(firstPages[1], tabs.QueryAll<View>());
+        Assert.Equal(0, tabs.SelectedIndex);
         ((IComponentLifecycle)tabs).OnDetached();
     }
 

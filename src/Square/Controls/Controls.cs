@@ -958,9 +958,9 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         base.OnDetachedCore();
     }
 
-    protected override void OnIsVisibleChanged(bool isVisible)
+    protected override void OnEffectiveVisibilityChanged(bool isVisible)
     {
-        base.OnIsVisibleChanged(isVisible);
+        base.OnEffectiveVisibilityChanged(isVisible);
         if (isVisible) ResumeAnimation();
         else PauseAnimation();
     }
@@ -1131,7 +1131,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         InvalidatePaint();
     }
 
-    private bool CanAnimate() => IsAttached && IsVisible && _frameSource is { FrameCount: > 1 };
+    private bool CanAnimate() => IsAttached && IsEffectivelyVisible && _frameSource is { FrameCount: > 1 };
 
     private static TimeSpan NormalizeFrameDelay(TimeSpan delay) =>
         delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(10);
@@ -1184,6 +1184,14 @@ public class Canvas : UIElement, ITextSelectable
         ArgumentNullException.ThrowIfNull(callback);
         _animationFrameCallback = callback;
         RequestFrame(fps);
+    }
+
+    public void CancelAnimationFrame() => _animationFrameCallback = null;
+
+    protected override void OnDetachedCore()
+    {
+        CancelAnimationFrame();
+        base.OnDetachedCore();
     }
 
     public override Size Measure(Size availableSize) => new(300, 140);

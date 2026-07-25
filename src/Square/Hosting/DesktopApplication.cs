@@ -177,6 +177,9 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         }
         finally
         {
+            _root.RemoveEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
+            _document.RemoveEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
+            _scheduledFrames.Clear();
             if (_root.IsLoaded) lifecycle.OnUnloaded();
             lifecycle.OnDetached();
             _renderContext?.Dispose();
@@ -202,7 +205,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         // Target 为派发源；不要用 CurrentTarget（冒泡到 root 时已是 root）。
         // 只登记到期时间，不立刻 _renderRequested——否则会在每个 WM_TIMER(16ms)
         // 都做全窗口软件 Clear+Present，动画 CPU 极高。
-        if (e is FrameRequestEvent args && e.Target is Element target)
+        if (e is FrameRequestEvent args && e.Target is Element { IsAttached: true, IsEffectivelyVisible: true } target)
         {
             var requestedTime = _clock.Elapsed.TotalSeconds + args.IntervalSeconds;
             if (!_scheduledFrames.TryGetValue(target, out var current) || requestedTime < current)
@@ -378,8 +381,11 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
                     _renderContext.PopClip();
                     RenderDiagnosticsOverlay(_renderContext);
                     _renderContext.Flush();
-                    // Present：优先局部；若平台忽略则仍应更新窗口。同时提交 union 保证至少一块区域。
-                    _renderContext.Present(MainWindow.ShowRenderDiagnosticsOverlay ? null : dirty);
+                    // Clear and replay use DirtyUnion, so presentation must upload that same area.
+                    // Uploading the original disjoint rects leaves updated pixels between them stale.
+                    _renderContext.Present(MainWindow.ShowRenderDiagnosticsOverlay
+                        ? null
+                        : [MainWindow.LastRenderDiagnostics.DirtyUnion]);
                 }
             }
         }
@@ -1414,12 +1420,23 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         var animationsRunning = CssStyleReconciler.TickAnimations(_root, animationDelta);
         // 避免每 tick 分配 LINQ 数组
         List<Element>? dueTargets = null;
+        List<Element>? staleTargets = null;
         foreach (var pair in _scheduledFrames)
         {
+            if (!pair.Key.IsAttached || !pair.Key.IsEffectivelyVisible || !ReferenceEquals(pair.Key.OwnerDocument, _document))
+            {
+                staleTargets ??= [];
+                staleTargets.Add(pair.Key);
+                continue;
+            }
             if (now < pair.Value) continue;
             dueTargets ??= [];
             dueTargets.Add(pair.Key);
         }
+
+        if (staleTargets != null)
+            foreach (var target in staleTargets)
+                _scheduledFrames.Remove(target);
 
         if (dueTargets != null)
         {

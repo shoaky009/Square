@@ -67,4 +67,18 @@ public class RenderDecisionTests
         Assert.False(diagnostics.UsedFullFrame);
         Assert.Equal("DirtyRegion", diagnostics.Reason);
     }
+
+    [Fact]
+    public void DirtyRegionUnionIncludesPixelsBetweenDisjointRects()
+    {
+        var diagnostics = RenderDecision.Decide(
+            RenderMode.DirtyRegion,
+            [new Rect(10, 20, 30, 12), new Rect(90, 20, 30, 12)],
+            new Size(200, 100),
+            maxDirtyRectCount: 16,
+            maxDirtyAreaRatio: 1f);
+
+        Assert.False(diagnostics.UsedFullFrame);
+        Assert.Equal(new Rect(10, 20, 110, 12), diagnostics.DirtyUnion);
+    }
 }

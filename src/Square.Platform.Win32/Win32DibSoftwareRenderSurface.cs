@@ -70,6 +70,14 @@ internal sealed unsafe class Win32DibSoftwareRenderSurface : ISoftwareRenderSurf
             throw new InvalidOperationException("SelectObject failed for DIB section.");
         }
 
+        if (_memoryDc != IntPtr.Zero && _width > 0 && _height > 0)
+        {
+            Win32Api.StretchBlt(
+                memoryDc, 0, 0, width, height,
+                _memoryDc, 0, 0, _width, _height,
+                Win32Api.SRCCOPY);
+        }
+
         ReleaseResources();
         _memoryDc = memoryDc;
         _bitmap = bitmap;

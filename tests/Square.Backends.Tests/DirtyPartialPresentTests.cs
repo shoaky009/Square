@@ -329,6 +329,72 @@ public class DirtyPartialPresentTests
     }
 
     [Fact]
+    public void PopupItemDirtyRectsUsePopupScreenCoordinates()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 320, 180) };
+        var menu = new Menu { Geometry = new Rect(0, 0, 160, 64) };
+        var first = new MenuItem { TextContent = "First", Geometry = new Rect(0, 0, 160, 32) };
+        var second = new MenuItem { TextContent = "Second", Geometry = new Rect(0, 32, 160, 32) };
+        menu.Children.Add(first);
+        menu.Children.Add(second);
+        root.Children.Add(menu);
+        menu.OpenAt(new Point(90, 30));
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        tree.Render(new CountingRenderContext());
+        root.ClearPaintDirty();
+        menu.ClearPaintDirty();
+        first.ClearPaintDirty();
+        second.ClearPaintDirty();
+
+        first.SetState(ElementState.Hover, true);
+        tree.UpdateDirty();
+        var dirty = tree.CollectDirtyRects();
+
+        Assert.Contains(dirty, rect => rect.X <= 90 && rect.Right >= 250 && rect.Y <= 30 && rect.Bottom >= 62);
+    }
+
+    [Fact]
+    public void PopupHoverDirtyRenderMatchesFullFramePixels()
+    {
+        var (root, menu, first, second) = CreatePopupHoverTree();
+        var tree = new DisplayTree();
+        tree.BuildFrom(root);
+        using var bitmap = new Bitmap(320, 180);
+        using var context = new RenderContext(bitmap, 1f);
+        context.Clear(Color.White);
+        tree.Render(context);
+        root.ClearPaintDirty();
+        menu.ClearPaintDirty();
+        first.ClearPaintDirty();
+        second.ClearPaintDirty();
+
+        first.SetState(ElementState.Hover, true);
+        tree.UpdateDirty();
+        var firstDirty = tree.CollectDirtyRects().Aggregate(DisplayTree.Union);
+        context.Clear(Color.White, firstDirty);
+        tree.Render(context, firstDirty);
+
+        first.SetState(ElementState.Hover, false);
+        second.SetState(ElementState.Hover, true);
+        tree.UpdateDirty();
+        var secondDirty = tree.CollectDirtyRects().Aggregate(DisplayTree.Union);
+        context.Clear(Color.White, secondDirty);
+        tree.Render(context, secondDirty);
+
+        var (expectedRoot, _, _, expectedSecond) = CreatePopupHoverTree();
+        expectedSecond.SetState(ElementState.Hover, true);
+        var expectedTree = new DisplayTree();
+        expectedTree.BuildFrom(expectedRoot);
+        using var expectedBitmap = new Bitmap(320, 180);
+        using var expectedContext = new RenderContext(expectedBitmap, 1f);
+        expectedContext.Clear(Color.White);
+        expectedTree.Render(expectedContext);
+
+        Assert.Equal(expectedBitmap.Pixels, bitmap.Pixels);
+    }
+
+    [Fact]
     public void RenderContextAppliesPushTransformToFillRect()
     {
         var bmp = new Bitmap(40, 30);
@@ -445,6 +511,20 @@ public class DirtyPartialPresentTests
         root.Children.Add(new ColorPaintElement(Color.Red) { Geometry = new Rect(0, 0, 100, 60) });
         root.Children.Add(new ColorPaintElement(Color.Blue) { Geometry = new Rect(0, 100, 100, 20) });
         return root;
+    }
+
+    private static (View Root, Menu Menu, MenuItem First, MenuItem Second) CreatePopupHoverTree()
+    {
+        var root = new View { Geometry = new Rect(0, 0, 320, 180) };
+        var menu = new Menu { Geometry = new Rect(0, 0, 160, 64) };
+        menu.Style.Set("box-shadow", "none");
+        var first = new MenuItem { TextContent = "First", Geometry = new Rect(0, 0, 160, 32) };
+        var second = new MenuItem { TextContent = "Second", Geometry = new Rect(0, 32, 160, 32) };
+        menu.Children.Add(first);
+        menu.Children.Add(second);
+        root.Children.Add(menu);
+        menu.OpenAt(new Point(90, 30));
+        return (root, menu, first, second);
     }
 
     private sealed class PathPaintElement : UIElement

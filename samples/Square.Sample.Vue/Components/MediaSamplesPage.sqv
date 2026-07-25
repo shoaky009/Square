@@ -32,6 +32,17 @@
   private float _secondSweep;
   private int _animatedSecond = -1;
   private double _lastFrameSeconds;
+  private Rect _cachedClockBounds;
+  private EllipseGeometry? _clockFace;
+  private PathGeometry[] _clockTicks = [];
+  private readonly SolidColorBrush _faceBrush = new(Color.FromRgb(248, 250, 252));
+  private readonly Pen _facePen = Pen.FromColor(Color.FromRgb(60, 67, 74), 2f);
+  private readonly Pen _majorTickPen = Pen.FromColor(Color.FromRgb(45, 52, 59), 2f);
+  private readonly Pen _minorTickPen = Pen.FromColor(Color.FromRgb(145, 151, 157), 1f);
+  private readonly Pen _hourHandPen = Pen.FromColor(Color.FromRgb(35, 42, 48), 5f);
+  private readonly Pen _minuteHandPen = Pen.FromColor(Color.FromRgb(35, 42, 48), 3f);
+  private readonly Pen _secondHandPen = Pen.FromColor(Color.FromRgb(210, 48, 58), 1.5f);
+  private readonly SolidColorBrush _centerBrush = new(Color.FromRgb(210, 48, 58));
   private const double ClockFps = 20d;
 
   protected override void OnAttachedCore()
@@ -48,6 +59,13 @@
       0.85f,
       t => 1f - MathF.Pow(1f - t, 3f),
       value => _introProgress = value);
+    _secondSweepAnimation = new Square.Controls.Animation.Animation<float>(
+      Interpolate,
+      0f,
+      1f,
+      0.24f,
+      t => 1f - MathF.Pow(1f - t, 4f),
+      value => _secondSweep = value);
     _introAnimation.Start();
     DemoCanvas.RequestAnimationFrame(DrawClock, ClockFps);
   }
@@ -57,6 +75,7 @@
     _clock.Stop();
     _introAnimation?.Stop();
     _secondSweepAnimation?.Stop();
+    DemoCanvas.CancelAnimationFrame();
   }
 
   private void DrawClock(IRenderContext context, Rect bounds)
@@ -68,22 +87,13 @@
     _introAnimation?.Update(frameDelta);
     _secondSweepAnimation?.Update(frameDelta);
 
-    var center = new Point(bounds.X + bounds.Width / 2f, bounds.Y + bounds.Height / 2f);
-    var radius = MathF.Max(20f, MathF.Min(bounds.Width, bounds.Height) / 2f - 18f);
-    var face = new EllipseGeometry(center, radius, radius);
-    context.FillGeometry(face, new SolidColorBrush(Color.FromRgb(248, 250, 252)));
-    context.DrawGeometry(face, Pen.FromColor(Color.FromRgb(60, 67, 74), 2f));
-
-    for (var i = 0; i < 60; i++)
-    {
-      var angle = i * MathF.Tau / 60f - MathF.PI / 2f;
-      var major = i % 5 == 0;
-      var outer = PointOnClock(center, radius - 5f, angle);
-      var inner = PointOnClock(center, radius - (major ? 17f : 10f), angle);
-      context.DrawPath(
-        PathGeometry.Create().MoveTo(inner).LineTo(outer),
-        Pen.FromColor(major ? Color.FromRgb(45, 52, 59) : Color.FromRgb(145, 151, 157), major ? 2f : 1f));
-    }
+    EnsureClockGeometry(bounds);
+    var center = _clockFace!.Center;
+    var radius = _clockFace.RadiusX;
+    context.FillGeometry(_clockFace, _faceBrush);
+    context.DrawGeometry(_clockFace, _facePen);
+    for (var i = 0; i < _clockTicks.Length; i++)
+      context.DrawPath(_clockTicks[i], i % 5 == 0 ? _majorTickPen : _minorTickPen);
 
     var now = DateTime.Now.TimeOfDay;
     var second = (int)Math.Floor(now.TotalSeconds) % 60;
@@ -91,15 +101,7 @@
     {
       _animatedSecond = second;
       _secondSweep = 0;
-      _secondSweepAnimation?.Stop();
-      _secondSweepAnimation = new Square.Controls.Animation.Animation<float>(
-        Interpolate,
-        0f,
-        1f,
-        0.24f,
-        t => 1f - MathF.Pow(1f - t, 4f),
-        value => _secondSweep = value);
-      _secondSweepAnimation.Start();
+      _secondSweepAnimation?.Start();
     }
 
     var secondAngle = ToClockAngle((second + _secondSweep) / 60d);
@@ -107,22 +109,40 @@
     var hourAngle = ToClockAngle((now.TotalHours % 12d) / 12d);
     var reveal = Math.Clamp(_introProgress, 0f, 1f);
 
-    DrawHand(context, center, radius * 0.52f * reveal, hourAngle, Color.FromRgb(35, 42, 48), 5f);
-    DrawHand(context, center, radius * 0.72f * reveal, minuteAngle, Color.FromRgb(35, 42, 48), 3f);
-    DrawHand(context, center, radius * 0.82f * reveal, secondAngle, Color.FromRgb(210, 48, 58), 1.5f);
+    DrawHand(context, center, radius * 0.52f * reveal, hourAngle, _hourHandPen);
+    DrawHand(context, center, radius * 0.72f * reveal, minuteAngle, _minuteHandPen);
+    DrawHand(context, center, radius * 0.82f * reveal, secondAngle, _secondHandPen);
     context.FillGeometry(
       new EllipseGeometry(center, 5f + 2f * (1f - reveal), 5f + 2f * (1f - reveal)),
-      new SolidColorBrush(Color.FromRgb(210, 48, 58)));
+      _centerBrush);
 
     DemoCanvas.RequestAnimationFrame(DrawClock, ClockFps);
   }
 
-  private static void DrawHand(IRenderContext context, Point center, float length, float angle, Color color, float width)
+  private void EnsureClockGeometry(Rect bounds)
+  {
+    if (_clockFace != null && _cachedClockBounds == bounds) return;
+    _cachedClockBounds = bounds;
+    var center = new Point(bounds.X + bounds.Width / 2f, bounds.Y + bounds.Height / 2f);
+    var radius = MathF.Max(20f, MathF.Min(bounds.Width, bounds.Height) / 2f - 18f);
+    _clockFace = new EllipseGeometry(center, radius, radius);
+    _clockTicks = new PathGeometry[60];
+    for (var i = 0; i < _clockTicks.Length; i++)
+    {
+      var angle = i * MathF.Tau / 60f - MathF.PI / 2f;
+      var major = i % 5 == 0;
+      var outer = PointOnClock(center, radius - 5f, angle);
+      var inner = PointOnClock(center, radius - (major ? 17f : 10f), angle);
+      _clockTicks[i] = PathGeometry.Create().MoveTo(inner).LineTo(outer);
+    }
+  }
+
+  private static void DrawHand(IRenderContext context, Point center, float length, float angle, Pen pen)
   {
     if (length <= 0.1f) return;
     context.DrawPath(
       PathGeometry.Create().MoveTo(center).LineTo(PointOnClock(center, length, angle)),
-      Pen.FromColor(color, width));
+      pen);
   }
 
   private static float ToClockAngle(double turn) => (float)(turn * Math.Tau - Math.PI / 2d);

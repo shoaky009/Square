@@ -148,9 +148,22 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         set
         {
             if (_isVisible == value) return;
+            var wasEffectivelyVisible = IsEffectivelyVisible;
             _isVisible = value;
             OnIsVisibleChanged(value);
+            NotifyEffectiveVisibilityChanged(wasEffectivelyVisible, IsEffectivelyVisible);
             InvalidateLayout();
+        }
+    }
+
+    /// <summary>当前元素及其全部祖先均可见时为 true。</summary>
+    public bool IsEffectivelyVisible
+    {
+        get
+        {
+            for (Element? current = this; current != null; current = current.Parent)
+                if (!current.IsVisible) return false;
+            return true;
         }
     }
 
@@ -173,6 +186,19 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
 
     /// <summary>可见性变化扩展点。</summary>
     protected virtual void OnIsVisibleChanged(bool isVisible) { }
+
+    /// <summary>当前元素或祖先的可见性导致实际可见状态变化时触发。</summary>
+    protected virtual void OnEffectiveVisibilityChanged(bool isVisible) { }
+
+    private void NotifyEffectiveVisibilityChanged(bool wasEffectivelyVisible, bool isEffectivelyVisible)
+    {
+        if (wasEffectivelyVisible != isEffectivelyVisible)
+            OnEffectiveVisibilityChanged(isEffectivelyVisible);
+        foreach (var child in Children)
+            child.NotifyEffectiveVisibilityChanged(
+                wasEffectivelyVisible && child.IsVisible,
+                isEffectivelyVisible && child.IsVisible);
+    }
 
     /// <summary>是否包含指定状态标志（Square 扩展）。</summary>
     public bool HasState(ElementState flag) => State.Has(flag);

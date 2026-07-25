@@ -13,10 +13,12 @@ public static class Program
         System.Console.WriteLine("Square Vue Template Sample");
         ImageSourceRegistration.RegisterDefaults();
         var window = new AppWindow("Square Vue Template Sample", 900, 980);
-        //window.UseVulkanBackend();
         window.RenderingMode = RenderMode.DirtyRegion;
         window.Load(new Main());
         var app = new DesktopApplication(window);
+        var backend = GetOption(args, "--backend") ?? Environment.GetEnvironmentVariable("SQUARE_RENDER_BACKEND");
+        if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+            window.UseVulkanBackend();
         ConfigureRendering(window, args);
         SampleSignals.Initialize(app.Dispatcher);
         app.Run();

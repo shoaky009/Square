@@ -128,6 +128,51 @@ public sealed class ImageControlTests
     }
 
     [Fact]
+    public void AnimatedImagePausesAndResumesWithAncestorVisibility()
+    {
+        ImageSourceRegistration.RegisterDefaults();
+        var palette = new byte[] { 255, 0, 0, 0, 255, 0 };
+        var gif = CodecTestData.GifAnimation(1, 1, palette,
+        [
+            new CodecTestData.GifFrameData(0, 0, 1, 1, [0], Delay: 20),
+            new CodecTestData.GifFrameData(0, 0, 1, 1, [1], Delay: 20)
+        ], repeatCount: 0);
+        var path = WriteTempImage(gif);
+        try
+        {
+            var document = new UIDocument();
+            var parent = document.CreateElement<View>();
+            var image = document.CreateElement<ImageControl>();
+            parent.Children.Add(image);
+            document.Body.Children.Add(parent);
+            var requests = new List<FrameRequestEvent>();
+            document.Body.AddEventListener(StandardEvents.RequestFrame, e => requests.Add((FrameRequestEvent)e));
+            var loaded = false;
+            image.AddEventListener("load", () => loaded = true);
+            image.Source = path;
+
+            ((IComponentLifecycle)document.Body).OnAttached();
+            DrainUntil(document, () => loaded || image.Error != null);
+            Assert.True(loaded, image.Error?.ToString());
+            var requestsBeforeHide = requests.Count;
+
+            parent.IsVisible = false;
+            Assert.False(image.IsEffectivelyVisible);
+            Thread.Sleep(220);
+            ((IFrameScheduledElement)image).OnFrameDue();
+            Assert.Equal(requestsBeforeHide, requests.Count);
+
+            parent.IsVisible = true;
+            Assert.True(image.IsEffectivelyVisible);
+            Assert.True(requests.Count > requestsBeforeHide);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ManualImageContentKeepsSourceAsFallbackTextWithoutLoadingIt()
     {
         var document = new UIDocument();

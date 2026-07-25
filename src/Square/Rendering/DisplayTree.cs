@@ -58,6 +58,7 @@ public sealed class DisplayTree
 
     private void UpdateDirty(DisplayNode node, Point visualOffset)
     {
+        visualOffset = GetNodeVisualOffset(node, visualOffset);
         if (node.Element != null)
         {
             var bounds = node.Element.Geometry;
@@ -114,6 +115,7 @@ public sealed class DisplayTree
 
     private static bool CollectDirtyRects(DisplayNode node, List<Rect> dest, Point visualOffset)
     {
+        visualOffset = GetNodeVisualOffset(node, visualOffset);
         var subtreeDirty = node.IsDirty || (node.Element != null && node.Element.NeedsPaint);
         if (subtreeDirty)
         {
@@ -139,6 +141,15 @@ public sealed class DisplayTree
     {
         if (node.Element?.MapsScrollOffsetForChildren() != true) return current;
         return new Point(current.X - node.Element.ScrollLeft, current.Y - node.Element.ScrollTop);
+    }
+
+    private static Point GetNodeVisualOffset(DisplayNode node, Point current)
+    {
+        if (node.Element is not IPopupElement { IsPopupOpen: true } popup)
+            return current;
+        var geometry = node.Element.Geometry;
+        var bounds = popup.PopupBounds;
+        return new Point(bounds.X - geometry.X, bounds.Y - geometry.Y);
     }
 
     private static Rect Translate(Rect rect, Point offset) =>

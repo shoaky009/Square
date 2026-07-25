@@ -224,6 +224,21 @@ internal static partial class Win32Api
         int y1,
         uint rop);
 
+    [return: MarshalAs(UnmanagedType.Bool)]
+    [LibraryImport("gdi32.dll", EntryPoint = "StretchBlt")]
+    public static partial bool StretchBlt(
+        IntPtr hdcDest,
+        int xDest,
+        int yDest,
+        int widthDest,
+        int heightDest,
+        IntPtr hdcSrc,
+        int xSrc,
+        int ySrc,
+        int widthSrc,
+        int heightSrc,
+        uint rop);
+
     [LibraryImport("gdi32.dll", EntryPoint = "GetDIBits")]
     public static partial int GetDIBits(
         IntPtr hdc,
