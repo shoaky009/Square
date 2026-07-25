@@ -10,7 +10,18 @@ public sealed class RenderBackendFactory : IRenderBackendFactory
     {
         var width = (int)Math.Ceiling(info.CanvasSize.Width * info.DpiScale);
         var height = (int)Math.Ceiling(info.CanvasSize.Height * info.DpiScale);
-        var bitmap = new Bitmap(Math.Max(1, width), Math.Max(1, height));
-        return new RenderContext(bitmap, info.CanvasSize, info.DpiScale, info.PresentFrame);
+        var surface = info.SoftwareSurface ?? new BitmapSoftwareRenderSurface(
+            Math.Max(1, width), Math.Max(1, height), info.PresentFrame);
+        try
+        {
+            if (surface.Width != Math.Max(1, width) || surface.Height != Math.Max(1, height))
+                surface.Resize(Math.Max(1, width), Math.Max(1, height));
+            return new RenderContext(surface, info.CanvasSize, info.DpiScale);
+        }
+        catch
+        {
+            surface.Dispose();
+            throw;
+        }
     }
 }

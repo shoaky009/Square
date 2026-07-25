@@ -147,6 +147,35 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void SoftwareSurfaceSupportsPaddedStrideCaptureAndPresent()
+    {
+        var surface = new TestSoftwareSurface(5, 3, 32);
+        var context = new RenderContext(surface, new Size(5, 3), 1f);
+        context.Clear(Color.Red);
+        context.Present([new Rect(1, 1, 2, 1)]);
+
+        using var captured = context.CaptureBitmap();
+        Assert.Equal(255, captured.GetPixel(4, 2)[2]);
+        Assert.Equal(0, surface.Rows[0][20]);
+        Assert.Equal(new Rect(1, 1, 2, 1), Assert.Single(surface.LastDirtyRects!));
+    }
+
+    [Fact]
+    public void RenderContextResizesAndDisposesOwnedSoftwareSurface()
+    {
+        var surface = new TestSoftwareSurface(2, 2, 16);
+        var context = new RenderContext(surface, new Size(2, 2), 1f);
+
+        context.Resize(new Size(7, 5));
+        context.Dispose();
+
+        Assert.Equal(7, surface.Width);
+        Assert.Equal(5, surface.Height);
+        Assert.Equal(1, surface.ResizeCount);
+        Assert.Equal(1, surface.DisposeCount);
+    }
+
+    [Fact]
     public void ResizeRecreatesFrameBufferAtNewCanvasSize()
     {
         Bitmap? presented = null;
@@ -1402,6 +1431,36 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void FillRectSemiTransparentMatchesScalarBlendAcrossVectorAndTail()
+    {
+        const byte sourceRed = 201;
+        const byte sourceGreen = 73;
+        const byte sourceBlue = 29;
+        const byte sourceAlpha = 137;
+        var background = new Color(17, 91, 163, 255);
+        var ctx = CreateContext(67, 1);
+        ctx.Clear(background);
+
+        ctx.FillRect(
+            new Rect(0, 0, 67, 1),
+            new SolidColorBrush(sourceRed, sourceGreen, sourceBlue, sourceAlpha));
+
+        var inverseAlpha = 255 - sourceAlpha;
+        var expectedBlue = (byte)(sourceBlue * sourceAlpha / 255 + background.B * inverseAlpha / 255);
+        var expectedGreen = (byte)(sourceGreen * sourceAlpha / 255 + background.G * inverseAlpha / 255);
+        var expectedRed = (byte)(sourceRed * sourceAlpha / 255 + background.R * inverseAlpha / 255);
+        var bitmap = ctx.GetBitmap();
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            var offset = x * 4;
+            Assert.Equal(expectedBlue, bitmap.Pixels[offset]);
+            Assert.Equal(expectedGreen, bitmap.Pixels[offset + 1]);
+            Assert.Equal(expectedRed, bitmap.Pixels[offset + 2]);
+            Assert.Equal(255, bitmap.Pixels[offset + 3]);
+        }
+    }
+
+    [Fact]
     public void FillEllipse()
     {
         var ctx = CreateContext(20, 20);
@@ -1557,6 +1616,26 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void DiagonalLineCoverageRefreshesCachedLayerOpacity()
+    {
+        var context = CreateContext(28, 14);
+        context.Clear(Color.Transparent);
+
+        context.PushLayer(new Rect(0, 0, 14, 14), 0.5f);
+        context.DrawPath(
+            PathGeometry.Create().MoveTo(new Point(2, 2)).LineTo(new Point(10, 10)),
+            Pen.FromColor(Color.White, 4));
+        context.PopLayer();
+        context.DrawPath(
+            PathGeometry.Create().MoveTo(new Point(16, 2)).LineTo(new Point(24, 10)),
+            Pen.FromColor(Color.White, 4));
+
+        var bitmap = context.GetBitmap();
+        Assert.InRange(AlphaAt(bitmap, 6, 6), 127, 128);
+        Assert.Equal(255, AlphaAt(bitmap, 20, 6));
+    }
+
+    [Fact]
     public void RoundedRectFillLeavesCornersTransparent()
     {
         var context = CreateContext(32, 32);
@@ -1679,6 +1758,51 @@ public class SoftwareRendererTests
                 count++;
         }
         return count;
+    }
+
+    private sealed class TestSoftwareSurface : ISoftwareRenderSurface
+    {
+        private byte[][] _rows;
+        private readonly int _stridePadding;
+
+        public TestSoftwareSurface(int width, int height, int stride)
+        {
+            _stridePadding = stride - width * 4;
+            Width = width;
+            Height = height;
+            Stride = stride;
+            _rows = CreateRows(height, stride);
+        }
+
+        public int Width { get; private set; }
+        public int Height { get; private set; }
+        public int Stride { get; private set; }
+        public byte[][] Rows => _rows;
+        public IReadOnlyList<Rect>? LastDirtyRects { get; private set; }
+        public int ResizeCount { get; private set; }
+        public int DisposeCount { get; private set; }
+
+        public Span<byte> GetRowSpan(int y) => _rows[y];
+
+        public void Resize(int width, int height)
+        {
+            Width = width;
+            Height = height;
+            Stride = width * 4 + _stridePadding;
+            _rows = CreateRows(height, Stride);
+            ResizeCount++;
+        }
+
+        public void Present(IReadOnlyList<Rect>? dirtyRects) => LastDirtyRects = dirtyRects;
+
+        public void Dispose() => DisposeCount++;
+
+        private static byte[][] CreateRows(int height, int stride)
+        {
+            var rows = new byte[height][];
+            for (var y = 0; y < rows.Length; y++) rows[y] = new byte[stride];
+            return rows;
+        }
     }
 
     [Fact]

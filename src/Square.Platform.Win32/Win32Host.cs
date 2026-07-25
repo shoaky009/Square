@@ -13,6 +13,7 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     private readonly int _width;
     private readonly int _height;
     private readonly string _renderBackend;
+    private readonly SoftwareRenderSurfaceKind _softwareSurfaceKind;
     private readonly TitleStyle _titleStyle;
     private readonly BorderStyle _borderStyle;
     private readonly IntPtr _ownerHandle;
@@ -21,6 +22,7 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     private Size _physicalClientSize;
     private float _dpiScale = 1f;
     private IRenderContext? _renderContext;
+    private Win32DibSoftwareRenderSurface? _softwareSurface;
     private Bitmap? _lastFrame;
     private char? _pendingHighSurrogate;
     private CursorKind _cursor = CursorKind.Arrow;
@@ -94,6 +96,7 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
         _width = info.Width;
         _height = info.Height;
         _renderBackend = info.RenderBackend;
+        _softwareSurfaceKind = info.SoftwareSurface;
         _titleStyle = info.TitleStyle;
         _borderStyle = info.BorderStyle;
         _ownerHandle = info.OwnerHandle;
@@ -239,6 +242,22 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
 
     private void ReleasePresentResources()
     {
+        if (_presentMemoryDc != IntPtr.Zero)
+        {
+            if (_presentPreviousBitmap != IntPtr.Zero)
+                Win32Api.SelectObject(_presentMemoryDc, _presentPreviousBitmap);
+            if (_presentBitmap != IntPtr.Zero)
+                Win32Api.DeleteObject(_presentBitmap);
+            Win32Api.DeleteDC(_presentMemoryDc);
+        }
+        _presentMemoryDc = IntPtr.Zero;
+        _presentBitmap = IntPtr.Zero;
+        _presentPreviousBitmap = IntPtr.Zero;
+        _presentBits = IntPtr.Zero;
+        _presentWidth = 0;
+        _presentHeight = 0;
+        _presentDibNeedsFullCopy = false;
+
         if (_presentPixelsHandle.IsAllocated)
             _presentPixelsHandle.Free();
         _presentPixelsArray = null;
@@ -249,11 +268,19 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     {
         if (_renderContext != null) return _renderContext;
         var factory = RenderBackendRegistry.Get(_renderBackend);
+        if (string.Equals(_renderBackend, "Software", StringComparison.OrdinalIgnoreCase)
+            && _softwareSurfaceKind == SoftwareRenderSurfaceKind.Auto)
+        {
+            var width = Math.Max(1, (int)MathF.Ceiling(_clientSize.Width * _dpiScale));
+            var height = Math.Max(1, (int)MathF.Ceiling(_clientSize.Height * _dpiScale));
+            _softwareSurface = new Win32DibSoftwareRenderSurface(() => _hwnd, width, height);
+        }
         _renderContext = factory.CreateContext(new RenderContextCreateInfo
         {
             CanvasSize = _clientSize,
             DpiScale = _dpiScale,
-            PresentFrame = PresentFrame,
+            SoftwareSurface = _softwareSurface,
+            PresentFrame = _softwareSurface == null ? PresentFrame : null,
             NativeTarget = new Win32VulkanRenderTarget(_hwnd, Win32Api.GetModuleHandle(null))
         });
         return _renderContext;
@@ -263,7 +290,23 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     {
         if (_hwnd == IntPtr.Zero) return;
         _lastFrame = bitmap;
-        EnsurePresentResources(bitmap);
+        var dibReady = EnsurePresentResources(bitmap);
+
+        if (dibReady)
+        {
+            CopyFrameToPresentDib(bitmap, dirtyRects);
+            var destinationDc = Win32Api.GetDC(_hwnd);
+            try
+            {
+                if (destinationDc != IntPtr.Zero)
+                    BlitPresentDib(destinationDc, dirtyRects);
+            }
+            finally
+            {
+                if (destinationDc != IntPtr.Zero) Win32Api.ReleaseDC(_hwnd, destinationDc);
+            }
+            return;
+        }
 
         var dc = Win32Api.GetDC(_hwnd);
         try
@@ -299,7 +342,7 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
         }
     }
 
-    private void EnsurePresentResources(Bitmap bitmap)
+    private bool EnsurePresentResources(Bitmap bitmap)
     {
         if (!_presentInfoReady
             || _presentInfo.bmiHeader.biWidth != bitmap.Width
@@ -325,12 +368,125 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
             _presentInfo.bmiHeader.biSizeImage = (uint)bitmap.Pixels.Length;
         }
 
+        if (_presentMemoryDc != IntPtr.Zero
+            && _presentWidth == bitmap.Width
+            && _presentHeight == bitmap.Height)
+            return true;
+
+        ReleasePresentDib();
+        var memoryDc = Win32Api.CreateCompatibleDC(IntPtr.Zero);
+        if (memoryDc != IntPtr.Zero)
+        {
+            var presentBitmap = Win32Api.CreateDIBSection(
+                memoryDc,
+                ref _presentInfo,
+                Win32Api.DIB_RGB_COLORS,
+                out var bits,
+                IntPtr.Zero,
+                0);
+            if (presentBitmap != IntPtr.Zero && bits != IntPtr.Zero)
+            {
+                var previousBitmap = Win32Api.SelectObject(memoryDc, presentBitmap);
+                if (previousBitmap != IntPtr.Zero && previousBitmap != new IntPtr(-1))
+                {
+                    _presentMemoryDc = memoryDc;
+                    _presentBitmap = presentBitmap;
+                    _presentPreviousBitmap = previousBitmap;
+                    _presentBits = bits;
+                    _presentWidth = bitmap.Width;
+                    _presentHeight = bitmap.Height;
+                    _presentDibNeedsFullCopy = true;
+                    if (_presentPixelsHandle.IsAllocated)
+                        _presentPixelsHandle.Free();
+                    _presentPixelsArray = null;
+                    return true;
+                }
+
+                Win32Api.DeleteObject(presentBitmap);
+            }
+            Win32Api.DeleteDC(memoryDc);
+        }
+
         if (!_presentPixelsHandle.IsAllocated || !ReferenceEquals(_presentPixelsArray, bitmap.Pixels))
         {
             if (_presentPixelsHandle.IsAllocated) _presentPixelsHandle.Free();
             _presentPixelsArray = bitmap.Pixels;
             _presentPixelsHandle = GCHandle.Alloc(bitmap.Pixels, GCHandleType.Pinned);
         }
+        return false;
+    }
+
+    private void ReleasePresentDib()
+    {
+        if (_presentMemoryDc != IntPtr.Zero)
+        {
+            if (_presentPreviousBitmap != IntPtr.Zero)
+                Win32Api.SelectObject(_presentMemoryDc, _presentPreviousBitmap);
+            if (_presentBitmap != IntPtr.Zero)
+                Win32Api.DeleteObject(_presentBitmap);
+            Win32Api.DeleteDC(_presentMemoryDc);
+        }
+        _presentMemoryDc = IntPtr.Zero;
+        _presentBitmap = IntPtr.Zero;
+        _presentPreviousBitmap = IntPtr.Zero;
+        _presentBits = IntPtr.Zero;
+        _presentWidth = 0;
+        _presentHeight = 0;
+        _presentDibNeedsFullCopy = false;
+    }
+
+    private void CopyFrameToPresentDib(Bitmap bitmap, IReadOnlyList<Rect>? dirtyRects)
+    {
+        if (dirtyRects == null || _presentDibNeedsFullCopy)
+        {
+            Marshal.Copy(bitmap.Pixels, 0, _presentBits, bitmap.Pixels.Length);
+            _presentDibNeedsFullCopy = false;
+            return;
+        }
+
+        foreach (var dirtyRect in dirtyRects)
+        {
+            if (!TryClipPresentRect(dirtyRect, out var left, out var top, out var width, out var height))
+                continue;
+            var bytesPerRow = width * 4;
+            for (var y = top; y < top + height; y++)
+            {
+                var sourceOffset = y * bitmap.Stride + left * 4;
+                var destination = IntPtr.Add(_presentBits, sourceOffset);
+                Marshal.Copy(bitmap.Pixels, sourceOffset, destination, bytesPerRow);
+            }
+        }
+    }
+
+    private void BlitPresentDib(IntPtr destinationDc, IReadOnlyList<Rect>? dirtyRects)
+    {
+        if (dirtyRects == null)
+        {
+            Win32Api.BitBlt(
+                destinationDc, 0, 0, _presentWidth, _presentHeight,
+                _presentMemoryDc, 0, 0, Win32Api.SRCCOPY);
+            return;
+        }
+
+        foreach (var dirtyRect in dirtyRects)
+        {
+            if (!TryClipPresentRect(dirtyRect, out var left, out var top, out var width, out var height))
+                continue;
+            Win32Api.BitBlt(
+                destinationDc, left, top, width, height,
+                _presentMemoryDc, left, top, Win32Api.SRCCOPY);
+        }
+    }
+
+    private bool TryClipPresentRect(Rect rect, out int left, out int top, out int width, out int height)
+    {
+        left = Math.Clamp((int)MathF.Floor(rect.Left), 0, _presentWidth);
+        top = Math.Clamp((int)MathF.Floor(rect.Top), 0, _presentHeight);
+        var right = Math.Clamp((int)MathF.Ceiling(rect.Right), left, _presentWidth);
+        var bottom = Math.Clamp((int)MathF.Ceiling(rect.Bottom), top, _presentHeight);
+        width = right - left;
+        height = bottom - top;
+        return width > 0 && height > 0;
     }
 
     public void PumpEvents()
@@ -496,10 +652,22 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
             case Win32Api.WM_PAINT:
             {
                 var paint = new Win32Api.PAINTSTRUCT();
-                Win32Api.BeginPaint(hWnd, ref paint);
-                // System repaint: full window
-                if (host._lastFrame != null) host.PresentFrame(host._lastFrame, null);
-                Win32Api.EndPaint(hWnd, ref paint);
+                var paintDc = Win32Api.BeginPaint(hWnd, ref paint);
+                try
+                {
+                    if (paintDc != IntPtr.Zero && host._softwareSurface != null)
+                    {
+                        host._softwareSurface.Repaint(paintDc, paint.rcPaint);
+                    }
+                    else if (host._lastFrame != null)
+                    {
+                        host.PresentFrame(host._lastFrame, null);
+                    }
+                }
+                finally
+                {
+                    Win32Api.EndPaint(hWnd, ref paint);
+                }
             }
                 return IntPtr.Zero;
             case Win32Api.WM_CLOSE:
@@ -745,6 +913,13 @@ internal sealed class Win32Host : IPlatformHost, IPlatformNativeWindow
     private bool _presentInfoReady;
     private GCHandle _presentPixelsHandle;
     private byte[]? _presentPixelsArray;
+    private IntPtr _presentMemoryDc;
+    private IntPtr _presentBitmap;
+    private IntPtr _presentPreviousBitmap;
+    private IntPtr _presentBits;
+    private int _presentWidth;
+    private int _presentHeight;
+    private bool _presentDibNeedsFullCopy;
 
     public void Dispose()
     {

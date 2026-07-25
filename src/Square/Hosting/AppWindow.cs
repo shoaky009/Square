@@ -76,6 +76,8 @@ public sealed class AppWindow : IRenderBackendApplication
 
     public string RenderBackend { get; set; } = "Software";
 
+    public SoftwareRenderSurfaceKind SoftwareSurface { get; set; } = SoftwareRenderSurfaceKind.Auto;
+
     public Color Background { get; set; } = Color.White;
 
     public RenderMode RenderingMode { get; set; } = RenderMode.FullFrame;
@@ -264,6 +266,7 @@ public sealed class AppWindow : IRenderBackendApplication
         Width = _initialWidth,
         Height = _initialHeight,
         RenderBackend = RenderBackend,
+        SoftwareSurface = SoftwareSurface,
         TitleStyle = TitleStyle,
         BorderStyle = BorderStyle,
         OwnerHandle = OwnerHandle,

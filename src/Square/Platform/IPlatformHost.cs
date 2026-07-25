@@ -116,12 +116,19 @@ public interface IPlatformScreenshotProvider
     bool TryCaptureByProcessId(int processId, out Bitmap? bitmap);
 }
 
+public enum SoftwareRenderSurfaceKind
+{
+    Auto,
+    Bitmap
+}
+
 public sealed class PlatformHostCreateInfo
 {
     public required string Title { get; set; }
     public int Width { get; set; } = 800;
     public int Height { get; set; } = 600;
     public string RenderBackend { get; set; } = "Software";
+    public SoftwareRenderSurfaceKind SoftwareSurface { get; set; } = SoftwareRenderSurfaceKind.Auto;
     public TitleStyle TitleStyle { get; set; } = TitleStyle.System;
     public BorderStyle BorderStyle { get; set; } = BorderStyle.Resizable;
     public IntPtr OwnerHandle { get; set; }

@@ -10,6 +10,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     private readonly int _width;
     private readonly int _height;
     private readonly string _renderBackend;
+    private readonly SoftwareRenderSurfaceKind _softwareSurfaceKind;
     private readonly IntPtr _display;
     private readonly int _screen;
     private readonly IntPtr _root;
@@ -42,6 +43,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     private float _dpiScale = 1f;
     private bool _running;
     private IRenderContext? _renderContext;
+    private X11SoftwareRenderSurface? _softwareSurface;
     private Bitmap? _lastFrame;
     private IntPtr _ximage;
     private IntPtr _imageBufferPtr;
@@ -76,6 +78,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         _width = info.Width;
         _height = info.Height;
         _renderBackend = info.RenderBackend;
+        _softwareSurfaceKind = info.SoftwareSurface;
         _display = X11Api.OpenDisplay(null);
         if (_display == IntPtr.Zero)
             throw new InvalidOperationException("Cannot open X display. Is DISPLAY set?");
@@ -181,7 +184,6 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         X11Api.GetGeometry(_display, _window, out _, out _, out _, out var w, out var h, out _, out _);
         _clientSize = new Size((int)w, (int)h);
 
-        _imagePixmap = X11Api.CreatePixmap(_display, _window, (uint)_width, (uint)_height, _depth);
         InitInputMethod();
     }
 
@@ -343,14 +345,22 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     {
         if (_renderContext != null) return _renderContext;
         var factory = RenderBackendRegistry.Get(_renderBackend);
+        if (string.Equals(_renderBackend, "Software", StringComparison.OrdinalIgnoreCase)
+            && _softwareSurfaceKind == SoftwareRenderSurfaceKind.Auto)
+        {
+            _softwareSurface = new X11SoftwareRenderSurface(
+                _display, _window, _visual, _depth, _gc,
+                Math.Max(1, (int)MathF.Ceiling(_clientSize.Width * _dpiScale)),
+                Math.Max(1, (int)MathF.Ceiling(_clientSize.Height * _dpiScale)));
+        }
         _renderContext = factory.CreateContext(new RenderContextCreateInfo
         {
             CanvasSize = _clientSize,
             DpiScale = _dpiScale,
-            PresentFrame = PresentFrame,
+            SoftwareSurface = _softwareSurface,
+            PresentFrame = _softwareSurface == null ? PresentFrame : null,
             NativeTarget = new X11VulkanRenderTarget(_display, _window, _screen)
         });
-        EnsureImageBuffer();
         return _renderContext;
     }
 
@@ -395,7 +405,11 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                 {
                     var raw = (byte*)(&e);
                     int count = *(int*)(raw + 56);
-                    if (count == 0 && _lastFrame != null) PresentFrame(_lastFrame, null);
+                    if (count == 0)
+                    {
+                        if (_softwareSurface != null) _softwareSurface.Repaint();
+                        else if (_lastFrame != null) PresentFrame(_lastFrame, null);
+                    }
                 }
                 break;
             case X11Api.ConfigureNotify:
@@ -409,7 +423,6 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                     if (newSize != _clientSize)
                     {
                         _clientSize = newSize;
-                        RebuildPixmap();
                         if (_renderContext is IResizableRenderContext r) r.Resize(newSize);
                         SizeChanged?.Invoke(newSize);
                     }

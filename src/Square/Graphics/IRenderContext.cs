@@ -14,6 +14,7 @@ public sealed class RenderContextCreateInfo
     public float DpiScale { get; set; } = 1f;
     public bool VSync { get; set; } = true;
     public PresentFrameHandler? PresentFrame { get; set; }
+    public ISoftwareRenderSurface? SoftwareSurface { get; set; }
     public INativeRenderTarget? NativeTarget { get; set; }
 }
 

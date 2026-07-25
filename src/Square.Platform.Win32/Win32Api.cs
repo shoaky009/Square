@@ -191,6 +191,15 @@ internal static partial class Win32Api
     [LibraryImport("gdi32.dll", EntryPoint = "CreateCompatibleBitmap")]
     public static partial IntPtr CreateCompatibleBitmap(IntPtr hdc, int cx, int cy);
 
+    [LibraryImport("gdi32.dll", EntryPoint = "CreateDIBSection")]
+    public static partial IntPtr CreateDIBSection(
+        IntPtr hdc,
+        ref BITMAPINFO bitmapInfo,
+        uint usage,
+        out IntPtr bits,
+        IntPtr section,
+        uint offset);
+
     [LibraryImport("gdi32.dll", EntryPoint = "SelectObject")]
     public static partial IntPtr SelectObject(IntPtr hdc, IntPtr h);
 
