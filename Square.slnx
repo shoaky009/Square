@@ -8,6 +8,7 @@
   <Project Path="src/Square.DevTools/Square.DevTools.csproj" />
   <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
   <Folder Name="/Samples/">
+    <Project Path="samples/Square.Sample.HelloWorld/Square.Sample.HelloWorld.csproj" />
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />
     <Project Path="samples/Square.Sample.Vue/Square.Sample.Vue.csproj" />
     <Project Path="samples/Square.Sample/Square.Sample.csproj" />

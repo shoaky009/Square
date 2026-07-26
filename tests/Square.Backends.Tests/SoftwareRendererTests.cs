@@ -1446,9 +1446,9 @@ public class SoftwareRendererTests
             new SolidColorBrush(sourceRed, sourceGreen, sourceBlue, sourceAlpha));
 
         var inverseAlpha = 255 - sourceAlpha;
-        var expectedBlue = (byte)(sourceBlue * sourceAlpha / 255 + background.B * inverseAlpha / 255);
-        var expectedGreen = (byte)(sourceGreen * sourceAlpha / 255 + background.G * inverseAlpha / 255);
-        var expectedRed = (byte)(sourceRed * sourceAlpha / 255 + background.R * inverseAlpha / 255);
+        var expectedBlue = BlendOpaqueDestination(sourceBlue, sourceAlpha, background.B, inverseAlpha);
+        var expectedGreen = BlendOpaqueDestination(sourceGreen, sourceAlpha, background.G, inverseAlpha);
+        var expectedRed = BlendOpaqueDestination(sourceRed, sourceAlpha, background.R, inverseAlpha);
         var bitmap = ctx.GetBitmap();
         for (var x = 0; x < bitmap.Width; x++)
         {
@@ -1458,6 +1458,9 @@ public class SoftwareRendererTests
             Assert.Equal(expectedRed, bitmap.Pixels[offset + 2]);
             Assert.Equal(255, bitmap.Pixels[offset + 3]);
         }
+
+        static byte BlendOpaqueDestination(byte source, byte sourceAlpha, byte destination, int inverseAlpha)
+            => (byte)((source * sourceAlpha + destination * inverseAlpha + 127) / 255);
     }
 
     [Fact]
@@ -1611,6 +1614,69 @@ public class SoftwareRendererTests
         context.DrawPath(
             PathGeometry.Create().MoveTo(new Point(3, 5)).LineTo(new Point(20, 16)),
             Pen.FromColor(Color.White, 1));
+
+        Assert.Contains(AlphaValues(context.GetBitmap()), alpha => alpha is > 0 and < 255);
+    }
+
+    [Fact]
+    public void FractionalHorizontalLineHasAntialiasedEdges()
+    {
+        var context = CreateContext(24, 12);
+        context.Clear(Color.Transparent);
+        context.DrawPath(
+            PathGeometry.Create().MoveTo(new Point(3, 5.25f)).LineTo(new Point(20, 5.25f)),
+            Pen.FromColor(Color.White, 1));
+
+        Assert.Contains(AlphaValues(context.GetBitmap()), alpha => alpha is > 0 and < 255);
+    }
+
+    [Fact]
+    public void TransformedRoundedRectScalesCornerRadius()
+    {
+        var context = CreateContext(80, 80);
+        context.Clear(Color.Transparent);
+
+        context.PushTransform(Matrix3x2.CreateScale(2));
+        context.FillGeometry(
+            new RoundedRectGeometry(new Rect(10, 10, 20, 20), 8, 8),
+            new SolidColorBrush(Color.White));
+        context.PopTransform();
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(0, AlphaAt(bitmap, 26, 21));
+        Assert.True(AlphaAt(bitmap, 40, 21) > 0);
+    }
+
+    [Fact]
+    public void TransformedPathScalesStrokeWidth()
+    {
+        var context = CreateContext(48, 48);
+        context.Clear(Color.Transparent);
+
+        context.PushTransform(Matrix3x2.CreateScale(2));
+        context.DrawPath(
+            PathGeometry.Create().MoveTo(new Point(4, 10)).LineTo(new Point(20, 10)),
+            Pen.FromColor(Color.White, 4));
+        context.PopTransform();
+
+        var bitmap = context.GetBitmap();
+        Assert.Equal(255, AlphaAt(bitmap, 24, 20));
+        Assert.True(AlphaAt(bitmap, 24, 16) > 0);
+        Assert.Equal(0, AlphaAt(bitmap, 24, 14));
+    }
+
+    [Fact]
+    public void FilledPathStraightEdgesAreAntialiased()
+    {
+        var context = CreateContext(32, 32);
+        context.Clear(Color.Transparent);
+        context.FillPath(
+            PathGeometry.Create()
+                .MoveTo(new Point(5, 4))
+                .LineTo(new Point(26, 11))
+                .LineTo(new Point(17, 27))
+                .Close(),
+            new SolidColorBrush(Color.White));
 
         Assert.Contains(AlphaValues(context.GetBitmap()), alpha => alpha is > 0 and < 255);
     }

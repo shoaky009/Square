@@ -26,7 +26,6 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private readonly Stack<ClipRegion> _clipStack = new();
     private readonly Stack<Matrix3x2> _transformStack = new();
     private readonly Stack<float> _opacityStack = new();
-    private readonly List<double> _polygonIntersections = new(64);
     private readonly byte[] _coverageAlphaLookup = new byte[CoverageSampleCount + 1];
     private int _coverageAlphaSource = -1;
     private float _coverageAlphaOpacity = -1f;
@@ -219,7 +218,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 FillRect(rg.Rect, brush);
                 break;
             case RoundedRectGeometry rrg:
-                FillRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, sc.Color);
+                FillRoundedRect(
+                    TransformRect(rrg.Rect),
+                    rrg.RadiusX * GetTransformScaleX(),
+                    rrg.RadiusY * GetTransformScaleY(),
+                    sc.Color);
                 break;
             case EllipseGeometry eg:
                 if (IsDpiOnlyTransform())
@@ -241,7 +244,12 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 DrawRect(rg.Rect, pen);
                 break;
             case RoundedRectGeometry rrg:
-                DrawRoundedRect(TransformRect(rrg.Rect), rrg.RadiusX * _dpiScale, rrg.RadiusY * _dpiScale, pen);
+                DrawRoundedRect(
+                    TransformRect(rrg.Rect),
+                    rrg.RadiusX * GetTransformScaleX(),
+                    rrg.RadiusY * GetTransformScaleY(),
+                    pen,
+                    GetStrokeTransformScale());
                 break;
             case EllipseGeometry eg:
                 if (IsDpiOnlyTransform())
@@ -269,7 +277,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
         var points = FlattenPath(path, _currentTransform);
         if (points.Count < 2) return;
-        DrawPolyline(points, pen.Width * _dpiScale, color);
+        DrawPolyline(points, pen.Width * GetStrokeTransformScale(), color);
     }
 
     public void DrawText(TextLayout text, Point origin, Brush brush)
@@ -379,7 +387,6 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         _clipStack.Clear();
         _transformStack.Clear();
         _opacityStack.Clear();
-        _polygonIntersections.Clear();
         _scaledDirtyRects = [];
         _surface.Dispose();
         _bitmapWidth = 0;
@@ -439,11 +446,10 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
         if (!_hasGeometryClip)
         {
-            var source = CreatePremultipliedSourceVector(pb, pg, pr, alpha);
             for (var y = y0; y < y1; y++)
             {
                 var row = _surface.GetRowSpan(y).Slice(x0 * 4, (x1 - x0) * 4);
-                BlendSolidRow(row, pb, pg, pr, alpha, source);
+                BlendSolidRow(row, color.B, color.G, color.R, alpha);
             }
             return;
         }
@@ -462,6 +468,41 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 span[idx + 1] = (byte)((pg * 255 + span[idx + 1] * dstA * (255 - alpha) / 255) / outA);
                 span[idx + 2] = (byte)((pr * 255 + span[idx + 2] * dstA * (255 - alpha) / 255) / outA);
                 span[idx + 3] = outA;
+            }
+        }
+    }
+
+    private void BlendRectCoverage(Rect rect, Color color)
+    {
+        if (rect.IsEmpty) return;
+        var x0 = Math.Max(0, (int)MathF.Floor(rect.Left));
+        var y0 = Math.Max(0, (int)MathF.Floor(rect.Top));
+        var x1 = Math.Min(_bitmapWidth - 1, (int)MathF.Ceiling(rect.Right));
+        var y1 = Math.Min(_bitmapHeight - 1, (int)MathF.Ceiling(rect.Bottom));
+        if (_hasClip)
+        {
+            x0 = Math.Max(x0, (int)MathF.Floor(_clipLeft));
+            y0 = Math.Max(y0, (int)MathF.Floor(_clipTop));
+            x1 = Math.Min(x1, (int)MathF.Ceiling(_clipRight) - 1);
+            y1 = Math.Min(y1, (int)MathF.Ceiling(_clipBottom) - 1);
+        }
+        if (x0 > x1 || y0 > y1) return;
+
+        for (var y = y0; y <= y1; y++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                var covered = 0;
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
+                for (var sx = 0; sx < CoverageSampleGrid; sx++)
+                {
+                    var px = x + (sx + 0.5f) / CoverageSampleGrid;
+                    var py = y + (sy + 0.5f) / CoverageSampleGrid;
+                    if (px >= rect.Left && px < rect.Right && py >= rect.Top && py < rect.Bottom)
+                        covered++;
+                }
+
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
             }
         }
     }
@@ -501,9 +542,9 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             var inverseAlpha = 255 - alpha;
             if (dstA == 255)
             {
-                row[idx] = (byte)(pb + row[idx] * inverseAlpha / 255);
-                row[idx + 1] = (byte)(pg + row[idx + 1] * inverseAlpha / 255);
-                row[idx + 2] = (byte)(pr + row[idx + 2] * inverseAlpha / 255);
+                row[idx] = BlendOpaqueDestination(blue, alpha, row[idx], inverseAlpha);
+                row[idx + 1] = BlendOpaqueDestination(green, alpha, row[idx + 1], inverseAlpha);
+                row[idx + 2] = BlendOpaqueDestination(red, alpha, row[idx + 2], inverseAlpha);
                 return;
             }
             var outA = (byte)(alpha + (dstA * inverseAlpha / 255));
@@ -515,61 +556,18 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         }
     }
 
-    private static Vector<byte> CreatePremultipliedSourceVector(byte blue, byte green, byte red, byte alpha)
-    {
-        Span<byte> source = stackalloc byte[Vector<byte>.Count];
-        for (var i = 0; i < source.Length; i += 4)
-        {
-            source[i] = blue;
-            source[i + 1] = green;
-            source[i + 2] = red;
-            source[i + 3] = alpha;
-        }
-        return new Vector<byte>(source);
-    }
-
-    private static void BlendSolidRow(
-        Span<byte> row, byte blue, byte green, byte red, byte alpha, Vector<byte> source)
+    private static void BlendSolidRow(Span<byte> row, byte blue, byte green, byte red, byte alpha)
     {
         var inverseAlpha = 255 - alpha;
-        var vectorByteCount = Vector<byte>.Count;
         var offset = 0;
-        if (Vector.IsHardwareAccelerated && row.Length >= vectorByteCount)
-        {
-            Vector.Widen(source, out Vector<ushort> sourceLow, out Vector<ushort> sourceHigh);
-            var inverse = new Vector<ushort>((ushort)inverseAlpha);
-            var one = Vector<ushort>.One;
-            var lastVectorOffset = row.Length - vectorByteCount;
-            while (offset <= lastVectorOffset)
-            {
-                var allOpaque = true;
-                for (var alphaOffset = offset + 3; alphaOffset < offset + vectorByteCount; alphaOffset += 4)
-                {
-                    if (row[alphaOffset] == 255) continue;
-                    allOpaque = false;
-                    break;
-                }
-                if (!allOpaque) break;
-
-                var destination = new Vector<byte>(row.Slice(offset, vectorByteCount));
-                Vector.Widen(destination, out Vector<ushort> destinationLow, out Vector<ushort> destinationHigh);
-                var lowProduct = destinationLow * inverse;
-                var highProduct = destinationHigh * inverse;
-                var lowResult = sourceLow + ((lowProduct + one + (lowProduct >> 8)) >> 8);
-                var highResult = sourceHigh + ((highProduct + one + (highProduct >> 8)) >> 8);
-                Vector.Narrow(lowResult, highResult).CopyTo(row.Slice(offset, vectorByteCount));
-                offset += vectorByteCount;
-            }
-        }
-
         for (; offset < row.Length; offset += 4)
         {
             var destinationAlpha = row[offset + 3];
             if (destinationAlpha == 255)
             {
-                row[offset] = (byte)(blue + row[offset] * inverseAlpha / 255);
-                row[offset + 1] = (byte)(green + row[offset + 1] * inverseAlpha / 255);
-                row[offset + 2] = (byte)(red + row[offset + 2] * inverseAlpha / 255);
+                row[offset] = BlendOpaqueDestination(blue, alpha, row[offset], inverseAlpha);
+                row[offset + 1] = BlendOpaqueDestination(green, alpha, row[offset + 1], inverseAlpha);
+                row[offset + 2] = BlendOpaqueDestination(red, alpha, row[offset + 2], inverseAlpha);
                 continue;
             }
 
@@ -581,6 +579,10 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             row[offset + 3] = outputAlpha;
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte BlendOpaqueDestination(byte source, byte sourceAlpha, byte destination, int inverseAlpha)
+        => (byte)((source * sourceAlpha + destination * inverseAlpha + 127) / 255);
 
     // ── 裁剪 ──
 
@@ -795,6 +797,15 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         return new Rect(left, top, right - left, bottom - top);
     }
 
+    private float GetTransformScaleX()
+        => MathF.Sqrt(_currentTransform.M11 * _currentTransform.M11 + _currentTransform.M12 * _currentTransform.M12);
+
+    private float GetTransformScaleY()
+        => MathF.Sqrt(_currentTransform.M21 * _currentTransform.M21 + _currentTransform.M22 * _currentTransform.M22);
+
+    private float GetStrokeTransformScale()
+        => MathF.Max(GetTransformScaleX(), GetTransformScaleY());
+
     private bool IsDpiOnlyTransform()
     {
         const float tolerance = 0.0001f;
@@ -813,11 +824,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         RasterizeRoundedRect(rect, rx, ry, strokeWidth: 0, color);
     }
 
-    private void DrawRoundedRect(Rect rect, float rx, float ry, Pen pen)
+    private void DrawRoundedRect(Rect rect, float rx, float ry, Pen pen, float strokeScale)
     {
         var color = (pen.Brush as SolidColorBrush)?.Color ?? Color.Black;
         if (pen.Width <= 0) return;
-        RasterizeRoundedRect(rect, rx, ry, pen.Width * _dpiScale, color);
+        RasterizeRoundedRect(rect, rx, ry, pen.Width * strokeScale, color);
     }
 
     private void RasterizeRoundedRect(Rect rect, float rx, float ry, float strokeWidth, Color color)
@@ -892,34 +903,47 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                     continue;
                 }
 
-                var covered = 0;
-                for (var sy = 0; sy < CoverageSampleGrid; sy++)
-                {
-                    var py = y + (sy + 0.5f) / CoverageSampleGrid;
-                    if (py < top || py > bottom) continue;
-                    var dy = py < innerTop ? py - innerTop : py > innerBottom ? py - innerBottom : 0;
-                    var normalizedY = dy * dy * invRy2;
-                    if (normalizedY > 1f) continue;
-                    for (var sx = 0; sx < CoverageSampleGrid; sx++)
-                    {
-                        var px = x + (sx + 0.5f) / CoverageSampleGrid;
-                        if (px < left || px > right) continue;
-                        var dx = px < innerLeft ? px - innerLeft : px > innerRight ? px - innerRight : 0;
-                        if (dx * dx * invRx2 + normalizedY <= 1f) covered++;
-                    }
-                }
-                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+                var coverage = GetRoundedRectFeatherCoverage(x + 0.5f, y + 0.5f, rect, rx, ry);
+                BlendPixelCoverage(x, y, color, coverage);
             }
         }
+    }
+
+    private static byte GetRoundedRectFeatherCoverage(float px, float py, Rect rect, float rx, float ry)
+    {
+        var edgeCoverage = MathF.Min(
+            MathF.Min(px - rect.Left + 0.5f, rect.Right - px + 0.5f),
+            MathF.Min(py - rect.Top + 0.5f, rect.Bottom - py + 0.5f));
+        if (edgeCoverage <= 0) return 0;
+
+        var innerLeft = rect.Left + rx;
+        var innerRight = rect.Right - rx;
+        var innerTop = rect.Top + ry;
+        var innerBottom = rect.Bottom - ry;
+        var inCorner = (px < innerLeft || px > innerRight) && (py < innerTop || py > innerBottom);
+        if (!inCorner)
+            return (byte)Math.Clamp((int)(edgeCoverage * 255f), 0, 255);
+
+        var cx = px < innerLeft ? innerLeft : innerRight;
+        var cy = py < innerTop ? innerTop : innerBottom;
+        var dx = px - cx;
+        var dy = py - cy;
+        var distance = MathF.Sqrt(dx * dx + dy * dy);
+        if (distance <= float.Epsilon) return 255;
+
+        var ux = dx / distance;
+        var uy = dy / distance;
+        var radius = 1f / MathF.Sqrt(ux * ux / (rx * rx) + uy * uy / (ry * ry));
+        return (byte)Math.Clamp((int)((radius + 0.5f - distance) * 255f), 0, 255);
     }
 
     private void DrawRoundedRectFast(Rect rect, float rx, float ry, float strokeWidth, Color color)
     {
         var width = Math.Min(strokeWidth, Math.Min(rect.Width, rect.Height) / 2f);
-        BlendRect(new Rect(rect.X + rx, rect.Y, Math.Max(0, rect.Width - rx * 2), width), color);
-        BlendRect(new Rect(rect.X + rx, rect.Bottom - width, Math.Max(0, rect.Width - rx * 2), width), color);
-        BlendRect(new Rect(rect.X, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
-        BlendRect(new Rect(rect.Right - width, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
+        BlendRectCoverage(new Rect(rect.X + rx, rect.Y, Math.Max(0, rect.Width - rx * 2), width), color);
+        BlendRectCoverage(new Rect(rect.X + rx, rect.Bottom - width, Math.Max(0, rect.Width - rx * 2), width), color);
+        BlendRectCoverage(new Rect(rect.X, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
+        BlendRectCoverage(new Rect(rect.Right - width, rect.Y + ry, width, Math.Max(0, rect.Height - ry * 2)), color);
 
         var hasInner = rect.Width > width * 2 && rect.Height > width * 2;
         var inner = hasInner ? rect.Inflate(-width, -width) : Rect.Empty;
@@ -1004,10 +1028,10 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private void DrawRectPixels(Rect rect, float width, Color color)
     {
         var w = (int)Math.Ceiling(width);
-        BlendRect(new Rect(rect.X, rect.Y, rect.Width, w), color);
-        BlendRect(new Rect(rect.X, rect.Bottom - w, rect.Width, w), color);
-        BlendRect(new Rect(rect.X, rect.Y + w, w, rect.Height - w * 2), color);
-        BlendRect(new Rect(rect.Right - w, rect.Y + w, w, rect.Height - w * 2), color);
+        BlendRectCoverage(new Rect(rect.X, rect.Y, rect.Width, w), color);
+        BlendRectCoverage(new Rect(rect.X, rect.Bottom - w, rect.Width, w), color);
+        BlendRectCoverage(new Rect(rect.X, rect.Y + w, w, rect.Height - w * 2), color);
+        BlendRectCoverage(new Rect(rect.Right - w, rect.Y + w, w, rect.Height - w * 2), color);
     }
 
     // ── 椭圆 ──
@@ -1040,7 +1064,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             var x = (float)x0 - width / 2f;
             var top = (float)Math.Min(y0, y1);
             var h = (float)Math.Abs(dy);
-            BlendRect(new Rect(x, top, width, Math.Max(1, h)), color);
+            BlendRectCoverage(new Rect(x, top, width, Math.Max(1, h)), color);
             return;
         }
         if (Math.Abs(dy) < 0.01)
@@ -1048,7 +1072,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             var y = (float)y0 - width / 2f;
             var left = (float)Math.Min(x0, x1);
             var w = (float)Math.Abs(dx);
-            BlendRect(new Rect(left, y, Math.Max(1, w), width), color);
+            BlendRectCoverage(new Rect(left, y, Math.Max(1, w), width), color);
             return;
         }
 
@@ -1160,37 +1184,15 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
             for (var x = rowX0; x <= rowX1; x++)
             {
-                var px0 = x + 0.125f - center.X;
-                var px1 = x + 0.375f - center.X;
-                var px2 = x + 0.625f - center.X;
-                var px3 = x + 0.875f - center.X;
-                var covered = 0;
-                CountEllipseStrokeSample(px0, outerY0, innerY0);
-                CountEllipseStrokeSample(px1, outerY0, innerY0);
-                CountEllipseStrokeSample(px2, outerY0, innerY0);
-                CountEllipseStrokeSample(px3, outerY0, innerY0);
-                CountEllipseStrokeSample(px0, outerY1, innerY1);
-                CountEllipseStrokeSample(px1, outerY1, innerY1);
-                CountEllipseStrokeSample(px2, outerY1, innerY1);
-                CountEllipseStrokeSample(px3, outerY1, innerY1);
-                CountEllipseStrokeSample(px0, outerY2, innerY2);
-                CountEllipseStrokeSample(px1, outerY2, innerY2);
-                CountEllipseStrokeSample(px2, outerY2, innerY2);
-                CountEllipseStrokeSample(px3, outerY2, innerY2);
-                CountEllipseStrokeSample(px0, outerY3, innerY3);
-                CountEllipseStrokeSample(px1, outerY3, innerY3);
-                CountEllipseStrokeSample(px2, outerY3, innerY3);
-                CountEllipseStrokeSample(px3, outerY3, innerY3);
-                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
-
-                void CountEllipseStrokeSample(float px, float outerY, float innerY)
-                {
-                    if (outerY > 1f) return;
-                    var px2 = px * px;
-                    var insideOuter = px2 * invOuterRx2 + outerY <= 1f;
-                    var insideInner = hasInner && px2 * invInnerRx2 + innerY < 1f;
-                    if (insideOuter && !insideInner) covered++;
-                }
+                var coverage = GetEllipseStrokeFeatherCoverage(
+                    x + 0.5f - center.X,
+                    y + 0.5f - center.Y,
+                    outerRx,
+                    outerRy,
+                    innerRx,
+                    innerRy,
+                    hasInner);
+                BlendPixelCoverage(x, y, color, coverage);
             }
         }
     }
@@ -1303,34 +1305,42 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
                 (int)MathF.Floor(center.X + minExtent - (1f - sampleInset)) + 1, fillStart, edgeEnd);
 
             for (var x = edgeStart; x < fillStart; x++)
-                BlendEllipseEdgePixel(center, rx, ry, color, x, y);
+                BlendEllipseFeatherEdgePixel(center, rx, ry, color, x, y);
 
             if (fillStart < fillEnd)
                 BlendRect(new Rect(fillStart, y, fillEnd - fillStart, 1), color);
 
             for (var x = fillEnd; x < edgeEnd; x++)
-                BlendEllipseEdgePixel(center, rx, ry, color, x, y);
+                BlendEllipseFeatherEdgePixel(center, rx, ry, color, x, y);
         }
     }
 
-    private void BlendEllipseEdgePixel(Point center, float rx, float ry, Color color, int x, int y)
+    private void BlendEllipseFeatherEdgePixel(Point center, float rx, float ry, Color color, int x, int y)
     {
         if (x < 0 || x >= _bitmapWidth || y < 0 || y >= _bitmapHeight) return;
-        var invRx2 = 1f / (rx * rx);
-        var invRy2 = 1f / (ry * ry);
-        var covered = 0;
-        for (var sy = 0; sy < CoverageSampleGrid; sy++)
-        {
-            var py = y + (sy + 0.5f) / CoverageSampleGrid - center.Y;
-            var normalizedY = py * py * invRy2;
-            if (normalizedY > 1f) continue;
-            for (var sx = 0; sx < CoverageSampleGrid; sx++)
-            {
-                var px = x + (sx + 0.5f) / CoverageSampleGrid - center.X;
-                if (px * px * invRx2 + normalizedY <= 1f) covered++;
-            }
-        }
-        BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
+        var coverage = GetEllipseFeatherCoverage(x + 0.5f - center.X, y + 0.5f - center.Y, rx, ry);
+        BlendPixelCoverage(x, y, color, coverage);
+    }
+
+    private static byte GetEllipseStrokeFeatherCoverage(
+        float dx, float dy, float outerRx, float outerRy, float innerRx, float innerRy, bool hasInner)
+    {
+        var outer = GetEllipseFeatherCoverage(dx, dy, outerRx, outerRy);
+        if (!hasInner || outer == 0) return outer;
+
+        var inner = 255 - GetEllipseFeatherCoverage(dx, dy, innerRx, innerRy);
+        return (byte)Math.Min(outer, inner);
+    }
+
+    private static byte GetEllipseFeatherCoverage(float dx, float dy, float rx, float ry)
+    {
+        var distance = MathF.Sqrt(dx * dx + dy * dy);
+        if (distance <= float.Epsilon) return 255;
+
+        var ux = dx / distance;
+        var uy = dy / distance;
+        var radius = 1f / MathF.Sqrt(ux * ux / (rx * rx) + uy * uy / (ry * ry));
+        return (byte)Math.Clamp((int)((radius + 0.5f - distance) * 255f), 0, 255);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1347,6 +1357,16 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void BlendPixelCoverage(int x, int y, Color color, byte coverage)
+    {
+        if (coverage == 0) return;
+        if ((uint)x >= (uint)_bitmapWidth || (uint)y >= (uint)_bitmapHeight) return;
+        if (!IsPointVisible(x + 0.5f, y + 0.5f)) return;
+        var alpha = coverage == 255 ? ApplyOpacity(color.A) : GetByteCoverageAlpha(color.A, coverage);
+        BlendPixelCore(x, y, color.R, color.G, color.B, alpha);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte GetCoverageAlpha(byte sourceAlpha, int coveredSamples)
     {
         if (_coverageAlphaSource != sourceAlpha || _coverageAlphaOpacity != _currentOpacity)
@@ -1355,7 +1375,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             _coverageAlphaOpacity = _currentOpacity;
             for (var covered = 1; covered <= CoverageSampleCount; covered++)
             {
-                var coverageAlpha = (byte)((sourceAlpha * covered + CoverageSampleCount / 2) / CoverageSampleCount);
+                var coverageAlpha = (byte)(sourceAlpha * covered / CoverageSampleCount);
                 _coverageAlphaLookup[covered] = ApplyOpacity(coverageAlpha);
             }
         }
@@ -1396,32 +1416,48 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
         if (points.Count < 3) return;
         var minY = (int)Math.Floor(points.Min(p => p.y));
         var maxY = (int)Math.Ceiling(points.Max(p => p.y));
+        var minX = (int)Math.Floor(points.Min(p => p.x));
+        var maxX = (int)Math.Ceiling(points.Max(p => p.x));
+        minX = Math.Max(0, minX - 1);
         minY = Math.Max(0, minY);
+        maxX = Math.Min(_bitmapWidth - 1, maxX + 1);
         maxY = Math.Min(_bitmapHeight - 1, maxY);
-
-        for (int y = minY; y <= maxY; y++)
+        if (_hasClip)
         {
-            var yc = y + 0.5;
-            _polygonIntersections.Clear();
-            for (int i = 0; i < points.Count; i++)
+            minX = Math.Max(minX, (int)MathF.Floor(_clipLeft));
+            minY = Math.Max(minY, (int)MathF.Floor(_clipTop));
+            maxX = Math.Min(maxX, (int)MathF.Ceiling(_clipRight) - 1);
+            maxY = Math.Min(maxY, (int)MathF.Ceiling(_clipBottom) - 1);
+        }
+        if (minX > maxX || minY > maxY) return;
+
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
             {
-                var (x0, y0) = points[i];
-                var (x1, y1) = points[(i + 1) % points.Count];
-                if ((y0 <= yc && y1 > yc) || (y1 <= yc && y0 > yc))
-                {
-                    var t = (yc - y0) / (y1 - y0);
-                    _polygonIntersections.Add(x0 + t * (x1 - x0));
-                }
-            }
-            _polygonIntersections.Sort();
-            for (int i = 0; i < _polygonIntersections.Count - 1; i += 2)
-            {
-                var xa = (int)Math.Round(_polygonIntersections[i]);
-                var xb = (int)Math.Round(_polygonIntersections[i + 1]);
-                for (int x = xa; x <= xb; x++)
-                    BlendPixel(x, y, color);
+                var covered = 0;
+                for (var sy = 0; sy < CoverageSampleGrid; sy++)
+                for (var sx = 0; sx < CoverageSampleGrid; sx++)
+                    if (IsPointInPolygon(points, x + (sx + 0.5) / CoverageSampleGrid, y + (sy + 0.5) / CoverageSampleGrid))
+                        covered++;
+
+                BlendPixelCoverage(x, y, color, covered, CoverageSampleCount);
             }
         }
+    }
+
+    private static bool IsPointInPolygon(List<(double x, double y)> points, double x, double y)
+    {
+        var inside = false;
+        for (int i = 0, j = points.Count - 1; i < points.Count; j = i++)
+        {
+            var (xi, yi) = points[i];
+            var (xj, yj) = points[j];
+            if ((yi > y) == (yj > y)) continue;
+            var intersectionX = (xj - xi) * (y - yi) / (yj - yi) + xi;
+            if (x < intersectionX) inside = !inside;
+        }
+        return inside;
     }
 
     // ── 路径展开 ──

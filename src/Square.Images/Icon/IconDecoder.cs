@@ -1,12 +1,16 @@
 using System.Buffers.Binary;
 using Square.Graphics;
+#if SQUARE_IMAGES_PNG
 using Square.Images.Png;
+#endif
 
 namespace Square.Images.Icon;
 
 internal static class IconDecoder
 {
+#if SQUARE_IMAGES_PNG
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+#endif
 
     public static ImageDocument Decode(ReadOnlySpan<byte> data, ImageDecoderOptions options)
     {
@@ -78,8 +82,12 @@ internal static class IconDecoder
     {
         var imageData = data.Slice(entry.Offset, entry.Length);
         Bitmap bitmap;
+#if SQUARE_IMAGES_PNG
         if (imageData.Length >= 8 && imageData.StartsWith(PngSignature)) bitmap = PngDecoder.Decode(imageData, options);
         else bitmap = DecodeBmpEmbed(imageData, entry.Width, entry.Height, options);
+#else
+        bitmap = DecodeBmpEmbed(imageData, entry.Width, entry.Height, options);
+#endif
         if (bitmap.Width == entry.Width && bitmap.Height == entry.Height) return bitmap;
         bitmap.Dispose();
         throw new InvalidDataException("ICO image dimensions do not match the directory entry.");
@@ -87,12 +95,14 @@ internal static class IconDecoder
 
     private static int InferBitDepth(ReadOnlySpan<byte> data)
     {
+#if SQUARE_IMAGES_PNG
         if (data.Length >= 26 && data.StartsWith(PngSignature))
         {
             var depth = data[24];
             var channels = data[25] switch { 0 => 1, 2 => 3, 3 => 1, 4 => 2, 6 => 4, _ => 0 };
             return depth * channels;
         }
+#endif
         return data.Length >= 16 ? BinaryPrimitives.ReadUInt16LittleEndian(data[14..16]) : 0;
     }
 

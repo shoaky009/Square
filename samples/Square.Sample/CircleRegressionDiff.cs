@@ -9,6 +9,17 @@ internal static class CircleRegressionDiff
     private static readonly Color Background = Color.FromRgb(247, 249, 252);
 
     public static CircleRegressionDiffResult Save(Bitmap software, Bitmap vulkan, string outputDirectory)
+        => Save(software, vulkan, outputDirectory, CreateCircleRegions(software.Width, software.Height), Background);
+
+    public static CircleRegressionDiffResult SaveMediaSvg(Bitmap software, Bitmap vulkan, string outputDirectory)
+        => Save(software, vulkan, outputDirectory, CreateMediaSvgRegions(), Color.White);
+
+    private static CircleRegressionDiffResult Save(
+        Bitmap software,
+        Bitmap vulkan,
+        string outputDirectory,
+        DiffRegion[] regions,
+        Color background)
     {
         ArgumentNullException.ThrowIfNull(software);
         ArgumentNullException.ThrowIfNull(vulkan);
@@ -25,7 +36,7 @@ internal static class CircleRegressionDiff
 
         BitmapPngEncoder.Save(software, softwarePath);
         BitmapPngEncoder.Save(vulkan, vulkanPath);
-        using var diff = CreateDiffBitmap(software, vulkan, out var result);
+        using var diff = CreateDiffBitmap(software, vulkan, regions, background, out var result);
         BitmapPngEncoder.Save(diff, diffPath);
         File.WriteAllText(reportPath, FormatReport(result), Encoding.UTF8);
         return result with
@@ -37,16 +48,14 @@ internal static class CircleRegressionDiff
         };
     }
 
-    private static Bitmap CreateDiffBitmap(Bitmap software, Bitmap vulkan, out CircleRegressionDiffResult result)
+    private static Bitmap CreateDiffBitmap(
+        Bitmap software,
+        Bitmap vulkan,
+        DiffRegion[] regions,
+        Color background,
+        out CircleRegressionDiffResult result)
     {
         var diff = new Bitmap(software.Width, software.Height);
-        var regions = new[]
-        {
-            new DiffRegion("filled", 40, 40, 470, 150),
-            new DiffRegion("stroke", 40, 210, 560, 150),
-            new DiffRegion("fractional-transform", 40, 380, 380, 130),
-            new DiffRegion("whole", 0, 0, software.Width, software.Height)
-        };
         var stats = regions.ToDictionary(region => region.Name, _ => new DiffStatsBuilder());
 
         for (var y = 0; y < software.Height; y++)
@@ -63,8 +72,8 @@ internal static class CircleRegressionDiff
                     continue;
                 }
 
-                var softwareColor = DistanceFromBackground(soft);
-                var vulkanColor = DistanceFromBackground(vk);
+                var softwareColor = DistanceFromBackground(soft, background);
+                var vulkanColor = DistanceFromBackground(vk, background);
                 var intensity = (byte)Math.Min(255, 32 + delta * 3);
                 if (softwareColor > vulkanColor)
                     SetPixel(output, 0, 0, intensity, 255);
@@ -90,6 +99,38 @@ internal static class CircleRegressionDiff
         return diff;
     }
 
+    private static DiffRegion[] CreateCircleRegions(int width, int height)
+    {
+        var scaleX = width / 900f;
+        var scaleY = height / 980f;
+        return
+        [
+            ScaledRegion("filled", 40, 40, 470, 150, scaleX, scaleY),
+            ScaledRegion("stroke", 40, 210, 560, 150, scaleX, scaleY),
+            ScaledRegion("fractional-transform", 40, 380, 380, 130, scaleX, scaleY),
+            new DiffRegion("whole", 0, 0, width, height)
+        ];
+    }
+
+    private static DiffRegion[] CreateMediaSvgRegions()
+        =>
+        [
+            new("svg", 48, 28, 1080, 557),
+            new("outer-rounded-rect", 48, 28, 1080, 557),
+            new("left-icon", 132, 104, 336, 336),
+            new("right-circle-check", 609, 119, 252, 252),
+            new("right-polygon", 708, 119, 360, 252),
+            new("whole", 0, 0, int.MaxValue / 2, int.MaxValue / 2)
+        ];
+
+    private static DiffRegion ScaledRegion(string name, int x, int y, int width, int height, float scaleX, float scaleY)
+        => new(
+            name,
+            (int)MathF.Floor(x * scaleX),
+            (int)MathF.Floor(y * scaleY),
+            (int)MathF.Ceiling(width * scaleX),
+            (int)MathF.Ceiling(height * scaleY));
+
     private static string FormatReport(CircleRegressionDiffResult result)
     {
         var builder = new StringBuilder();
@@ -110,8 +151,8 @@ internal static class CircleRegressionDiff
     private static int PixelDelta(Span<byte> a, Span<byte> b)
         => Math.Abs(a[0] - b[0]) + Math.Abs(a[1] - b[1]) + Math.Abs(a[2] - b[2]) + Math.Abs(a[3] - b[3]);
 
-    private static int DistanceFromBackground(Span<byte> pixel)
-        => Math.Abs(pixel[2] - Background.R) + Math.Abs(pixel[1] - Background.G) + Math.Abs(pixel[0] - Background.B);
+    private static int DistanceFromBackground(Span<byte> pixel, Color background)
+        => Math.Abs(pixel[2] - background.R) + Math.Abs(pixel[1] - background.G) + Math.Abs(pixel[0] - background.B);
 
     private static void SetPixel(Span<byte> pixel, byte b, byte g, byte r, byte a)
     {

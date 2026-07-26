@@ -1634,6 +1634,30 @@ image.ImageContent = document.PrimaryBitmap;
 | WebP | `Still` / `Animation` | simple/VP8X 静态 VP8L、VP8 lossy 关键帧、`ALPH+VP8`，以及 `ANIM`/`ANMF` 内嵌 VP8L、VP8 或 `ALPH+VP8` 动画；EXIF Orientation、ICCP/XMP、帧矩形、时长、循环、blend 和 dispose-to-background |
 | TIFF | `Pages` | Classic TIFF 42，大小端，多 IFD 页面，未压缩/LZW/Deflate/Adobe Deflate/PackBits Strip，8 位 Predictor 2，1/8 位灰度、Palette、8 位 RGB/RGBA、ExtraSamples Alpha 与页面 Orientation |
 
+NativeAOT 应用可以在构建时移除不需要的解码器。所有开关默认继承 `SquareImagesEnableAllFormats=true`，因此现有项目行为不变：
+
+| MSBuild 属性 | 控制格式 |
+|---|---|
+| `SquareImagesEnableAllFormats` | 所有格式的默认值 |
+| `SquareImagesEnablePng` | PNG 与 APNG |
+| `SquareImagesEnableJpeg` | JPEG |
+| `SquareImagesEnableBmp` | BMP |
+| `SquareImagesEnableGif` | GIF |
+| `SquareImagesEnableIcon` | ICO 与 CUR |
+| `SquareImagesEnableTiff` | TIFF |
+| `SquareImagesEnableWebp` | WebP |
+
+例如，只保留 PNG/APNG：
+
+```bash
+dotnet publish -c Release -r win-x64 \
+  -p:PublishAot=true \
+  -p:SquareImagesEnableAllFormats=false \
+  -p:SquareImagesEnablePng=true
+```
+
+格式开关在编译 `Square.Images` 时生效。关闭的格式由 `ImageDecoder` 报告为不支持；关闭 PNG 时，ICO/CUR 仍可解码内嵌 BMP 的变体，但不能解码内嵌 PNG 的变体。
+
 GIF、APNG 和动画 WebP 的每个 `ImageItem` 都是完整画布的合成快照。`Duration` 是该帧原始时长；`ImageAnimationInfo.PlayCount` 表示总播放次数，`LoopsForever` 表示无限循环。
 
 ```csharp

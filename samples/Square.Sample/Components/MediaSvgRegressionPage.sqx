@@ -1,0 +1,23 @@
+<template>
+  <View class="media-svg-regression-page">
+    <svg class="svg-preview" viewBox="0 0 360 160" width="360" height="160">
+      <rect x="1" y="1" width="358" height="158" rx="18" fill="#f4f7fc" stroke="#cbd6e8" stroke-width="2" />
+      <g transform="translate(28 24)">
+        <rect x="0" y="0" width="112" height="112" rx="22" fill="#152241" />
+        <path d="M 28 57 L 45 40 L 51 46 L 40 57 L 51 68 L 45 74 Z" fill="#ffffff" />
+        <path d="M 84 57 L 67 40 L 61 46 L 72 57 L 61 68 L 67 74 Z" fill="#ffffff" />
+        <path d="M 59 34 L 68 34 L 54 80 L 45 80 Z" fill="#2b78ee" />
+      </g>
+      <g transform="translate(170 30)" fill="#152241">
+        <circle cx="42" cy="42" r="38" fill="#ffffff" stroke="#2b78ee" stroke-width="6" />
+        <path d="M 23 43 L 36 56 L 63 28" fill="none" stroke="#152241" stroke-width="7" />
+        <polygon points="92,12 118,26 118,58 92,72 66,58 66,26" fill="#2b78ee" opacity="0.9" />
+        <circle cx="92" cy="42" r="12" fill="#ffffff" />
+      </g>
+    </svg>
+  </View>
+</template>
+<style>
+  .media-svg-regression-page { display: flex; flex-direction: column; padding: 32px; background-color: #ffffff; }
+  .svg-preview { width: 720px; height: 320px; }
+</style>

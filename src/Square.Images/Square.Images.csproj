@@ -5,6 +5,21 @@
     <IsAotCompatible>true</IsAotCompatible>
     <Description>Pure C# image and animation decoding for Square bitmaps</Description>
     <PackageTags>$(PackageTags);images;animation;png;apng;jpeg;bmp;gif;ico;tiff;webp;codec;decoder</PackageTags>
+    <SquareImagesEnableAllFormats Condition="'$(SquareImagesEnableAllFormats)' == ''">true</SquareImagesEnableAllFormats>
+    <SquareImagesEnablePng Condition="'$(SquareImagesEnablePng)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnablePng>
+    <SquareImagesEnableJpeg Condition="'$(SquareImagesEnableJpeg)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableJpeg>
+    <SquareImagesEnableBmp Condition="'$(SquareImagesEnableBmp)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableBmp>
+    <SquareImagesEnableGif Condition="'$(SquareImagesEnableGif)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableGif>
+    <SquareImagesEnableIcon Condition="'$(SquareImagesEnableIcon)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableIcon>
+    <SquareImagesEnableTiff Condition="'$(SquareImagesEnableTiff)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableTiff>
+    <SquareImagesEnableWebp Condition="'$(SquareImagesEnableWebp)' == ''">$(SquareImagesEnableAllFormats)</SquareImagesEnableWebp>
+    <DefineConstants Condition="'$(SquareImagesEnablePng)' == 'true'">$(DefineConstants);SQUARE_IMAGES_PNG</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableJpeg)' == 'true'">$(DefineConstants);SQUARE_IMAGES_JPEG</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableBmp)' == 'true'">$(DefineConstants);SQUARE_IMAGES_BMP</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableGif)' == 'true'">$(DefineConstants);SQUARE_IMAGES_GIF</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableIcon)' == 'true'">$(DefineConstants);SQUARE_IMAGES_ICON</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableTiff)' == 'true'">$(DefineConstants);SQUARE_IMAGES_TIFF</DefineConstants>
+    <DefineConstants Condition="'$(SquareImagesEnableWebp)' == 'true'">$(DefineConstants);SQUARE_IMAGES_WEBP</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Square\Square.csproj" />

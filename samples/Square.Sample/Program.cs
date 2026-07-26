@@ -27,6 +27,13 @@ public static class Program
             return;
         }
 
+        var mediaDiffDirectory = GetOption(args, "--media-regression-diff");
+        if (!string.IsNullOrWhiteSpace(mediaDiffDirectory))
+        {
+            RunMediaRegressionDiff(mediaDiffDirectory);
+            return;
+        }
+
         var window = new AppWindow("Square Framework", 900, 980);
         window.Load(CreatePage(args));
         window.LoadCustomTitleBar(new MyTitleBar());
@@ -96,6 +103,34 @@ public static class Program
         }
     }
 
+    private static void RunMediaRegressionDiff(string outputDirectory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var softwarePng = Path.Combine(outputDirectory, "software.png");
+        var vulkanPng = Path.Combine(outputDirectory, "vulkan.png");
+        var softwareBgra = Path.Combine(outputDirectory, "software.bgra");
+        var vulkanBgra = Path.Combine(outputDirectory, "vulkan.bgra");
+
+        RunMediaRegressionCapture("Software", softwarePng, softwareBgra);
+        RunMediaRegressionCapture("Vulkan", vulkanPng, vulkanBgra);
+
+        using var software = LoadBitmapDump(softwareBgra);
+        using var vulkan = LoadBitmapDump(vulkanBgra);
+        var result = CircleRegressionDiff.SaveMediaSvg(software, vulkan, outputDirectory);
+
+        System.Console.WriteLine($"Media regression diff written to {outputDirectory}");
+        System.Console.WriteLine($"Software: {result.SoftwarePath}");
+        System.Console.WriteLine($"Vulkan:   {result.VulkanPath}");
+        System.Console.WriteLine($"Diff:     {result.DiffPath}");
+        System.Console.WriteLine($"Report:   {result.ReportPath}");
+        foreach (var (name, stats) in result.Regions)
+        {
+            System.Console.WriteLine(
+                $"{name}: differingPixels={stats.DifferingPixels}, totalDelta={stats.TotalDelta}, maxDelta={stats.MaxDelta}, " +
+                $"softwareHeavier={stats.SoftwareHeavier}, vulkanHeavier={stats.VulkanHeavier}, shapeOnly={stats.ShapeOnly}");
+        }
+    }
+
     private static void RunCircleRegressionCapture(string backend, string pngPath, string bgraPath)
     {
         var processPath = Environment.ProcessPath ?? "dotnet";
@@ -128,6 +163,37 @@ public static class Program
             throw new InvalidOperationException($"{backend} circle regression capture exited with code {process.ExitCode}.");
     }
 
+    private static void RunMediaRegressionCapture(string backend, string pngPath, string bgraPath)
+    {
+        var processPath = Environment.ProcessPath ?? "dotnet";
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Square.Sample.dll");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = processPath,
+            UseShellExecute = false
+        };
+        if (Path.GetFileNameWithoutExtension(startInfo.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            startInfo.ArgumentList.Add(assemblyPath);
+        startInfo.ArgumentList.Add("--backend");
+        startInfo.ArgumentList.Add(backend);
+        startInfo.ArgumentList.Add("--media-regression");
+        startInfo.ArgumentList.Add("--screenshot");
+        startInfo.ArgumentList.Add(pngPath);
+        startInfo.ArgumentList.Add("--circle-regression-bgra");
+        startInfo.ArgumentList.Add(bgraPath);
+        if (string.Equals(backend, "Vulkan", StringComparison.OrdinalIgnoreCase))
+            startInfo.Environment["SQUARE_VULKAN_READBACK"] = "1";
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {backend} capture process.");
+        if (!process.WaitForExit(30000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException($"{backend} media regression capture timed out.");
+        }
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"{backend} media regression capture exited with code {process.ExitCode}.");
+    }
+
     private static void SaveBitmapDump(Bitmap bitmap, string path)
     {
         using var stream = File.Create(path);
@@ -158,6 +224,7 @@ public static class Program
     private static UIElement CreatePage(string[] args)
     {
         if (HasOption(args, "--circle-regression")) return new CircleRegressionPage();
+        if (HasOption(args, "--media-regression")) return new MediaSvgRegressionPage();
         if (HasOption(args, "--stroke-regression")) return new VulkanStrokeRegressionPage();
         return new Main();
     }
