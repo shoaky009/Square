@@ -12,16 +12,20 @@ public sealed class ChildNodeCollection : IList<Node>
 
     internal ChildNodeCollection(Element owner) { _owner = owner; }
 
+    /// <summary>获取或设置指定索引处的子节点（设置不支持，抛出异常）。</summary>
     public Node this[int index]
     {
         get => _list[index];
         set => throw new NotSupportedException("Use Insert/RemoveAt to manage child nodes");
     }
 
+    /// <summary>子节点数量。</summary>
     public int Count => _list.Count;
 
+    /// <summary>是否只读。</summary>
     public bool IsReadOnly => false;
 
+    /// <summary>追加子节点。</summary>
     public void Add(Node item)
     {
         ValidateNewChild(item);
@@ -29,11 +33,13 @@ public sealed class ChildNodeCollection : IList<Node>
         Attach(item);
     }
 
+    /// <summary>批量追加子节点。</summary>
     public void AddRange(IEnumerable<Node> items)
     {
         foreach (var item in items) Add(item);
     }
 
+    /// <summary>在指定索引处插入子节点。</summary>
     public void Insert(int index, Node item)
     {
         ValidateNewChild(item);
@@ -41,6 +47,7 @@ public sealed class ChildNodeCollection : IList<Node>
         Attach(item);
     }
 
+    /// <summary>在参考子节点之前插入子节点。</summary>
     public void InsertBefore(Node newChild, Node refChild)
     {
         var index = _list.IndexOf(refChild);
@@ -57,6 +64,7 @@ public sealed class ChildNodeCollection : IList<Node>
         _owner.InvalidateLayout();
     }
 
+    /// <summary>移除指定子节点。</summary>
     public bool Remove(Node item)
     {
         var index = _list.IndexOf(item);
@@ -65,6 +73,7 @@ public sealed class ChildNodeCollection : IList<Node>
         return true;
     }
 
+    /// <summary>移除指定索引处的子节点。</summary>
     public void RemoveAt(int index)
     {
         var item = _list[index];
@@ -75,6 +84,7 @@ public sealed class ChildNodeCollection : IList<Node>
         _owner.InvalidateLayout();
     }
 
+    /// <summary>清空所有子节点。</summary>
     public void Clear()
     {
         foreach (var item in _list)
@@ -87,14 +97,19 @@ public sealed class ChildNodeCollection : IList<Node>
         _owner.InvalidateLayout();
     }
 
+    /// <summary>返回指定子节点的索引。</summary>
     public int IndexOf(Node item) => _list.IndexOf(item);
 
+    /// <summary>是否包含指定子节点。</summary>
     public bool Contains(Node item) => _list.Contains(item);
 
+    /// <summary>复制到数组。</summary>
     public void CopyTo(Node[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
 
+    /// <summary>返回子节点枚举器。</summary>
     public IEnumerator<Node> GetEnumerator() => _list.GetEnumerator();
 
+    /// <inheritdoc />
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => _list.GetEnumerator();
 
     private void ValidateNewChild(Node item)

@@ -3,14 +3,19 @@ using Square.CSS.Tokenizer;
 
 namespace Square.CSS.Engine;
 
+/// <summary>将 CSS 令牌流解析为样式表抽象语法树。</summary>
 public sealed class CssParser
 {
     private readonly List<CssToken> _tokens;
     private int _i;
     private Combinator _pendingCombinator = Combinator.Descendant;
 
+    /// <summary>初始化 CssParser 的新实例。</summary>
+    /// <param name="tokens">待解析的令牌列表。</param>
     public CssParser(List<CssToken> tokens) { _tokens = tokens; }
 
+    /// <summary>解析令牌流并生成 CSS 样式表。</summary>
+    /// <returns>解析得到的样式表。</returns>
     public CssStyleSheet Parse()
     {
         var rules = new List<CssRule>();

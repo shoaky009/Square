@@ -4,6 +4,7 @@ using System.Xml;
 
 namespace Square.Graphics.Svg;
 
+/// <summary>SVG 矢量图像：解析 SVG 文本并以矢量方式绘制到渲染上下文。</summary>
 public sealed class SvgImage : VectorImage
 {
     private readonly Rect _viewBox;
@@ -17,6 +18,7 @@ public sealed class SvgImage : VectorImage
         _root = root;
     }
 
+    /// <summary>从文件路径加载 SVG 图像。</summary>
     public static SvgImage Load(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -24,6 +26,7 @@ public sealed class SvgImage : VectorImage
         return Load(stream);
     }
 
+    /// <summary>从流加载 SVG 图像。</summary>
     public static SvgImage Load(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -31,6 +34,7 @@ public sealed class SvgImage : VectorImage
         return Parse(reader.ReadToEnd());
     }
 
+    /// <summary>解析 SVG 文本为图像实例。</summary>
     public static SvgImage Parse(string svg)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(svg);
@@ -54,6 +58,7 @@ public sealed class SvgImage : VectorImage
         return new SvgImage(width, height, viewport, ParseNode(element, SvgStyle.Default));
     }
 
+    /// <summary>将 SVG 按保持比例方式绘制到目标矩形内。</summary>
     public override void Draw(IRenderContext context, Rect destination)
     {
         ArgumentNullException.ThrowIfNull(context);

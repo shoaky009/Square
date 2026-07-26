@@ -5,10 +5,14 @@ using Square.UI;
 
 namespace Square.Controls;
 
+/// <summary>列表选择模式。</summary>
 public enum SelectionMode
 {
+    /// <summary>不可选。</summary>
     None,
+    /// <summary>单选。</summary>
     Single,
+    /// <summary>多选。</summary>
     Multiple
 }
 
@@ -21,6 +25,7 @@ public class List : ScrollViewer
     private int _selectionAnchor = -1;
     private bool _rebuildingItems;
 
+    /// <summary>初始化 <see cref="List"/> 的新实例。</summary>
     public List()
     {
         Style.SetCascaded("display", "flex", int.MinValue);
@@ -33,12 +38,14 @@ public class List : ScrollViewer
         });
     }
 
+    /// <summary>静态条目数组。</summary>
     public string[] Items
     {
         get => GetProperty<string[]>(nameof(Items)) ?? [];
         set => SetProperty(nameof(Items), value ?? []);
     }
 
+    /// <summary>选择模式。</summary>
     public SelectionMode SelectionMode
     {
         get => Properties.HasValue(nameof(SelectionMode))
@@ -47,22 +54,27 @@ public class List : ScrollViewer
         set => SetProperty(nameof(SelectionMode), value);
     }
 
+    /// <summary>当前选中索引（多选时为首个）。</summary>
     public int SelectedIndex
     {
         get => SelectedIndices.Count == 0 ? -1 : SelectedIndices[0];
         set => SelectIndex(value);
     }
 
+    /// <summary>当前选中项。</summary>
     public ListItem? SelectedItem => SelectedIndex >= 0 ? GetItems()[SelectedIndex] : null;
 
+    /// <summary>所有选中索引。</summary>
     public IReadOnlyList<int> SelectedIndices => GetItems()
         .Select((item, index) => (item, index))
         .Where(entry => entry.item.IsSelected)
         .Select(entry => entry.index)
         .ToArray();
 
+    /// <summary>所有选中项。</summary>
     public IReadOnlyList<ListItem> SelectedItems => GetItems().Where(item => item.IsSelected).ToArray();
 
+    /// <summary>绑定可观察字符串集合作为数据源。</summary>
     public void SetItemsSource(ObservableCollection<string>? source)
     {
         if (ReferenceEquals(_itemsSource, source)) return;
@@ -72,6 +84,7 @@ public class List : ScrollViewer
         RebuildItems(source is null ? Items : source);
     }
 
+    /// <summary>选中指定索引的项，返回是否实际改变选择。</summary>
     public bool SelectIndex(int index, bool control = false, bool shift = false)
     {
         var items = GetItems();
@@ -108,6 +121,7 @@ public class List : ScrollViewer
         return NotifySelectionChanged(before);
     }
 
+    /// <summary>清除所有选择。</summary>
     public void ClearSelection()
     {
         var before = SelectedIndices;
@@ -117,6 +131,7 @@ public class List : ScrollViewer
         NotifySelectionChanged(before);
     }
 
+    /// <summary>处理键盘导航，返回是否已处理。</summary>
     public bool HandleKey(int keyCode, bool shift = false, bool control = false)
     {
         var items = GetItems();
@@ -143,6 +158,7 @@ public class List : ScrollViewer
         return true;
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -153,18 +169,21 @@ public class List : ScrollViewer
         else if (SelectedIndices.Count > 1) SelectIndex(SelectedIndex);
     }
 
+    /// <inheritdoc/>
     protected override void OnAttachedCore()
     {
         base.OnAttachedCore();
         SubscribeItemsSource();
     }
 
+    /// <inheritdoc/>
     protected override void OnDetachedCore()
     {
         UnsubscribeItemsSource();
         base.OnDetachedCore();
     }
 
+    /// <inheritdoc/>
     internal override void OnChildRemoved(Element child)
     {
         base.OnChildRemoved(child);

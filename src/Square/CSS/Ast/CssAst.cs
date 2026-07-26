@@ -1,28 +1,85 @@
 namespace Square.CSS.Ast;
 
-public enum SimpleSelectorKind { Type, Class, Id, Universal, PseudoClass, Attribute }
+/// <summary>简单选择器种类。</summary>
+public enum SimpleSelectorKind
+{
+    /// <summary>类型选择器。</summary>
+    Type,
+    /// <summary>类选择器。</summary>
+    Class,
+    /// <summary>ID 选择器。</summary>
+    Id,
+    /// <summary>通配选择器。</summary>
+    Universal,
+    /// <summary>伪类选择器。</summary>
+    PseudoClass,
+    /// <summary>属性选择器。</summary>
+    Attribute
+}
 
+/// <summary>表示一个简单选择器。</summary>
+/// <param name="Kind">选择器种类。</param>
+/// <param name="Name">选择器名称。</param>
 public sealed record SimpleSelector(SimpleSelectorKind Kind, string Name);
 
+/// <summary>表示复合选择器，由多个简单选择器组合而成。</summary>
+/// <param name="Parts">简单选择器列表。</param>
 public sealed record CompoundSelector(List<SimpleSelector> Parts);
 
+/// <summary>表示复杂选择器，由多个复合步骤组成。</summary>
+/// <param name="Steps">复合步骤列表。</param>
 public sealed record ComplexSelector(List<CompoundStep> Steps);
 
+/// <summary>表示复杂选择器中的一个复合步骤，包含复合选择器与组合器。</summary>
+/// <param name="Selector">复合选择器。</param>
+/// <param name="Combinator">与下一步骤的组合器。</param>
 public sealed record CompoundStep(CompoundSelector Selector, Combinator Combinator);
 
-public enum Combinator { Descendant, Child, Adjacent, GeneralSibling }
+/// <summary>选择器组合器种类。</summary>
+public enum Combinator
+{
+    /// <summary>后代组合器。</summary>
+    Descendant,
+    /// <summary>子代组合器。</summary>
+    Child,
+    /// <summary>相邻兄弟组合器。</summary>
+    Adjacent,
+    /// <summary>通用兄弟组合器。</summary>
+    GeneralSibling
+}
 
+/// <summary>表示一条 CSS 声明。</summary>
+/// <param name="Property">属性名。</param>
+/// <param name="Value">属性值。</param>
+/// <param name="Important">是否标记为 !important。</param>
 public sealed record Declaration(string Property, string Value, bool Important = false);
 
+/// <summary>表示一条 CSS 规则，包含选择器与声明列表。</summary>
+/// <param name="Selector">复杂选择器。</param>
+/// <param name="Declarations">声明列表。</param>
 public sealed record CssRule(ComplexSelector Selector, List<Declaration> Declarations);
 
+/// <summary>表示一个 CSS 样式表。</summary>
+/// <param name="Rules">规则列表。</param>
+/// <param name="AtRules">At 规则列表。</param>
 public sealed record CssStyleSheet(List<CssRule> Rules, List<CssAtRule> AtRules)
 {
+    /// <summary>关键帧规则列表。</summary>
     public List<KeyFramesRule> KeyFrames { get; set; } = new();
 };
 
+/// <summary>表示一条 At 规则。</summary>
+/// <param name="Name">规则名称。</param>
+/// <param name="Params">规则参数。</param>
+/// <param name="Declarations">声明列表。</param>
 public sealed record CssAtRule(string Name, string Params, List<Declaration> Declarations);
 
+/// <summary>表示关键帧中的一个停顿点。</summary>
+/// <param name="Selector">停顿选择器（from/to/百分比）。</param>
+/// <param name="Declarations">声明列表。</param>
 public sealed record KeyFrameStop(string Selector, List<Declaration> Declarations);
 
+/// <summary>表示一组关键帧动画规则。</summary>
+/// <param name="Name">动画名称。</param>
+/// <param name="Stops">关键帧停顿列表。</param>
 public sealed record KeyFramesRule(string Name, List<KeyFrameStop> Stops);

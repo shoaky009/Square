@@ -3,10 +3,12 @@ using System.IO.Compression;
 
 namespace Square.Graphics.Codecs;
 
+/// <summary>将 <see cref="Bitmap"/> 编码为 PNG 文件的静态工具。</summary>
 public static class BitmapPngEncoder
 {
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 
+    /// <summary>将位图保存为 PNG 文件。</summary>
     public static void Save(Bitmap bitmap, string path)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
@@ -16,6 +18,7 @@ public static class BitmapPngEncoder
         Save(bitmap, stream);
     }
 
+    /// <summary>将位图以 PNG 格式写入流。</summary>
     public static void Save(Bitmap bitmap, Stream stream)
     {
         ArgumentNullException.ThrowIfNull(bitmap);

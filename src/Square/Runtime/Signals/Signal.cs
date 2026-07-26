@@ -1,5 +1,6 @@
 namespace Square.Runtime.Signals;
 
+/// <summary>可订阅的信号值，发布时通知订阅者并跟踪版本。</summary>
 public sealed class Signal<T>
 {
     private readonly object _gate = new();
@@ -8,14 +9,17 @@ public sealed class Signal<T>
     private T _value;
     private long _version;
 
+    /// <summary>用初始值与可选相等比较器创建信号。</summary>
     public Signal(T initialValue, IEqualityComparer<T>? comparer = null)
     {
         _value = initialValue;
         _comparer = comparer ?? EqualityComparer<T>.Default;
     }
 
+    /// <summary>用默认值创建信号。</summary>
     public Signal() : this(default!) { }
 
+    /// <summary>当前值；设置时发布新值。</summary>
     public T Value
     {
         get
@@ -25,6 +29,7 @@ public sealed class Signal<T>
         set => Publish(value);
     }
 
+    /// <summary>发布新值；若与当前值相等且未强制则不发布。</summary>
     public bool Publish(T value, bool force = false)
     {
         Subscription[] subscribers;
@@ -42,6 +47,7 @@ public sealed class Signal<T>
         return true;
     }
 
+    /// <summary>基于当前值计算新值并发布。</summary>
     public T Update(Func<T, T> update, bool force = false)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -63,6 +69,7 @@ public sealed class Signal<T>
         return value;
     }
 
+    /// <summary>订阅值变更；可选调度器与是否立即派发当前值。</summary>
     public IDisposable Subscribe(Action<T> handler, Dispatcher? dispatcher = null, bool emitCurrent = false)
     {
         ArgumentNullException.ThrowIfNull(handler);

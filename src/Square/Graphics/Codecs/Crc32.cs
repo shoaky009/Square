@@ -4,6 +4,7 @@ internal static class Crc32
 {
     private static readonly uint[] Table = CreateTable();
 
+    /// <summary>计算两段字节序列拼接后的 CRC-32 校验值。</summary>
     public static uint Compute(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
     {
         var crc = 0xFFFFFFFFu;

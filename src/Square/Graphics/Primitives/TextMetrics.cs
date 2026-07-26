@@ -3,26 +3,37 @@ using System.Text;
 
 namespace Square.Graphics;
 
+/// <summary>字体垂直度量（相对基线，向上为负）。</summary>
 public readonly record struct FontMetrics(float Top, float Ascent, float Descent, float Bottom, float Leading)
 {
+    /// <summary>字体包围盒高度（<see cref="Bottom"/> - <see cref="Top"/>）。</summary>
     public float Height => Math.Max(0, Bottom - Top);
 }
 
+/// <summary>字形度量（前进宽度与墨迹包围盒）。</summary>
 public readonly record struct GlyphMetrics(float AdvanceX, Rect InkBounds);
 
+/// <summary>文本度量提供器接口，由后端实现以提供权威字体/字形 bounds。</summary>
 public interface ITextMetricsProvider
 {
+    /// <summary>尝试获取字体度量。</summary>
+    /// <returns>成功返回 true。</returns>
     bool TryGetFontMetrics(Font font, out FontMetrics metrics);
+    /// <summary>尝试获取字形度量。</summary>
+    /// <returns>成功返回 true。</returns>
     bool TryGetGlyphMetrics(Font font, Rune rune, out GlyphMetrics metrics);
 }
 
+/// <summary>文本度量入口，统一布局、选择区和 dirty bounds 的字体基准。</summary>
 public static class TextMetrics
 {
     private static ITextMetricsProvider? _provider;
 
+    /// <summary>注册度量提供器。</summary>
     public static void RegisterProvider(ITextMetricsProvider provider)
         => _provider = provider ?? throw new ArgumentNullException(nameof(provider));
 
+    /// <summary>获取字体度量；无提供器时返回估算值。</summary>
     public static FontMetrics GetFontMetrics(Font font)
     {
         ArgumentNullException.ThrowIfNull(font);
@@ -34,6 +45,7 @@ public static class TextMetrics
         return new FontMetrics(-ascent, -ascent, height - ascent, height - ascent, 0);
     }
 
+    /// <summary>获取字形度量；无提供器时返回估算值。</summary>
     public static GlyphMetrics GetGlyphMetrics(Font font, Rune rune)
     {
         ArgumentNullException.ThrowIfNull(font);
@@ -46,15 +58,18 @@ public static class TextMetrics
         return new GlyphMetrics(advance, new Rect(0, fontMetrics.Top, advance, fontMetrics.Height));
     }
 
+    /// <summary>按字号和行高倍数计算行高。</summary>
     public static float GetLineHeight(Font font, float lineHeightMultiplier)
         => Math.Max(1, font.Size * lineHeightMultiplier);
 
+    /// <summary>计算行盒顶部到基线的偏移。</summary>
     public static float GetBaselineOffset(Font font, float lineHeight)
     {
         var metrics = GetFontMetrics(font);
         return (lineHeight - metrics.Height) / 2f - metrics.Top;
     }
 
+    /// <summary>计算字形在行盒内的墨迹包围盒（已平移到基线位置）。</summary>
     public static Rect GetGlyphBoundsInLine(Font font, Rune rune, float lineHeight)
     {
         var glyph = GetGlyphMetrics(font, rune);
@@ -62,6 +77,7 @@ public static class TextMetrics
         return glyph.InkBounds.Offset(0, GetBaselineOffset(font, lineHeight));
     }
 
+    /// <summary>测量整段文本的墨迹包围盒（含换行和字形溢出）。</summary>
     public static Rect MeasureInkBounds(TextLayout layout, Point origin)
     {
         ArgumentNullException.ThrowIfNull(layout);

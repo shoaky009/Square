@@ -8,6 +8,7 @@ public class Swiper : View
 {
     private int _selectedIndex;
 
+    /// <summary>初始化 <see cref="Swiper"/> 的新实例。</summary>
     public Swiper()
     {
         Style.SetCascaded("overflow", "hidden", int.MinValue);
@@ -18,23 +19,30 @@ public class Swiper : View
         });
     }
 
+    /// <summary>当前页索引，无子项时为 -1。</summary>
     public int SelectedIndex
     {
         get => Children.Count == 0 ? -1 : Math.Clamp(_selectedIndex, 0, Children.Count - 1);
         set => GoTo(value);
     }
 
+    /// <summary>是否循环切换。</summary>
     public bool Loop
     {
         get => Properties.HasValue(nameof(Loop)) && GetProperty<bool>(nameof(Loop));
         set => SetProperty(nameof(Loop), value);
     }
 
+    /// <summary>子页数量。</summary>
     public int Count => Children.Count;
+    /// <summary>当前页元素。</summary>
     public Element? SelectedItem => SelectedIndex >= 0 ? Children[SelectedIndex] : null;
+    /// <summary>是否可以前往上一页。</summary>
     public bool CanGoPrevious => Children.Count > 1 && (Loop || SelectedIndex > 0);
+    /// <summary>是否可以前往下一页。</summary>
     public bool CanGoNext => Children.Count > 1 && (Loop || SelectedIndex < Children.Count - 1);
 
+    /// <summary>跳转到指定索引的页，返回是否实际切换。</summary>
     public bool GoTo(int index)
     {
         if (Children.Count == 0)
@@ -52,9 +60,12 @@ public class Swiper : View
         return true;
     }
 
+    /// <summary>跳到下一页。</summary>
     public bool Next() => CanGoNext && GoTo(SelectedIndex + 1);
+    /// <summary>跳到上一页。</summary>
     public bool Previous() => CanGoPrevious && GoTo(SelectedIndex - 1);
 
+    /// <summary>处理键盘导航，返回是否已处理。</summary>
     public bool HandleKey(int keyCode)
     {
         if (!IsEnabled || Children.Count == 0) return false;
@@ -68,6 +79,7 @@ public class Swiper : View
         };
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);

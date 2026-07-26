@@ -2,8 +2,10 @@ using System.Buffers.Binary;
 
 namespace Square.Graphics.Codecs;
 
+/// <summary>BMP 与 PNG 互转工具：读取 BMP 文件并写出 PNG。</summary>
 public static class BmpPngConverter
 {
+    /// <summary>将 BMP 文件转换为 PNG 文件。</summary>
     public static void Convert(string bmpPath, string pngPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bmpPath);
@@ -13,6 +15,7 @@ public static class BmpPngConverter
         BitmapPngEncoder.Save(bitmap, pngPath);
     }
 
+    /// <summary>从文件加载未压缩的 24/32 位 BMP 为 <see cref="Bitmap"/>。</summary>
     public static Bitmap LoadBmp(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

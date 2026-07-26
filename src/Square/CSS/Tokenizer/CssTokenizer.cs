@@ -1,13 +1,18 @@
 namespace Square.CSS.Tokenizer;
 
+/// <summary>将 CSS 源文本扫描为令牌列表。</summary>
 public sealed class CssTokenizer
 {
     private readonly string _source;
     private int _pos;
     private int _line = 1;
 
+    /// <summary>初始化 CssTokenizer 的新实例。</summary>
+    /// <param name="source">待扫描的 CSS 源文本。</param>
     public CssTokenizer(string source) { _source = source; }
 
+    /// <summary>扫描源文本并返回令牌列表。</summary>
+    /// <returns>CSS 令牌列表。</returns>
     public List<CssToken> Tokenize()
     {
         var tokens = new List<CssToken>();

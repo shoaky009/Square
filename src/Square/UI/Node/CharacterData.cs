@@ -7,19 +7,23 @@ public abstract class CharacterData : Node
 {
     private string _data;
 
+    /// <summary>构造并指定初始字符数据。</summary>
     protected CharacterData(string data = "")
     {
         _data = data ?? "";
     }
 
+    /// <summary>字符数据内容。</summary>
     public string Data
     {
         get => _data;
         set => _data = value ?? "";
     }
 
+    /// <summary>字符数据长度。</summary>
     public int Length => _data.Length;
 
+    /// <summary>从指定偏移处截取指定长度的子串（对齐 <c>substringData</c>）。</summary>
     public string SubstringData(int offset, int count)
     {
         ValidateOffset(offset);
@@ -27,14 +31,17 @@ public abstract class CharacterData : Node
         return _data.Substring(offset, Math.Min(count, _data.Length - offset));
     }
 
+    /// <summary>追加字符数据（对齐 <c>appendData</c>）。</summary>
     public void AppendData(string data) => _data += data ?? "";
 
+    /// <summary>在指定偏移处插入字符数据（对齐 <c>insertData</c>）。</summary>
     public void InsertData(int offset, string data)
     {
         ValidateOffset(offset);
         _data = _data.Insert(offset, data ?? "");
     }
 
+    /// <summary>从指定偏移处删除指定长度的字符（对齐 <c>deleteData</c>）。</summary>
     public void DeleteData(int offset, int count)
     {
         ValidateOffset(offset);
@@ -42,6 +49,7 @@ public abstract class CharacterData : Node
         _data = _data.Remove(offset, Math.Min(count, _data.Length - offset));
     }
 
+    /// <summary>替换指定区间的字符数据（对齐 <c>replaceData</c>）。</summary>
     public void ReplaceData(int offset, int count, string data)
     {
         DeleteData(offset, count);

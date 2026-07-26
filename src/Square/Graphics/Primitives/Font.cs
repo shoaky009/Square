@@ -5,31 +5,47 @@ namespace Square.Graphics;
 /// <summary>字重（对齐 CSS <c>font-weight</c> 数值）。</summary>
 public enum FontWeight : ushort
 {
+    /// <summary>100，极细。</summary>
     Thin = 100,
+    /// <summary>200，特轻。</summary>
     ExtraLight = 200,
+    /// <summary>300，轻。</summary>
     Light = 300,
+    /// <summary>400，常规。</summary>
     Normal = 400,
+    /// <summary>500，中等。</summary>
     Medium = 500,
+    /// <summary>600，半粗。</summary>
     SemiBold = 600,
+    /// <summary>700，粗体。</summary>
     Bold = 700,
+    /// <summary>800，特粗。</summary>
     ExtraBold = 800,
+    /// <summary>900，黑体。</summary>
     Black = 900
 }
 
 /// <summary>字体样式（对齐 CSS <c>font-style</c>）。</summary>
 public enum FontStyle : byte
 {
+    /// <summary>常规直立。</summary>
     Normal,
+    /// <summary>斜体（使用字体斜体字形）。</summary>
     Italic,
+    /// <summary>倾斜（合成倾斜）。</summary>
     Oblique
 }
 
 /// <summary>文本对齐（对齐 CSS <c>text-align</c> 子集）。</summary>
 public enum TextAlignment : byte
 {
+    /// <summary>左对齐。</summary>
     Left,
+    /// <summary>居中对齐。</summary>
     Center,
+    /// <summary>右对齐。</summary>
     Right,
+    /// <summary>两端对齐。</summary>
     Justify
 }
 

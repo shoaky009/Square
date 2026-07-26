@@ -3,6 +3,7 @@ using Square.UI;
 
 namespace Square.CSS.Engine;
 
+/// <summary>CSS 引擎，负责加载样式表、解析变量与匹配选择器并将声明应用到元素树。</summary>
 public sealed class CssEngine
 {
     private readonly List<CssRule> _rules = [];
@@ -11,6 +12,8 @@ public sealed class CssEngine
     private readonly Dictionary<string, Dictionary<string, string>> _themes = new();
     private string? _activeTheme;
 
+    /// <summary>加载样式表，收集规则、自定义变量与关键帧。</summary>
+    /// <param name="sheet">待加载的样式表。</param>
     public void LoadStyleSheet(CssStyleSheet sheet)
     {
         foreach (var rule in sheet.Rules)
@@ -23,22 +26,34 @@ public sealed class CssEngine
         foreach (var kf in sheet.KeyFrames) _keyFrames[kf.Name] = kf;
     }
 
+    /// <summary>按名称查找关键帧规则。</summary>
+    /// <param name="name">动画名称。</param>
+    /// <returns>匹配的关键帧规则；未找到返回 null。</returns>
     public KeyFramesRule? GetKeyFrames(string name) =>
         _keyFrames.TryGetValue(name, out var kf) ? kf : null;
 
+    /// <summary>设置当前激活的主题名称。</summary>
+    /// <param name="name">主题名称，为 null 表示取消主题。</param>
     public void SetTheme(string? name)
     {
         _activeTheme = name;
     }
 
+    /// <summary>注册一个主题及其变量集合。</summary>
+    /// <param name="name">主题名称。</param>
+    /// <param name="variables">主题变量键值集合。</param>
     public void RegisterTheme(string name, Dictionary<string, string> variables)
     {
         _themes[name] = variables;
     }
 
+    /// <summary>获取当前激活主题的变量集合。</summary>
+    /// <returns>激活主题变量集合；未激活主题返回 null。</returns>
     public IReadOnlyDictionary<string, string>? GetActiveThemeVariables() =>
         _activeTheme != null && _themes.TryGetValue(_activeTheme, out var v) ? v : null;
 
+    /// <summary>将匹配规则的声明应用到指定元素。</summary>
+    /// <param name="Element">目标元素。</param>
     public void ApplyStyles(Element Element)
     {
         ApplyInheritedProperties(Element);
@@ -72,6 +87,8 @@ public sealed class CssEngine
         }
     }
 
+    /// <summary>对整棵元素树应用样式并刷新动画。</summary>
+    /// <param name="Element">根元素。</param>
     public void ApplyStylesToTree(Element Element)
     {
         CssStyleReconciler.RegisterScope(this, Element);
@@ -86,6 +103,9 @@ public sealed class CssEngine
             ApplyStylesToTreeCore(child);
     }
 
+    /// <summary>根据元素的动画属性创建动画时间线。</summary>
+    /// <param name="Element">目标元素。</param>
+    /// <returns>动画时间线；无有效动画返回 null。</returns>
     public CssAnimationTimeline? CreateAnimationTimeline(Element Element)
     {
         var name = Element.Style.Get("animation-name");

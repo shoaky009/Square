@@ -283,14 +283,19 @@ public static class CssSelector
 
     private sealed class SimpleSelector
     {
+        /// <summary>标签名（null 表示不限定）。</summary>
         public string? TagName;
+        /// <summary>id（null 表示不限定）。</summary>
         public string? Id;
+        /// <summary>class 列表。</summary>
         public List<string> Classes { get; } = [];
     }
 
     private readonly struct SelectorStep(SimpleSelector simple, Combinator combinatorFromPrevious)
     {
+        /// <summary>当前步骤的简单选择器。</summary>
         public SimpleSelector Simple { get; } = simple;
+        /// <summary>与上一步的组合符。</summary>
         public Combinator CombinatorFromPrevious { get; } = combinatorFromPrevious;
     }
 }

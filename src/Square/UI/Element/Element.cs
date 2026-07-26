@@ -30,14 +30,18 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     [ThreadStatic]
     private static int _invalidationSuppressionDepth;
 
+    /// <summary>样式失效时触发的全局事件（Square 扩展）。</summary>
     public static event Action<Element>? StyleInvalidated;
 
     private static int NextDebugId;
 
+    /// <summary>调试用唯一标识（懒加载）。</summary>
     public int DebugId => _debugId != 0 ? _debugId : _debugId = Interlocked.Increment(ref NextDebugId);
 
+    /// <summary>调试来源信息。</summary>
     public ElementDebugInfo? DebugInfo { get; private set; }
 
+    /// <summary>设置调试来源信息。</summary>
     public void SetDebugInfo(ElementDebugInfo? debugInfo) => DebugInfo = debugInfo;
 
     /// <summary>布局是否失效（Square 扩展；引擎在脏时重新 Measure/Arrange）。</summary>
@@ -126,15 +130,19 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         }
     }
 
+    /// <summary>当前滚动偏移（Square 扩展）。</summary>
     public Point ScrollOffset => _scrollOffset;
+    /// <summary>滚动内容总尺寸（Square 扩展）。</summary>
     public Size ScrollContentSize => _scrollContentSize;
 
+    /// <summary>水平滚动位置（对齐 <c>scrollLeft</c>）。</summary>
     public float ScrollLeft
     {
         get => _scrollOffset.X;
         set => SetScrollOffset(value, _scrollOffset.Y);
     }
 
+    /// <summary>垂直滚动位置（对齐 <c>scrollTop</c>）。</summary>
     public float ScrollTop
     {
         get => _scrollOffset.Y;
@@ -242,6 +250,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         return child;
     }
 
+    /// <summary>追加子节点（对齐 <c>appendChild</c>）。</summary>
     public Node AppendChild(Node child)
     {
         ArgumentNullException.ThrowIfNull(child);
@@ -262,6 +271,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         return newChild;
     }
 
+    /// <summary>在参考子节点之前插入子节点（对齐 <c>insertBefore</c>）。</summary>
     public Node InsertBefore(Node newChild, Node? referenceChild)
     {
         ArgumentNullException.ThrowIfNull(newChild);
@@ -281,6 +291,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         return child;
     }
 
+    /// <summary>移除子节点（对齐 <c>removeChild</c>）。</summary>
     public Node RemoveChild(Node child)
     {
         ArgumentNullException.ThrowIfNull(child);
@@ -297,6 +308,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
             ChildNodes.AddRange(nodes);
     }
 
+    /// <summary>用新子节点列表替换全部子节点（对齐 <c>replaceChildren</c>）。</summary>
     public void ReplaceChildren(params Node[] nodes)
     {
         ChildNodes.Clear();
@@ -348,6 +360,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         Invalidate(PropertyInvalidation.ForProperty(name));
     }
 
+    /// <summary>用委托取值写入属性，并订阅多个响应源同步更新（Square 扩展）。</summary>
     public void BindProperty<T>(string name, Func<T> getter, params IReactiveSource[] sources)
     {
         ArgumentNullException.ThrowIfNull(getter);
@@ -457,12 +470,14 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         string.Equals(value, "scroll", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>是否为滚动容器（由 CSS overflow 推导）。</summary>
     public bool IsScrollContainer()
     {
         var (scrollX, scrollY) = GetScrollAxes();
         return scrollX || scrollY;
     }
 
+    /// <summary>当前元素或祖先的 <c>user-select</c> 是否允许文本选择。</summary>
     public bool IsUserSelectText()
     {
         for (var current = this; current != null; current = current.Parent)
@@ -475,9 +490,11 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         return false;
     }
 
+    /// <summary>是否需要为子元素映射滚动偏移。</summary>
     public bool MapsScrollOffsetForChildren() =>
         IsScrollContainer() && (_scrollOffset.X != 0 || _scrollOffset.Y != 0);
 
+    /// <summary>判断指定方向增量是否仍可滚动。</summary>
     public bool CanScroll(float deltaX, float deltaY)
     {
         var (maxX, maxY) = GetMaxScrollOffset();
@@ -486,6 +503,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
             scrollY && (deltaY < 0 && _scrollOffset.Y > 0 || deltaY > 0 && _scrollOffset.Y < maxY);
     }
 
+    /// <summary>按增量滚动；返回是否实际发生滚动。</summary>
     public bool ScrollBy(float deltaX, float deltaY)
     {
         var old = _scrollOffset;
@@ -493,6 +511,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         return old.X != _scrollOffset.X || old.Y != _scrollOffset.Y;
     }
 
+    /// <summary>设置滚动内容总尺寸。</summary>
     public void SetScrollContentSize(Size size)
     {
         _scrollContentSize = new Size(Math.Max(0, size.Width), Math.Max(0, size.Height));
@@ -594,6 +613,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         _needsPaint = true;
     }
 
+    /// <summary>按失效标志触发对应的重绘/重布局/样式失效流程（Square 扩展）。</summary>
     public void Invalidate(ElementInvalidation invalidation)
     {
         if (_invalidationSuppressionDepth > 0) return;

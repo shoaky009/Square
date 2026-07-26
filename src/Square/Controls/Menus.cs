@@ -4,16 +4,23 @@ using Square.UI;
 
 namespace Square.Controls;
 
+/// <summary>菜单项角色类型。</summary>
 public enum MenuItemRole
 {
+    /// <summary>普通命令项。</summary>
     Command,
+    /// <summary>可勾选项。</summary>
     Check,
+    /// <summary>单选项（按 <c>GroupName</c> 互斥）。</summary>
     Radio,
+    /// <summary>含子菜单的项。</summary>
     Submenu
 }
 
+/// <summary>顶部菜单栏容器，承载多个 <see cref="MenuItem"/> 顶项。</summary>
 public class MenuBar : View
 {
+    /// <summary>初始化 <see cref="MenuBar"/> 的新实例。</summary>
     public MenuBar()
     {
         Style.SetCascaded("display", "flex", int.MinValue);
@@ -23,10 +30,13 @@ public class MenuBar : View
         Style.SetCascaded("background", "#f3f4f6", int.MinValue);
     }
 
+    /// <summary>当前是否有子菜单处于打开状态。</summary>
     public bool IsMenuModeActive => Items.Any(item => item.Submenu?.IsOpen == true);
+    /// <summary>当前打开子菜单的顶项索引，未打开返回 -1。</summary>
     public int ActiveIndex => Array.FindIndex(Items, item => item.Submenu?.IsOpen == true);
     internal MenuItem[] Items => Children.OfType<MenuItem>().ToArray();
 
+    /// <summary>关闭所有打开的子菜单。</summary>
     public void CloseMenus()
     {
         foreach (var item in Items)
@@ -50,6 +60,7 @@ public class MenuBar : View
             Open(item, toggle: false);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext context)
     {
         var background = ControlDrawing.GetStyledColor(this, "background", Color.FromRgb(243, 244, 246));
@@ -57,10 +68,12 @@ public class MenuBar : View
     }
 }
 
+/// <summary>弹出式菜单，可作为顶栏子菜单或上下文菜单。</summary>
 public class Menu : Popup
 {
     private Point? _screenPosition;
 
+    /// <summary>初始化 <see cref="Menu"/> 的新实例。</summary>
     public Menu()
     {
         CloseOnEscape = true;
@@ -73,10 +86,14 @@ public class Menu : Popup
         Style.SetCascaded("background", "#ffffff", int.MinValue);
     }
 
+    /// <summary>所属的菜单项（如有）。</summary>
     public MenuItem? OwnerItem => Parent as MenuItem;
+    /// <summary>当前高亮的菜单项。</summary>
     public MenuItem? ActiveItem { get; private set; }
+    /// <summary>菜单中的所有菜单项。</summary>
     public IReadOnlyList<MenuItem> Items => Children.OfType<MenuItem>().ToArray();
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var width = 0f;
@@ -91,6 +108,7 @@ public class Menu : Popup
         return new Size(Math.Max(240, width), height);
     }
 
+    /// <summary>以指定菜单项为锚点打开此菜单。</summary>
     public void OpenFor(MenuItem owner)
     {
         if (OwnerItem is { } previousOwner && !ReferenceEquals(previousOwner, owner))
@@ -106,6 +124,7 @@ public class Menu : Popup
         owner.SetState(ElementState.Open, true);
     }
 
+    /// <summary>在指定屏幕坐标处打开此菜单。</summary>
     public virtual void OpenAt(Point screenPosition)
     {
         Anchor = null;
@@ -113,6 +132,7 @@ public class Menu : Popup
         Open();
     }
 
+    /// <inheritdoc/>
     public override void Close()
     {
         foreach (var item in Items)
@@ -122,12 +142,14 @@ public class Menu : Popup
         base.Close();
     }
 
+    /// <summary>关闭整棵菜单树（从根菜单开始）。</summary>
     public void CloseMenuTree()
     {
         var root = GetRootMenu();
         root.Close();
     }
 
+    /// <inheritdoc/>
     public override bool ContainsPopupInteraction(Point point)
     {
         if (base.ContainsPopupInteraction(point)) return true;
@@ -164,6 +186,7 @@ public class Menu : Popup
         }
     }
 
+    /// <summary>获取当前打开链中最深层的菜单。</summary>
     public Menu GetDeepestOpenMenu()
     {
         var current = this;
@@ -172,9 +195,11 @@ public class Menu : Popup
         return current;
     }
 
+    /// <inheritdoc/>
     public override bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt)
         => GetDeepestOpenMenu().HandleKey(keyCode, shift, control, alt);
 
+    /// <summary>处理菜单键盘导航，返回是否已处理。</summary>
     public bool HandleKey(int keyCode, bool shift = false, bool control = false, bool alt = false)
     {
         var enabled = Items.Where(item => item.IsEnabled).ToArray();
@@ -227,6 +252,7 @@ public class Menu : Popup
         }
     }
 
+    /// <inheritdoc/>
     protected override Rect GetPopupBounds()
     {
         if (_screenPosition is not { } position) return base.GetPopupBounds();
@@ -281,12 +307,15 @@ public class Menu : Popup
     }
 }
 
+/// <summary>上下文菜单（右键菜单），通过 <see cref="Menu.OpenAt"/> 在指定坐标打开。</summary>
 public sealed class ContextMenu : Menu
 {
 }
 
+/// <summary>菜单项，可作为菜单栏顶项或弹出菜单条目。</summary>
 public class MenuItem : UIElement, ITextSelectable
 {
+    /// <summary>文本内容。</summary>
     public string TextContent
     {
         get => GetProperty<string>(nameof(TextContent)) ?? "";
@@ -295,21 +324,33 @@ public class MenuItem : UIElement, ITextSelectable
             SetProperty(nameof(TextContent), value);
         }
     }
+    /// <summary>快捷键提示文本。</summary>
     public string ShortcutText { get => GetProperty<string>(nameof(ShortcutText)) ?? ""; set => SetProperty(nameof(ShortcutText), value); }
+    /// <summary>左侧图标图像。</summary>
     public Square.Graphics.Image? Icon { get => GetProperty<Square.Graphics.Image>(nameof(Icon)); set => SetProperty(nameof(Icon), value); }
+    /// <summary>是否可勾选。</summary>
     public bool IsCheckable { get => GetProperty<bool>(nameof(IsCheckable)); set => SetProperty(nameof(IsCheckable), value); }
+    /// <summary>是否处于选中（勾选）状态。</summary>
     public bool IsChecked { get => GetProperty<bool>(nameof(IsChecked)); set => SetProperty(nameof(IsChecked), value); }
+    /// <summary>单选分组名称；同组互斥。</summary>
     public string GroupName { get => GetProperty<string>(nameof(GroupName)) ?? ""; set => SetProperty(nameof(GroupName), value); }
+    /// <summary>点击后是否保持菜单打开。</summary>
     public bool StaysOpenOnClick { get => GetProperty<bool>(nameof(StaysOpenOnClick)); set => SetProperty(nameof(StaysOpenOnClick), value); }
+    /// <summary>点击时调用的命令回调。</summary>
     public Action<MenuItem>? Command { get; set; }
+    /// <summary>子菜单（如有）。</summary>
     public Menu? Submenu => Children.OfType<Menu>().FirstOrDefault();
+    /// <summary>菜单项角色，由子菜单/分组/可勾选性推导。</summary>
     public MenuItemRole Role => Submenu != null ? MenuItemRole.Submenu :
         !string.IsNullOrWhiteSpace(GroupName) ? MenuItemRole.Radio :
         IsCheckable ? MenuItemRole.Check : MenuItemRole.Command;
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => Geometry;
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var label = ControlDrawing.MeasureText(this, TextContent, 14);
@@ -321,6 +362,7 @@ public class MenuItem : UIElement, ITextSelectable
         return new Size(Math.Max(180, 54 + label.Width + shortcutWidth), 32);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext context)
     {
         var active = HasState(ElementState.Hover) || HasState(ElementState.Open) ||
@@ -359,15 +401,18 @@ public class MenuItem : UIElement, ITextSelectable
         }
     }
 
+    /// <inheritdoc/>
     public override Element? HitTest(Point point)
         => IsVisible && Geometry.Contains(point) ? this : null;
 
+    /// <inheritdoc/>
     protected override void OnDefaultAction(Event e)
     {
         base.OnDefaultAction(e);
         if (e.Type == StandardEvents.Click) Activate();
     }
 
+    /// <inheritdoc/>
     protected override void OnStateChanged(ElementState flag, bool on)
     {
         base.OnStateChanged(flag, on);
@@ -441,10 +486,13 @@ public class MenuItem : UIElement, ITextSelectable
     }
 }
 
+/// <summary>菜单分隔条。</summary>
 public sealed class MenuSeparator : UIElement
 {
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) => new(availableSize.Width, 9);
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext context)
     {
         var y = Geometry.Y + Geometry.Height / 2f;
@@ -453,5 +501,6 @@ public sealed class MenuSeparator : UIElement
             .LineTo(new Point(Geometry.Right - 8, y)), Pen.FromColor(Color.FromRgb(218, 221, 225)));
     }
 
+    /// <inheritdoc/>
     public override Element? HitTest(Point point) => null;
 }

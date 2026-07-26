@@ -20,17 +20,21 @@ public class TitleBar : View
     private static readonly Lazy<bool> IconFontLoaded = new(LoadIconFont);
     private bool _visualTreeBuilt;
 
+    /// <inheritdoc/>
     public override string TagName => "TitleBar";
 
+    /// <summary>标题栏首选高度（像素）。</summary>
     public float PreferredHeight
     {
         get => GetProperty<float>(nameof(PreferredHeight)) is > 0 and var value ? value : 36f;
         set => SetProperty(nameof(PreferredHeight), Math.Max(1f, value));
     }
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) =>
         new(availableSize.Width, ResolveHeight());
 
+    /// <inheritdoc/>
     public override void BuildElementTree()
     {
         if (_visualTreeBuilt) return;

@@ -5,6 +5,7 @@ public sealed class SVGDocument : XMLDocument
 {
     internal SVGDocument(SVGSVGElement root) : base("image/svg+xml") => SetDocumentElement(root);
 
+    /// <summary>按标签名创建 SVG 元素并关联当前文档。</summary>
     public SVGElement CreateElement(string tagName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tagName);

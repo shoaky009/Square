@@ -5,6 +5,7 @@ using Square.UI;
 
 namespace Square.Controls.Primitives;
 
+/// <summary>条件渲染节点，按布尔条件或可观察值显示主元素或后备元素。</summary>
 public sealed class ShowNode : IDisposable
 {
     private readonly ObservableValue<bool>? _source;
@@ -19,6 +20,7 @@ public sealed class ShowNode : IDisposable
     private int _index;
     private bool _disposed;
 
+    /// <summary>以可观察布尔值与构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(ObservableValue<bool> source, Func<Element?> build)
         : this(() => source.Value, build)
     {
@@ -26,6 +28,7 @@ public sealed class ShowNode : IDisposable
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    /// <summary>以可观察布尔值、主构造器与后备构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(ObservableValue<bool> source, Func<Element?> build, Func<Element?> fallbackBuild)
         : this(() => source.Value, build, fallbackBuild)
     {
@@ -33,23 +36,27 @@ public sealed class ShowNode : IDisposable
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    /// <summary>以反应值与构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(IReactiveValue<bool> source, Func<Element?> build)
         : this(() => source.Value, build)
     {
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    /// <summary>以反应值、主构造器与后备构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(IReactiveValue<bool> source, Func<Element?> build, Func<Element?> fallbackBuild)
         : this(() => source.Value, build, fallbackBuild)
     {
         _subscription = source.Subscribe(_ => ScheduleUpdate());
     }
 
+    /// <summary>以布尔条件函数与构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(Func<bool> condition, Func<Element?> build)
         : this(condition, build, null)
     {
     }
 
+    /// <summary>以布尔条件函数、主构造器与可选后备构造器初始化 <see cref="ShowNode"/>。</summary>
     public ShowNode(Func<bool> condition, Func<Element?> build, Func<Element?>? fallbackBuild)
     {
         _condition = condition;
@@ -60,6 +67,7 @@ public sealed class ShowNode : IDisposable
         else if (_fallbackBuild != null) _fallback = _fallbackBuild();
     }
 
+    /// <summary>把节点挂载到指定父元素。</summary>
     public void AttachTo(Element parent)
     {
         _parent = parent;
@@ -83,6 +91,7 @@ public sealed class ShowNode : IDisposable
         (_parent?.Reconciler ?? Reconciler.Current).ScheduleUpdate(Update);
     }
 
+    /// <summary>重新评估条件并同步 DOM 子树。</summary>
     public void Update()
     {
         var val = _condition();
@@ -111,6 +120,7 @@ public sealed class ShowNode : IDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (_disposed) return;
@@ -125,71 +135,95 @@ public sealed class ShowNode : IDisposable
     }
 }
 
+/// <summary>循环渲染节点的公共契约。</summary>
 public interface IForNode : IDisposable
 {
+    /// <summary>把节点挂载到指定父元素。</summary>
     void AttachTo(Element parent);
+    /// <summary>重新同步 DOM 子树与数据源。</summary>
     void Update();
 }
 
+/// <summary>列表循环渲染节点的工厂，按数据源类型派生对应实现。</summary>
 public static class ForNode
 {
+    /// <summary>创建基于可观察集合的循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source);
 
+    /// <summary>创建基于可观察集合且带后备的循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new ForNode<T>(() => source, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于可观察集合的下标循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build) =>
         new ForNode<T>(() => source, build, source);
 
+    /// <summary>创建基于可观察集合且带后备的下标循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new ForNode<T>(() => source, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于可枚举集合的循环节点。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于可枚举集合且带后备的循环节点。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new ForNode<T>(() => source, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于可枚举集合的下标循环节点。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build) =>
         new ForNode<T>(() => source, build, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于可枚举集合且带后备的下标循环节点。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new ForNode<T>(() => source, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于反应值列表的循环节点。</summary>
     public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, Element?> build) =>
         new ReactiveForNode<T>(source, build);
 
+    /// <summary>创建基于反应值列表的下标循环节点。</summary>
     public static IForNode Create<T>(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, Element?> build) =>
         new ReactiveForNode<T>(source, build);
 
+    /// <summary>创建基于键选择器的可观察集合循环节点。</summary>
     public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(() => source, keySelector, build, source);
 
+    /// <summary>创建基于键选择器且带后备的可观察集合循环节点。</summary>
     public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, TKey> keySelector, Func<T, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
         new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于下标键选择器且带后备的可观察集合循环节点。</summary>
     public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
         new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于下标键选择器的可观察集合循环节点。</summary>
     public static IForNode Create<T, TKey>(ObservableCollection<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(() => source, keySelector, build, source);
 
+    /// <summary>创建基于键选择器的可枚举集合循环节点。</summary>
     public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于键选择器且带后备的可枚举集合循环节点。</summary>
     public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, Func<T, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
         new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于下标键选择器的可枚举集合循环节点。</summary>
     public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于下标键选择器且带后备的可枚举集合循环节点。</summary>
     public static IForNode Create<T, TKey>(IEnumerable<T> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build, Func<Element?> fallbackBuild) where TKey : notnull =>
         new ForFallbackNode<T>(new KeyedForNode<T, TKey>(() => source, keySelector, build, source as INotifyCollectionChanged), () => source, fallbackBuild, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于反应值列表与键选择器的循环节点。</summary>
     public static IForNode Create<T, TKey>(IReactiveValue<IReadOnlyList<T>> source, Func<T, TKey> keySelector, Func<T, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(source, keySelector, build);
 
+    /// <summary>创建基于反应值列表与下标键选择器的循环节点。</summary>
     public static IForNode Create<T, TKey>(IReactiveValue<IReadOnlyList<T>> source, Func<T, int, TKey> keySelector, Func<T, int, Element?> build) where TKey : notnull =>
         new KeyedForNode<T, TKey>(source, keySelector, build);
 }
@@ -259,23 +293,30 @@ internal sealed class ForFallbackNode<T> : IForNode
     }
 }
 
+/// <summary>按下标重建的循环渲染节点工厂，集合变更时整体重排。</summary>
 public static class IndexNode
 {
+    /// <summary>创建基于可观察集合的下标循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build) =>
         new IndexNode<T>(() => source, build, source);
 
+    /// <summary>创建基于可观察集合且带后备的下标循环节点。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new IndexNode<T>(() => source, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于可观察集合的下标循环节点（带索引构造器）。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build) =>
         new IndexNode<T>(() => source, build, source);
 
+    /// <summary>创建基于可观察集合且带后备的下标循环节点（带索引构造器）。</summary>
     public static IForNode Create<T>(ObservableCollection<T> source, Func<T, int, Element?> build, Func<Element?> fallbackBuild) =>
         new ForFallbackNode<T>(new IndexNode<T>(() => source, build, source), () => source, fallbackBuild, source);
 
+    /// <summary>创建基于可枚举集合的下标循环节点。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, Element?> build) =>
         new IndexNode<T>(() => source, build, source as INotifyCollectionChanged);
 
+    /// <summary>创建基于可枚举集合的下标循环节点（带索引构造器）。</summary>
     public static IForNode Create<T>(IEnumerable<T> source, Func<T, int, Element?> build) =>
         new IndexNode<T>(() => source, build, source as INotifyCollectionChanged);
 }
@@ -630,6 +671,7 @@ internal sealed class ReactiveForNode<T> : IForNode
     }
 }
 
+/// <summary>列表循环渲染节点；监听集合变更并增量更新对应子元素。</summary>
 public sealed class ForNode<T> : IForNode
 {
     private readonly Func<IEnumerable<T>> _source;
@@ -640,11 +682,13 @@ public sealed class ForNode<T> : IForNode
     private Element? _parent;
     private int _index;
 
+    /// <summary>初始化 <see cref="ForNode{T}"/> 的新实例。</summary>
     public ForNode(Func<IEnumerable<T>> source, Func<T, Element?> build)
         : this(source, build, source() as INotifyCollectionChanged)
     {
     }
 
+    /// <summary>初始化 <see cref="ForNode{T}"/> 的新实例（带索引构造器）。</summary>
     public ForNode(Func<IEnumerable<T>> source, Func<T, int, Element?> build)
         : this(source, build, source() as INotifyCollectionChanged)
     {
@@ -671,6 +715,7 @@ public sealed class ForNode<T> : IForNode
     private Element? Build(T item, int index) =>
         _build != null ? _build(item) : _buildIndexed?.Invoke(item, index);
 
+    /// <inheritdoc/>
     public void AttachTo(Element parent)
     {
         _parent = parent;
@@ -679,6 +724,7 @@ public sealed class ForNode<T> : IForNode
             InsertNode(i);
     }
 
+    /// <inheritdoc/>
     public void Update()
     {
         Rebuild();
@@ -792,6 +838,7 @@ public sealed class ForNode<T> : IForNode
         InsertNode(newIndex);
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (_observableSource != null)
@@ -806,6 +853,7 @@ public sealed class ForNode<T> : IForNode
     }
 }
 
+/// <summary>多分支条件渲染节点，按分支条件选择首个匹配项渲染。</summary>
 public sealed class SwitchNode : IDisposable
 {
     private readonly List<MatchBranch> _branches = [];
@@ -814,25 +862,30 @@ public sealed class SwitchNode : IDisposable
     private int _activeBranch = -1;
     private bool _disposed;
 
+    /// <summary>初始化 <see cref="SwitchNode"/> 的新实例。</summary>
     public SwitchNode()
     {
     }
 
+    /// <summary>初始化 <see cref="SwitchNode"/> 的新实例并指定分支选择器。</summary>
     public SwitchNode(Func<int> selector)
     {
         ArgumentNullException.ThrowIfNull(selector);
     }
 
+    /// <summary>添加一个条件分支。</summary>
     public void AddBranch(Func<bool> condition, Func<Element?> build)
     {
         _branches.Add(new MatchBranch(condition, build));
     }
 
+    /// <summary>添加一个带初始值的条件分支。</summary>
     public void AddBranch(bool initialValue, Func<bool> condition, Func<Element?> build)
     {
         _branches.Add(new MatchBranch(condition, build));
     }
 
+    /// <summary>添加一个绑定可观察值的条件分支。</summary>
     public void AddBranch(ObservableValue<bool> source, Func<bool> condition, Func<Element?> build)
     {
         var branch = new MatchBranch(condition, build);
@@ -840,6 +893,7 @@ public sealed class SwitchNode : IDisposable
         _branches.Add(branch);
     }
 
+    /// <summary>添加一个绑定反应值的条件分支。</summary>
     public void AddBranch(IReactiveValue<bool> source, Func<bool> condition, Func<Element?> build)
     {
         var branch = new MatchBranch(condition, build);
@@ -847,11 +901,13 @@ public sealed class SwitchNode : IDisposable
         _branches.Add(branch);
     }
 
+    /// <summary>添加默认分支（无条件）。</summary>
     public void AddDefault(Func<Element?> build)
     {
         _branches.Add(new MatchBranch(null, build));
     }
 
+    /// <summary>把节点挂载到指定父元素。</summary>
     public void AttachTo(Element parent)
     {
         _parent = parent;
@@ -859,6 +915,7 @@ public sealed class SwitchNode : IDisposable
         Update();
     }
 
+    /// <summary>重新评估分支并同步 DOM 子树。</summary>
     public void Update()
     {
         if (_disposed || _parent == null) return;
@@ -896,6 +953,7 @@ public sealed class SwitchNode : IDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (_disposed) return;

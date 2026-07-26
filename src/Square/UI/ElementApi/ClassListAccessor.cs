@@ -53,5 +53,6 @@ public sealed class ClassListAccessor
         _owner.Invalidate(ElementInvalidation.Style | ElementInvalidation.Layout);
     }
 
+    /// <summary>返回全部 class 的只读集合。</summary>
     public IReadOnlyCollection<string> GetAll() => _classes ?? [];
 }

@@ -1,7 +1,10 @@
 namespace Square.Router;
 
+/// <summary>路由匹配器。</summary>
 public static class RouteMatcher
 {
+    /// <summary>匹配路由。</summary>
+    /// <returns>匹配成功返回 <see cref="RouteMatch"/>；失败返回 null。</returns>
     public static RouteMatch? Match(IEnumerable<RouteDefinition> routes, string location)
     {
         ArgumentNullException.ThrowIfNull(routes);

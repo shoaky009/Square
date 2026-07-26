@@ -3,8 +3,10 @@ using Square.UI;
 
 namespace Square.Rendering;
 
+/// <summary>文本片段，包含所属元素、文本、字体和字符级片段。</summary>
 public sealed record TextFragment(Element Element, string Text, Font Font, Rect Bounds, IReadOnlyList<TextCharacterFragment> Characters)
 {
+    /// <summary>按坐标命中测试，返回 UTF-16 偏移。</summary>
     public int HitTestOffset(Point point)
     {
         if (Characters.Count == 0) return 0;
@@ -33,4 +35,5 @@ public sealed record TextFragment(Element Element, string Text, Font Font, Rect 
     }
 }
 
+/// <summary>字符级片段，包含偏移范围、布局边界和选择边界。</summary>
 public readonly record struct TextCharacterFragment(int StartOffset, int EndOffset, Rect Bounds, Rect SelectionBounds);

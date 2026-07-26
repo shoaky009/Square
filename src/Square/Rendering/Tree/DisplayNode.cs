@@ -5,8 +5,10 @@ using Square.Rendering.Commands;
 
 namespace Square.Rendering.Tree;
 
+/// <summary>显示节点：对应一个文档元素，承载其绘制命令与子树结构。</summary>
 public sealed class DisplayNode
 {
+    /// <summary>节点布局边界。</summary>
     public Rect Bounds { get; set; }
     /// <summary>Source document element for this display node.</summary>
     public Element? Source
@@ -15,14 +17,21 @@ public sealed class DisplayNode
         set => Element = value;
     }
 
+    /// <summary>关联的文档元素。</summary>
     public Element? Element { get; set; }
+    /// <summary>子节点列表。</summary>
     public List<DisplayNode> Children { get; } = [];
+    /// <summary>本节点的绘制命令列表。</summary>
     public List<DrawCommand> Commands { get; } = [];
+    /// <summary>本节点及其绘制命令的可视边界。</summary>
     public Rect VisualBounds { get; private set; }
+    /// <summary>弹出层可视边界。</summary>
     public Rect PopupBounds { get; set; }
 
+    /// <summary>是否需要重建命令并重绘。</summary>
     public bool IsDirty { get; set; } = true;
 
+    /// <summary>渲染本节点及子树。</summary>
     public void Render(IRenderContext ctx) => Render(ctx, dirtyClip: null);
 
     /// <summary>

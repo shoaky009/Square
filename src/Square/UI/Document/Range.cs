@@ -5,6 +5,7 @@ namespace Square.UI;
 /// </summary>
 public sealed class Range
 {
+    /// <summary>构造 Range 并以文档根元素作为初始边界。</summary>
     public Range(Document ownerDocument)
     {
         OwnerDocument = ownerDocument ?? throw new ArgumentNullException(nameof(ownerDocument));
@@ -12,13 +13,20 @@ public sealed class Range
         EndContainer = ownerDocument.DocumentElement;
     }
 
+    /// <summary>所属文档。</summary>
     public Document OwnerDocument { get; }
+    /// <summary>起始边界节点。</summary>
     public Node StartContainer { get; private set; }
+    /// <summary>起始偏移。</summary>
     public int StartOffset { get; private set; }
+    /// <summary>结束边界节点。</summary>
     public Node EndContainer { get; private set; }
+    /// <summary>结束偏移。</summary>
     public int EndOffset { get; private set; }
+    /// <summary>是否折叠为单点。</summary>
     public bool Collapsed => StartContainer == EndContainer && StartOffset == EndOffset;
 
+    /// <summary>设置起始边界（对齐 <c>setStart</c>）。</summary>
     public void SetStart(Node node, int offset)
     {
         ValidateBoundary(node, offset);
@@ -28,6 +36,7 @@ public sealed class Range
             Collapse(toStart: true);
     }
 
+    /// <summary>设置结束边界（对齐 <c>setEnd</c>）。</summary>
     public void SetEnd(Node node, int offset)
     {
         ValidateBoundary(node, offset);
@@ -37,6 +46,7 @@ public sealed class Range
             Collapse(toStart: false);
     }
 
+    /// <summary>选中节点的全部内容（对齐 <c>selectNodeContents</c>）。</summary>
     public void SelectNodeContents(Node node)
     {
         ValidateBoundary(node, 0);
@@ -46,6 +56,7 @@ public sealed class Range
         EndOffset = GetLength(node);
     }
 
+    /// <summary>折叠到起点或终点（对齐 <c>collapse</c>）。</summary>
     public void Collapse(bool toStart)
     {
         if (toStart)
@@ -60,6 +71,7 @@ public sealed class Range
         }
     }
 
+    /// <summary>返回选区内的文本。</summary>
     public override string ToString()
     {
         if (Collapsed) return string.Empty;

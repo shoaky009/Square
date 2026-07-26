@@ -36,6 +36,7 @@ public static class CssStyleReconciler
         }
     }
 
+    /// <summary>刷新所有脏元素的样式，重新应用级联样式并推进动画。</summary>
     public static void Flush()
     {
         lock (ApplyGate)

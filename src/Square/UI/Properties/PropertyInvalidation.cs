@@ -4,6 +4,7 @@ using Square.UI;
 
 internal static class PropertyInvalidation
 {
+    /// <summary>根据强类型属性名返回所需失效标志。</summary>
     public static ElementInvalidation ForProperty(string name)
     {
         return name switch

@@ -2,8 +2,11 @@ using System.Globalization;
 
 namespace Square.Graphics;
 
+/// <summary>盒阴影（偏移、模糊、扩展、颜色）。</summary>
 public readonly record struct BoxShadow(float OffsetX, float OffsetY, float BlurRadius, float SpreadRadius, Color Color)
 {
+    /// <summary>尝试解析 CSS box-shadow 字符串。</summary>
+    /// <returns>解析成功返回 true；失败返回 false。</returns>
     public static bool TryParse(string? value, out BoxShadow shadow)
     {
         shadow = default;
@@ -112,8 +115,10 @@ public readonly record struct BoxShadow(float OffsetX, float OffsetY, float Blur
     }
 }
 
+/// <summary>盒阴影渲染辅助方法。</summary>
 public static class BoxShadowRendering
 {
+    /// <summary>计算盒阴影的视觉包围盒。</summary>
     public static Rect GetVisualBounds(Rect box, BoxShadow shadow)
     {
         if (box.IsEmpty || shadow.Color.A == 0) return box;
@@ -122,6 +127,7 @@ public static class BoxShadowRendering
         return shadowBounds.IsEmpty ? box : Rect.Union(box, shadowBounds);
     }
 
+    /// <summary>绘制盒阴影。</summary>
     public static void Draw(IRenderContext context, Rect box, float cornerRadius, BoxShadow shadow)
     {
         if (box.IsEmpty || shadow.Color.A == 0) return;

@@ -1,5 +1,6 @@
 namespace Square.Runtime.State;
 
+/// <summary>持有可响应状态值的存储，支持订阅变更与版本跟踪。</summary>
 public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
 {
     private readonly object _gate = new();
@@ -9,12 +10,14 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
     private long _version;
     private bool _disposed;
 
+    /// <summary>用初始状态与可选相等比较器创建存储。</summary>
     public Store(TState initialState, IEqualityComparer<TState>? comparer = null)
     {
         _value = initialState;
         _comparer = comparer ?? EqualityComparer<TState>.Default;
     }
 
+    /// <summary>当前状态值。</summary>
     public TState Value
     {
         get
@@ -27,6 +30,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         }
     }
 
+    /// <summary>状态版本号，每次成功更新自增。</summary>
     public long Version
     {
         get
@@ -39,6 +43,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         }
     }
 
+    /// <summary>设置新状态；若与当前值相等则不更新并返回 false。</summary>
     public bool Set(TState state)
     {
         ReactiveSubscription<TState>[] subscriptions;
@@ -57,6 +62,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return true;
     }
 
+    /// <summary>基于当前状态计算新状态并更新。</summary>
     public TState Update(Func<TState, TState> update)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -79,6 +85,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return state;
     }
 
+    /// <summary>在锁内快照当前状态后执行读取函数并返回结果。</summary>
     public TResult Read<TResult>(Func<TState, TResult> read)
     {
         ArgumentNullException.ThrowIfNull(read);
@@ -93,6 +100,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return read(state);
     }
 
+    /// <summary>创建基于选择器的派生响应值。</summary>
     public StoreSelector<TState, TValue> Select<TValue>(
         Func<TState, TValue> selector,
         IEqualityComparer<TValue>? comparer = null)
@@ -101,6 +109,7 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return new StoreSelector<TState, TValue>(this, selector, comparer);
     }
 
+    /// <summary>订阅状态变更；按选项决定是否立即派发当前值。</summary>
     public IDisposable Subscribe(Action<TState> callback, ReactiveSubscriptionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -126,9 +135,11 @@ public sealed class Store<TState> : IReactiveValue<TState>, IDisposable
         return subscription;
     }
 
+    /// <summary>订阅状态变更（不接收状态值的便捷重载）。</summary>
     public IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null) =>
         Subscribe(_ => callback(), options);
 
+    /// <summary>释放存储并解除所有订阅。</summary>
     public void Dispose()
     {
         ReactiveSubscription<TState>[] subscriptions;

@@ -1,5 +1,6 @@
 namespace Square.Runtime.State;
 
+/// <summary>基于选择器从 <see cref="Store{TState}"/> 派生的响应值视图。</summary>
 public sealed class StoreSelector<TState, TValue> : IReactiveValue<TValue>, IDisposable
 {
     private readonly object _gate = new();
@@ -25,6 +26,7 @@ public sealed class StoreSelector<TState, TValue> : IReactiveValue<TValue>, IDis
             new ReactiveSubscriptionOptions { EmitCurrent = true });
     }
 
+    /// <summary>当前选择值。</summary>
     public TValue Value
     {
         get
@@ -37,6 +39,7 @@ public sealed class StoreSelector<TState, TValue> : IReactiveValue<TValue>, IDis
         }
     }
 
+    /// <summary>订阅选择值变更；按选项决定是否立即派发当前值。</summary>
     public IDisposable Subscribe(Action<TValue> callback, ReactiveSubscriptionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -62,9 +65,11 @@ public sealed class StoreSelector<TState, TValue> : IReactiveValue<TValue>, IDis
         return subscription;
     }
 
+    /// <summary>订阅变更（不接收值的便捷重载）。</summary>
     public IDisposable SubscribeChanged(Action callback, ReactiveSubscriptionOptions? options = null) =>
         Subscribe(_ => callback(), options);
 
+    /// <summary>释放选择器并解除源订阅。</summary>
     public void Dispose()
     {
         ReactiveSubscription<TValue>[] subscriptions;

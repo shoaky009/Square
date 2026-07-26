@@ -6,28 +6,47 @@ using Square.UI;
 
 namespace Square.Controls;
 
+/// <summary>文本编辑器公共契约，描述光标、选区与输入处理。</summary>
 public interface ITextEditor
 {
+    /// <summary>光标位置索引。</summary>
     int CaretIndex { get; }
+    /// <summary>选区起始索引。</summary>
     int SelectionStart { get; }
+    /// <summary>选区长度。</summary>
     int SelectionLength { get; }
+    /// <summary>选中文本。</summary>
     string SelectedText { get; }
+    /// <summary>是否允许复制当前选区。</summary>
     bool CanCopySelection { get; }
+    /// <summary>是否允许剪切当前选区。</summary>
     bool CanCutSelection { get; }
+    /// <summary>光标矩形（屏幕坐标）。</summary>
     Rect CaretRect { get; }
 
+    /// <summary>处理文本输入。</summary>
     void HandleTextInput(string text);
+    /// <summary>处理键盘按键。</summary>
     void HandleKey(int keyCode, bool shift = false, bool control = false);
+    /// <summary>处理指针按下。</summary>
     void HandlePointerDown(Point point, bool extendSelection = false);
+    /// <summary>处理指针移动。</summary>
     void HandlePointerMove(Point point);
+    /// <summary>处理指针抬起。</summary>
     void HandlePointerUp(Point point);
+    /// <summary>选中指定位置处的单词。</summary>
     void SelectWordAt(Point point);
+    /// <summary>全选。</summary>
     void SelectAll();
+    /// <summary>删除当前选区，返回是否实际删除。</summary>
     bool DeleteSelection();
+    /// <summary>切换光标闪烁，返回是否触发了视觉变化。</summary>
     bool ToggleCaretBlink();
+    /// <summary>重置光标闪烁状态。</summary>
     void ResetCaretBlink();
 }
 
+/// <summary>文本编辑器基类，提供光标、选区、键盘与指针交互的通用实现。</summary>
 public abstract class TextEditorBase : UIElement, ITextEditor
 {
     private const float DefaultFontSize = 14f;
@@ -57,27 +76,38 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         AddEventListener("blur", CollapseSelectionOnBlur);
     }
 
+    /// <summary>当前文本值。</summary>
     public string Value
     {
         get => GetProperty<string>(nameof(Value)) ?? "";
         set => SetProperty(nameof(Value), NormalizeNewlines(value ?? ""));
     }
 
+    /// <summary>占位提示文本。</summary>
     public string Placeholder
     {
         get => GetProperty<string>(nameof(Placeholder)) ?? "";
         set => SetProperty(nameof(Placeholder), value);
     }
 
+    /// <summary>用于绘制的显示文本（如密码框替换为星号）。</summary>
     protected virtual string DisplayValue => Value;
 
+    /// <inheritdoc/>
     public int CaretIndex => _caretIndex;
+    /// <inheritdoc/>
     public int SelectionStart => Math.Min(_caretIndex, _selectionAnchor);
+    /// <inheritdoc/>
     public int SelectionLength => Math.Abs(_caretIndex - _selectionAnchor);
+    /// <inheritdoc/>
     public string SelectedText => SelectionLength == 0 ? "" : Value.Substring(SelectionStart, SelectionLength);
+    /// <inheritdoc/>
     public virtual bool CanCopySelection => true;
+    /// <inheritdoc/>
     public virtual bool CanCutSelection => true;
+    /// <inheritdoc/>
     public Rect CaretRect => GetCaretRect();
+    /// <summary>选区背景色。</summary>
     public Color SelectionBackground
     {
         get => Properties.HasValue(nameof(SelectionBackground))
@@ -85,12 +115,14 @@ public abstract class TextEditorBase : UIElement, ITextEditor
             : Color.FromRgb(51, 144, 255);
         set => SetProperty(nameof(SelectionBackground), value);
     }
+    /// <summary>选区前景色。</summary>
     public Color SelectionForeground
     {
         get => Properties.HasValue(nameof(SelectionForeground)) ? GetProperty<Color>(nameof(SelectionForeground)) : Color.White;
         set => SetProperty(nameof(SelectionForeground), value);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext context)
     {
         if (PaintEditorChrome) ControlDrawing.DrawInputFrame(context, this);
@@ -141,6 +173,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         context.PopClip();
     }
 
+    /// <inheritdoc/>
     public void HandleTextInput(string text)
     {
         if (!CanEditText || !IsEnabled || string.IsNullOrEmpty(text)) return;
@@ -151,8 +184,10 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         ReplaceSelection(text);
     }
 
+    /// <summary>过滤用户输入文本，默认原样返回。</summary>
     protected virtual string FilterInput(string text) => text;
 
+    /// <inheritdoc/>
     public void HandleKey(int keyCode, bool shift = false, bool control = false)
     {
         if (!IsEnabled) return;
@@ -196,6 +231,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         }
     }
 
+    /// <inheritdoc/>
     public void HandlePointerDown(Point point, bool extendSelection = false)
     {
         if (!IsEnabled) return;
@@ -208,6 +244,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    /// <inheritdoc/>
     public void HandlePointerMove(Point point)
     {
         if (!_isDragging) return;
@@ -217,6 +254,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    /// <inheritdoc/>
     public void HandlePointerUp(Point point)
     {
         if (!_isDragging) return;
@@ -227,6 +265,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    /// <inheritdoc/>
     public void SelectWordAt(Point point)
     {
         var index = HitTestIndex(point);
@@ -239,6 +278,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    /// <inheritdoc/>
     public void SelectAll()
     {
         _selectionAnchor = 0;
@@ -248,6 +288,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         InvalidatePaint();
     }
 
+    /// <inheritdoc/>
     public bool DeleteSelection()
     {
         if (!CanEditText || SelectionLength == 0) return false;
@@ -255,6 +296,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         return true;
     }
 
+    /// <inheritdoc/>
     public bool ToggleCaretBlink()
     {
         if (!IsFocused || SelectionLength > 0) return false;
@@ -274,6 +316,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         return true;
     }
 
+    /// <inheritdoc/>
     public void ResetCaretBlink()
     {
         _caretOpacity = 1f;
@@ -623,24 +666,32 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     }
 }
 
+/// <summary>单行输入框，支持 <c>text</c>、<c>password</c>、<c>number</c> 类型。</summary>
 public class Input : TextEditorBase
 {
+    /// <inheritdoc/>
     protected override bool IsMultiline => false;
 
+    /// <summary>输入类型。</summary>
     public string Type
     {
         get => GetProperty<string>(nameof(Type)) ?? "text";
         set => SetProperty(nameof(Type), NormalizeType(value));
     }
 
+    /// <inheritdoc/>
     protected override string DisplayValue => Type == "password" ? new string('*', Value.Length) : Value;
 
+    /// <inheritdoc/>
     public override bool CanCopySelection => Type != "password";
 
+    /// <inheritdoc/>
     public override bool CanCutSelection => Type != "password";
 
+    /// <inheritdoc/>
     protected override string FilterInput(string text) => Type == "number" ? FilterNumberInput(text) : text;
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -653,6 +704,7 @@ public class Input : TextEditorBase
         }
     }
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) => new(200, 36);
 
     private string FilterNumberInput(string text)
@@ -695,8 +747,11 @@ public class Input : TextEditorBase
     }
 }
 
+/// <summary>多行文本输入区域。</summary>
 public class TextArea : TextEditorBase
 {
+    /// <inheritdoc/>
     protected override bool IsMultiline => true;
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) => new(300, 88);
 }

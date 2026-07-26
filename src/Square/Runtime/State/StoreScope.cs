@@ -1,5 +1,6 @@
 namespace Square.Runtime.State;
 
+/// <summary>存储作用域，按类型注册并按父子层级查找存储。</summary>
 public sealed class StoreScope : IDisposable
 {
     private readonly object _gate = new();
@@ -8,6 +9,7 @@ public sealed class StoreScope : IDisposable
     private StoreScope? _parent;
     private bool _disposed;
 
+    /// <summary>创建根作用域。</summary>
     public StoreScope()
     {
     }
@@ -17,6 +19,7 @@ public sealed class StoreScope : IDisposable
         _parent = parent;
     }
 
+    /// <summary>注册存储实例；同类型重复注册将抛出异常。</summary>
     public TStore Add<TStore>(TStore store) where TStore : class
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -31,6 +34,7 @@ public sealed class StoreScope : IDisposable
         return store;
     }
 
+    /// <summary>创建并注册 <see cref="Store{TState}"/>。</summary>
     public Store<TState> Add<TState>(
         TState initialState,
         IEqualityComparer<TState>? comparer = null)
@@ -38,12 +42,14 @@ public sealed class StoreScope : IDisposable
         return Add(new Store<TState>(initialState, comparer));
     }
 
+    /// <summary>获取已注册的存储；不存在则抛出异常。</summary>
     public TStore Get<TStore>() where TStore : class
     {
         if (TryGet<TStore>(out var store)) return store;
         throw new KeyNotFoundException($"No store for {typeof(TStore)} is registered in this scope hierarchy.");
     }
 
+    /// <summary>尝试按层级查找存储。</summary>
     public bool TryGet<TStore>(out TStore store) where TStore : class
     {
         StoreScope? parent;
@@ -64,6 +70,7 @@ public sealed class StoreScope : IDisposable
         return false;
     }
 
+    /// <summary>创建子作用域。</summary>
     public StoreScope CreateChild()
     {
         lock (_gate)
@@ -75,6 +82,7 @@ public sealed class StoreScope : IDisposable
         }
     }
 
+    /// <summary>释放作用域及其子作用域与所含可释放存储。</summary>
     public void Dispose()
     {
         StoreScope[] children;

@@ -4,6 +4,7 @@ using Square.UI;
 
 namespace Square.CSS.Engine;
 
+/// <summary>表示一条 CSS 动画时间线，负责根据关键帧驱动属性插值。</summary>
 public sealed class CssAnimationTimeline
 {
     private readonly Element _visual;
@@ -16,6 +17,14 @@ public sealed class CssAnimationTimeline
     private float _elapsed;
     private bool _running;
 
+    /// <summary>初始化 CssAnimationTimeline 的新实例。</summary>
+    /// <param name="Element">目标元素。</param>
+    /// <param name="keyFrames">关键帧规则。</param>
+    /// <param name="duration">持续时间（秒）。</param>
+    /// <param name="easing">缓动函数。</param>
+    /// <param name="delay">延迟时间（秒）。</param>
+    /// <param name="iterationCount">迭代次数。</param>
+    /// <param name="direction">动画方向。</param>
     internal CssAnimationTimeline(Element Element, KeyFramesRule keyFrames, float duration, Func<float, float> easing, float delay = 0, int iterationCount = 1, string direction = "normal")
     {
         _visual = Element;
@@ -27,8 +36,10 @@ public sealed class CssAnimationTimeline
         _tracks = BuildTracks(keyFrames);
     }
 
+    /// <summary>获取动画是否已完成。</summary>
     public bool IsComplete => _elapsed >= _delay + _duration * _iterationCount;
 
+    /// <summary>启动动画时间线，应用起始帧。</summary>
     public void Start()
     {
         _elapsed = 0;
@@ -36,6 +47,8 @@ public sealed class CssAnimationTimeline
         Apply(GetDirectedProgress(0));
     }
 
+    /// <summary>推进动画时间线，应用当前帧。</summary>
+    /// <param name="deltaSeconds">增量秒数。</param>
     public void Tick(float deltaSeconds)
     {
         if (!_running) return;

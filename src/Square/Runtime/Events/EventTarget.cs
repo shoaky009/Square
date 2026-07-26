@@ -186,6 +186,7 @@ public class EventTarget
     {
         private EventTarget? _target = target;
 
+        /// <summary>移除监听器并释放句柄。</summary>
         public void Dispose()
         {
             _target?.RemoveEventListener(type, listener, capture);
@@ -319,11 +320,17 @@ public class EventTarget
         bool passive,
         CancellationTokenRegistration? registration)
     {
+        /// <summary>事件类型名。</summary>
         public string Type { get; } = type;
+        /// <summary>监听回调。</summary>
         public Action<Event> Listener { get; } = listener;
+        /// <summary>是否在捕获阶段调用。</summary>
         public bool Capture { get; } = capture;
+        /// <summary>是否触发一次后自动移除。</summary>
         public bool Once { get; } = once;
+        /// <summary>是否为 passive 监听。</summary>
         public bool Passive { get; } = passive;
+        /// <summary>取消令牌注册句柄。</summary>
         public CancellationTokenRegistration? Registration { get; } = registration;
     }
 

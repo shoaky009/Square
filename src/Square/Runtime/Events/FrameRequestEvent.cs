@@ -1,7 +1,9 @@
 namespace Square.Events;
 
+/// <summary>由宿主在帧到期时调用的元素接口。</summary>
 public interface IFrameScheduledElement
 {
+    /// <summary>帧到期回调。</summary>
     void OnFrameDue();
 }
 
@@ -19,6 +21,7 @@ public sealed class FrameRequestEvent : Event
         Delay = TimeSpan.FromSeconds(1d / FramesPerSecond);
     }
 
+    /// <summary>用帧间隔创建帧请求。</summary>
     public FrameRequestEvent(TimeSpan delay)
         : base(StandardEvents.RequestFrame, new EventInit { Bubbles = true, Cancelable = false })
     {

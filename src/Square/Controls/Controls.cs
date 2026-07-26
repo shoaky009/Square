@@ -8,8 +8,10 @@ using FontManager = global::Square.Text.FontManager;
 
 namespace Square.Controls;
 
+/// <summary>基础容器视图，仅绘制背景，类似 HTML <c>div</c>。</summary>
 public class View : UIElement
 {
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var background = ControlDrawing.GetStyledColor(this, "background", Color.Transparent);
@@ -38,42 +40,56 @@ public class ScrollViewer : View
     public float ScrollableWidth => Math.Max(0, ExtentWidth - ViewportWidth);
     public float ScrollableHeight => Math.Max(0, ExtentHeight - ViewportHeight);
 
+    /// <summary>滚动到指定偏移量。</summary>
     public void ScrollTo(float horizontalOffset, float verticalOffset)
     {
         ScrollLeft = horizontalOffset;
         ScrollTop = verticalOffset;
     }
 
+    /// <summary>滚动到顶部。</summary>
     public void ScrollToTop() => ScrollTop = 0;
+    /// <summary>滚动到底部。</summary>
     public void ScrollToBottom() => ScrollTop = ScrollableHeight;
 }
 
+/// <summary>文本显示控件，类似 HTML <c>span</c>。</summary>
 public class Text : UIElement, ITextSelectable
 {
     private readonly DomTextContent _domText;
 
+    /// <summary>文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    /// <summary>文字颜色。</summary>
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
+    /// <summary>字号（像素）。</summary>
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
 
+    /// <summary>初始化 <see cref="Text"/> 的新实例。</summary>
     public Text() { _domText = new DomTextContent(this); }
+    /// <summary>初始化 <see cref="Text"/> 的新实例并设置文本内容。</summary>
     public Text(string text) : this() { TextContent = text; }
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, TextContent, FontSize, Geometry.Position);
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         if (string.IsNullOrEmpty(TextContent)) return Size.Zero;
         return ControlDrawing.MeasureText(this, TextContent, FontSize, availableSize);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         if (string.IsNullOrEmpty(TextContent)) return;
         ControlDrawing.DrawText(ctx, this, TextContent, Geometry.Position, Color, FontSize, maxSize: Geometry.Size);
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -85,19 +101,28 @@ public class Text : UIElement, ITextSelectable
 /// <summary>List item, similar to HTML <c>li</c>. Optional marker and text; may also host children.</summary>
 public class ListItem : UIElement, ITextSelectable
 {
+    /// <summary>文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    /// <summary>文字颜色。</summary>
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black; set => SetProperty(nameof(Color), value); }
+    /// <summary>字号（像素）。</summary>
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
+    /// <summary>是否处于选中状态。</summary>
     public bool IsSelected { get => GetProperty<bool>(nameof(IsSelected)); set => SetProperty(nameof(IsSelected), value); }
     /// <summary>Bullet or number prefix, e.g. "• ", "1. ". Empty draws no marker.</summary>
     public string Marker { get => GetProperty<string>(nameof(Marker)) ?? "• "; set => SetProperty(nameof(Marker), value); }
 
+    /// <summary>初始化 <see cref="ListItem"/> 的新实例。</summary>
     public ListItem() { }
+    /// <summary>初始化 <see cref="ListItem"/> 的新实例并设置文本内容。</summary>
     public ListItem(string text) { TextContent = text; }
 
+    /// <inheritdoc/>
     public string SelectableText => Marker + TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, Marker + TextContent, FontSize, Geometry.Position);
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var label = Marker + TextContent;
@@ -117,6 +142,7 @@ public class ListItem : UIElement, ITextSelectable
         return ControlDrawing.MeasureText(this, label, FontSize);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var background = ControlDrawing.GetStyledColor(this, "background",
@@ -133,6 +159,7 @@ public class ListItem : UIElement, ITextSelectable
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -145,23 +172,34 @@ public class Link : UIElement, ITextSelectable
 {
     private readonly DomTextContent _domText;
 
+    /// <summary>文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    /// <summary>跳转目标 URL 或路径。</summary>
     public string Href { get => GetProperty<string>(nameof(Href)) ?? ""; set => SetProperty(nameof(Href), value); }
+    /// <summary>文字颜色。</summary>
     public Color Color { get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.FromRgb(0, 102, 204); set => SetProperty(nameof(Color), value); }
+    /// <summary>字号（像素）。</summary>
     public float FontSize { get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 16f; set => SetProperty(nameof(FontSize), value); }
+    /// <summary>是否显示下划线。</summary>
     public bool Underline { get => !Properties.HasValue(nameof(Underline)) || GetProperty<bool>(nameof(Underline)); set => SetProperty(nameof(Underline), value); }
 
+    /// <summary>初始化 <see cref="Link"/> 的新实例。</summary>
     public Link()
     {
         _domText = new DomTextContent(this);
         AddEventListener("click", Activate);
     }
+    /// <summary>初始化 <see cref="Link"/> 的新实例并设置文本内容。</summary>
     public Link(string text) : this() { TextContent = text; }
+    /// <summary>初始化 <see cref="Link"/> 的新实例并设置文本和链接地址。</summary>
     public Link(string text, string href) : this() { TextContent = text; Href = href; }
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, TextContent, FontSize, Geometry.Position);
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         if (string.IsNullOrEmpty(TextContent)) return Size.Zero;
@@ -170,6 +208,7 @@ public class Link : UIElement, ITextSelectable
         return new Size(ControlDrawing.MeasureRenderedTextWidth(TextContent, font), measured.Height);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         if (string.IsNullOrEmpty(TextContent)) return;
@@ -187,6 +226,7 @@ public class Link : UIElement, ITextSelectable
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -194,6 +234,7 @@ public class Link : UIElement, ITextSelectable
             _domText.Text = TextContent;
     }
 
+    /// <summary>激活链接，打开目标地址。</summary>
     protected virtual void Activate()
     {
         if (!IsEnabled || !TryGetExternalUri(Href, out var uri)) return;
@@ -224,18 +265,26 @@ public class Link : UIElement, ITextSelectable
     }
 }
 
+/// <summary>按钮控件，类似 HTML <c>button</c>。</summary>
 public class Button : UIElement, ITextSelectable
 {
     private readonly DomTextContent _domText;
 
+    /// <summary>按钮文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    /// <summary>背景颜色。</summary>
     public Color Background { get => Properties.HasValue(nameof(Background)) ? GetProperty<Color>(nameof(Background)) : Color.FromRgb(0, 120, 212); set => SetProperty(nameof(Background), value); }
+    /// <summary>前景（文字）颜色。</summary>
     public Color Foreground { get => Properties.HasValue(nameof(Foreground)) ? GetProperty<Color>(nameof(Foreground)) : Color.White; set => SetProperty(nameof(Foreground), value); }
 
+    /// <summary>初始化 <see cref="Button"/> 的新实例。</summary>
     public Button() { _domText = new DomTextContent(this); }
+    /// <summary>初始化 <see cref="Button"/> 的新实例并设置文本内容。</summary>
     public Button(string text) : this() { TextContent = text; }
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds
     {
         get
@@ -249,12 +298,14 @@ public class Button : UIElement, ITextSelectable
         }
     }
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var textSize = ControlDrawing.MeasureText(this, TextContent, 14f);
         return new Size(textSize.Width + 32, Math.Max(36, textSize.Height + 12));
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var background = IsEnabled
@@ -272,6 +323,7 @@ public class Button : UIElement, ITextSelectable
         ControlDrawing.DrawText(ctx, this, TextContent, textPosition, foreground, 14f);
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -280,29 +332,37 @@ public class Button : UIElement, ITextSelectable
     }
 }
 
+/// <summary>复选框控件。</summary>
 public class CheckBox : UIElement, ITextSelectable
 {
+    /// <summary>是否处于选中状态。</summary>
     public bool IsChecked { get => GetProperty<bool>(nameof(IsChecked)); set => SetProperty(nameof(IsChecked), value); }
+    /// <summary>文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
 
+    /// <summary>初始化 <see cref="CheckBox"/> 的新实例。</summary>
     public CheckBox()
     {
         AddEventListener("click", ToggleFromInput);
     }
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(
         this,
         TextContent,
         14f,
         new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f));
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var text = ControlDrawing.MeasureText(this, TextContent, 14f);
         return new Size(26 + text.Width, Math.Max(24, text.Height));
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var box = new Rect(Geometry.X, Geometry.Y + (Geometry.Height - 18) / 2f, 18, 18);
@@ -321,6 +381,7 @@ public class CheckBox : UIElement, ITextSelectable
             new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f), Color.Black, 14f);
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -335,30 +396,39 @@ public class CheckBox : UIElement, ITextSelectable
     }
 }
 
+/// <summary>单选按钮控件，按 <see cref="GroupName"/> 分组。</summary>
 public class Radio : UIElement, ITextSelectable
 {
+    /// <summary>是否处于选中状态。</summary>
     public bool IsChecked { get => GetProperty<bool>(nameof(IsChecked)); set => SetProperty(nameof(IsChecked), value); }
+    /// <summary>文本内容。</summary>
     public string TextContent { get => GetProperty<string>(nameof(TextContent)) ?? ""; set => SetProperty(nameof(TextContent), value); }
+    /// <summary>所属分组名称；同组单选按钮互斥。</summary>
     public string GroupName { get => GetProperty<string>(nameof(GroupName)) ?? ""; set => SetProperty(nameof(GroupName), value); }
 
+    /// <summary>初始化 <see cref="Radio"/> 的新实例。</summary>
     public Radio()
     {
         AddEventListener("click", SelectFromInput);
     }
 
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(
         this,
         TextContent,
         14f,
         new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f));
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var text = ControlDrawing.MeasureText(this, TextContent, 14f);
         return new Size(26 + text.Width, Math.Max(24, text.Height));
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var center = new Point(Geometry.X + 9, Geometry.Y + Geometry.Height / 2f);
@@ -370,6 +440,7 @@ public class Radio : UIElement, ITextSelectable
             new Point(Geometry.X + 26, Geometry.Y + (Geometry.Height - 17) / 2f), Color.Black, 14f);
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -389,28 +460,42 @@ public class Radio : UIElement, ITextSelectable
     }
 }
 
+/// <summary>下拉选择控件，类似 HTML <c>select</c>。</summary>
 public class Select : UIElement, IPopupElement, ITextSelectable
 {
+    /// <inheritdoc/>
     public bool IsLayoutOverlay => false;
+    /// <summary>当前选中的值。</summary>
     public string Value { get => GetProperty<string>(nameof(Value)) ?? ""; set => SetProperty(nameof(Value), value); }
+    /// <summary>可选项集合。</summary>
     public string[] Options { get => GetProperty<string[]>(nameof(Options)) ?? []; set => SetProperty(nameof(Options), value ?? []); }
+    /// <summary>占位提示文本。</summary>
     public string Placeholder { get => GetProperty<string>(nameof(Placeholder)) ?? "Select"; set => SetProperty(nameof(Placeholder), value); }
+    /// <summary>下拉是否处于打开状态。</summary>
     public bool IsOpen { get; private set; }
+    /// <inheritdoc/>
     public bool IsPopupOpen => IsOpen && Options.Length > 0;
+    /// <inheritdoc/>
     public Rect PopupBounds => GetDropDownRect();
+    /// <inheritdoc/>
     public bool DismissOnPointerDownOutside => true;
+    /// <inheritdoc/>
     public bool CloseOnEscape => true;
     private int _hoveredOption = -1;
 
+    /// <inheritdoc/>
     public string SelectableText => string.IsNullOrEmpty(Value) ? Placeholder : Value;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(this, SelectableText, 14f, new Point(Geometry.X + 8, Geometry.Y + 8));
 
+    /// <inheritdoc/>
     public override int ZIndex
     {
         get => IsOpen ? 1000 : base.ZIndex;
         set => base.ZIndex = value;
     }
 
+    /// <summary>初始化 <see cref="Select"/> 的新实例。</summary>
     public Select()
     {
         AddEventListener<KeyboardEvent>(StandardEvents.KeyDown, e =>
@@ -420,8 +505,10 @@ public class Select : UIElement, IPopupElement, ITextSelectable
         });
     }
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) => new(200, 36);
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         ControlDrawing.DrawInputFrame(ctx, this);
@@ -436,6 +523,7 @@ public class Select : UIElement, IPopupElement, ITextSelectable
 
     }
 
+    /// <inheritdoc/>
     public void PaintPopup(IRenderContext ctx)
     {
         if (!IsPopupOpen) return;
@@ -453,19 +541,26 @@ public class Select : UIElement, IPopupElement, ITextSelectable
         }
     }
 
+    /// <inheritdoc/>
     public override Element? HitTest(Point point)
     {
         if (!IsVisible) return null;
         return Geometry.Contains(point) ? this : null;
     }
 
+    /// <inheritdoc/>
     public Element? HitTestPopup(Point point) => IsPopupOpen && PopupBounds.Contains(point) ? this : null;
+    /// <inheritdoc/>
     public bool ContainsPopupInteraction(Point point) => Geometry.Contains(point) || PopupBounds.Contains(point);
+    /// <inheritdoc/>
     public bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt)
         => HandleKey(keyCode, shift, control, alt);
+    /// <inheritdoc/>
     public Point MapPointToContent(Point point) => point;
+    /// <inheritdoc/>
     public void ClosePopup() => CloseDropDown();
 
+    /// <summary>处理键盘输入，返回是否已处理。</summary>
     public bool HandleKey(int keyCode, bool shift = false, bool control = false, bool alt = false)
     {
         if (!IsEnabled || Options.Length == 0) return false;
@@ -506,6 +601,7 @@ public class Select : UIElement, IPopupElement, ITextSelectable
         }
     }
 
+    /// <summary>处理指针按下事件。</summary>
     public void HandlePointerDown(Point point)
     {
         if (!IsEnabled) return;
@@ -524,6 +620,7 @@ public class Select : UIElement, IPopupElement, ITextSelectable
         }
     }
 
+    /// <summary>处理指针移动事件，返回悬停项是否变化。</summary>
     public bool HandlePointerMove(Point point)
     {
         var next = IsOpen && GetDropDownRect().Contains(point)
@@ -535,6 +632,7 @@ public class Select : UIElement, IPopupElement, ITextSelectable
         return true;
     }
 
+    /// <summary>关闭下拉列表。</summary>
     public void CloseDropDown()
     {
         if (!IsOpen) return;
@@ -591,7 +689,9 @@ public class Select : UIElement, IPopupElement, ITextSelectable
     private Rect GetDropDownRect() => new(Geometry.X, Geometry.Bottom + 2, Geometry.Width, Options.Length * 32 + 2);
 }
 
+/// <summary>弹出层相对锚点的放置方位。</summary>
 public enum PopupPlacement { Bottom, Top, Left, Right }
+/// <summary>弹出层相对锚点的对齐方式。</summary>
 public enum PopupAlignment { Start, Center, End }
 
 /// <summary>Top-level anchored content that does not paint in its layout-tree position.</summary>
@@ -599,21 +699,32 @@ public class Popup : View, IPopupElement
 {
     private bool _isOpen;
 
+    /// <summary>初始化 <see cref="Popup"/> 的新实例。</summary>
     public Popup()
     {
         Style.SetCascaded("position", "absolute", int.MinValue);
         Style.SetCascaded("box-shadow", "0 4px 8px 2px rgba(0,0,0,0.48)", int.MinValue);
     }
 
+    /// <summary>锚定元素，用于定位弹出层。</summary>
     public Element? Anchor { get; set; }
+    /// <summary>弹出方位。</summary>
     public PopupPlacement Placement { get; set; } = PopupPlacement.Bottom;
+    /// <summary>对齐方式。</summary>
     public PopupAlignment Alignment { get; set; } = PopupAlignment.Start;
+    /// <summary>水平偏移量。</summary>
     public float HorizontalOffset { get; set; }
+    /// <summary>垂直偏移量。</summary>
     public float VerticalOffset { get; set; } = 4;
+    /// <summary>是否在弹出层外按下指针时关闭。</summary>
     public bool DismissOnPointerDownOutside { get; set; } = true;
+    /// <summary>是否在按下 ESC 时关闭。</summary>
     public bool CloseOnEscape { get; set; }
+    /// <summary>溢出时是否翻转方位。</summary>
     public bool FlipOnOverflow { get; set; }
+    /// <summary>是否将弹出层限制在视口内。</summary>
     public bool ConstrainToViewport { get; set; }
+    /// <summary>获取或设置弹出层的打开状态。</summary>
     public bool IsOpen
     {
         get => _isOpen;
@@ -624,16 +735,21 @@ public class Popup : View, IPopupElement
         }
     }
 
+    /// <inheritdoc/>
     public bool IsPopupOpen => _isOpen && !PopupBounds.IsEmpty;
+    /// <inheritdoc/>
     public virtual Rect PopupBounds => ContentBounds;
+    /// <summary>计算弹出内容区域。</summary>
     protected virtual Rect ContentBounds => GetPopupBounds();
 
+    /// <inheritdoc/>
     public override int ZIndex
     {
         get => IsOpen ? 1000 : base.ZIndex;
         set => base.ZIndex = value;
     }
 
+    /// <summary>打开弹出层。</summary>
     public virtual void Open()
     {
         if (_isOpen) return;
@@ -643,6 +759,7 @@ public class Popup : View, IPopupElement
         DispatchEvent(new Event("open"));
     }
 
+    /// <summary>关闭弹出层。</summary>
     public virtual void Close()
     {
         if (!_isOpen) return;
@@ -652,13 +769,17 @@ public class Popup : View, IPopupElement
         DispatchEvent(new Event("close"));
     }
 
+    /// <inheritdoc/>
     public void ClosePopup() => Close();
 
+    /// <inheritdoc/>
     public virtual bool ContainsPopupInteraction(Point point)
         => ContentBounds.Contains(point) || Anchor?.Geometry.Contains(point) == true;
 
+    /// <inheritdoc/>
     public virtual bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt) => false;
 
+    /// <inheritdoc/>
     public virtual Point MapPointToContent(Point point)
     {
         var bounds = ContentBounds;
@@ -667,11 +788,13 @@ public class Popup : View, IPopupElement
             point.Y - bounds.Y + Geometry.Y);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext context)
     {
         // Popup content is replayed by PaintPopup in the top-level popup layer.
     }
 
+    /// <inheritdoc/>
     public virtual void PaintPopup(IRenderContext context)
     {
         if (!IsPopupOpen) return;
@@ -689,6 +812,7 @@ public class Popup : View, IPopupElement
         context.PopTransform();
     }
 
+    /// <inheritdoc/>
     public virtual Element? HitTestPopup(Point point)
     {
         var bounds = ContentBounds;
@@ -702,6 +826,7 @@ public class Popup : View, IPopupElement
         return this;
     }
 
+    /// <summary>计算弹出层的边界矩形。</summary>
     protected virtual Rect GetPopupBounds()
     {
         if (Geometry.Width <= 0 || Geometry.Height <= 0) return Rect.Empty;
@@ -757,6 +882,7 @@ public class Popup : View, IPopupElement
         return bounds;
     }
 
+    /// <summary>在启用 <see cref="ConstrainToViewport"/> 时把弹出层边界限制在视口内。</summary>
     protected Rect ConstrainPopupBounds(Rect bounds)
     {
         if (!ConstrainToViewport) return bounds;
@@ -771,6 +897,7 @@ public class Popup : View, IPopupElement
             height);
     }
 
+    /// <summary>获取弹出层所在的视口边界。</summary>
     protected Rect GetPopupViewportBounds()
     {
         if (OwnerDocument is not UIDocument document) return Rect.Empty;
@@ -806,6 +933,7 @@ public class Dialog : Popup
 {
     private UIElement? _restoreFocus;
 
+    /// <summary>初始化 <see cref="Dialog"/> 的新实例。</summary>
     public Dialog()
     {
         CloseOnEscape = true;
@@ -813,14 +941,18 @@ public class Dialog : Popup
         Style.SetCascaded("background", "#ffffff", int.MinValue);
     }
 
+    /// <summary>是否以模态方式显示（带遮罩并阻挡外部交互）。</summary>
     public bool IsModal { get; set; } = true;
+    /// <summary>是否在点击背景遮罩时关闭对话框。</summary>
     public bool CloseOnBackdropClick
     {
         get => DismissOnPointerDownOutside;
         set => DismissOnPointerDownOutside = value;
     }
+    /// <summary>模态遮罩颜色。</summary>
     public Color BackdropColor { get; set; } = Color.FromRgba(0, 0, 0, 112);
 
+    /// <summary>计算对话框内容区域，居中于视口。</summary>
     protected override Rect ContentBounds
     {
         get
@@ -835,8 +967,10 @@ public class Dialog : Popup
         }
     }
 
+    /// <inheritdoc/>
     public override Rect PopupBounds => IsModal ? GetViewportBounds() : ContentBounds;
 
+    /// <inheritdoc/>
     public override void Open()
     {
         if (IsOpen) return;
@@ -847,6 +981,7 @@ public class Dialog : Popup
         FindInitialFocus()?.Focus();
     }
 
+    /// <inheritdoc/>
     public override void Close()
     {
         if (!IsOpen) return;
@@ -858,8 +993,10 @@ public class Dialog : Popup
         _restoreFocus = null;
     }
 
+    /// <inheritdoc/>
     public override bool ContainsPopupInteraction(Point point) => ContentBounds.Contains(point);
 
+    /// <inheritdoc/>
     public override void PaintPopup(IRenderContext context)
     {
         if (!IsPopupOpen) return;
@@ -868,6 +1005,7 @@ public class Dialog : Popup
         base.PaintPopup(context);
     }
 
+    /// <inheritdoc/>
     public override Element? HitTestPopup(Point point)
     {
         if (!IsPopupOpen) return null;
@@ -891,6 +1029,7 @@ public class Dialog : Popup
             element is Button or Input or TextArea or CheckBox or Radio or Select or Link);
 }
 
+/// <summary>图像控件，支持位图与矢量图，可加载本地或远程源。</summary>
 public class Image : UIElement, ITextSelectable, IFrameScheduledElement
 {
     private IImageFrameSource? _frameSource;
@@ -903,17 +1042,23 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
     private long _frameDeadline;
     private bool _frameScheduled;
 
+    /// <summary>图像源地址。</summary>
     public string Source { get => GetProperty<string>(nameof(Source)) ?? ""; set => SetProperty(nameof(Source), value); }
+    /// <summary>直接绑定的图像内容。</summary>
     public Square.Graphics.Image? ImageContent { get => GetProperty<Square.Graphics.Image>(nameof(ImageContent)); set => SetProperty(nameof(ImageContent), value); }
+    /// <summary>加载过程中遇到的错误（如有）。</summary>
     public Exception? Error { get; private set; }
 
+    /// <inheritdoc/>
     public string SelectableText => Source;
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => string.IsNullOrEmpty(Source)
         ? Rect.Empty
         : ControlDrawing.GetTextBounds(this, Source, 12f, new Point(Geometry.X + 8, Geometry.Y + 8));
 
     private Square.Graphics.Image? DisplayImage => _sourceSurface ?? ImageContent;
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var image = DisplayImage;
@@ -927,6 +1072,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         return new Size(image.Width * scale, image.Height * scale);
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -943,6 +1089,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnAttachedCore()
     {
         base.OnAttachedCore();
@@ -950,6 +1097,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         else ResumeAnimation();
     }
 
+    /// <inheritdoc/>
     protected override void OnDetachedCore()
     {
         CancelPendingLoad();
@@ -957,6 +1105,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         base.OnDetachedCore();
     }
 
+    /// <inheritdoc/>
     protected override void OnEffectiveVisibilityChanged(bool isVisible)
     {
         base.OnEffectiveVisibilityChanged(isVisible);
@@ -964,6 +1113,7 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
         else PauseAnimation();
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var image = DisplayImage;
@@ -1159,13 +1309,17 @@ public class Image : UIElement, ITextSelectable, IFrameScheduledElement
     }
 }
 
+/// <summary>自由绘制画布控件，通过回调向其注入绘制逻辑。</summary>
 public class Canvas : UIElement, ITextSelectable
 {
     private Action<IRenderContext, Rect>? _animationFrameCallback;
 
+    /// <summary>自定义绘制回调，每帧调用以绘制内容。</summary>
     public Action<IRenderContext, Rect>? DrawContent { get; set; }
 
+    /// <inheritdoc/>
     public string SelectableText => GetProperty<string>(nameof(SelectableText)) ?? "Canvas";
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => Geometry;
 
     /// <summary>请求后续帧；默认 30fps，避免软件全窗口 Present 时 CPU 过高。</summary>
@@ -1175,9 +1329,11 @@ public class Canvas : UIElement, ITextSelectable
         DispatchEvent(StandardEvents.CreateRequestFrame(fps));
     }
 
+    /// <summary>请求一帧动画并绑定回调。</summary>
     public void RequestAnimationFrame(Action<IRenderContext, Rect> callback) =>
         RequestAnimationFrame(callback, 30d);
 
+    /// <summary>请求一帧动画并绑定回调，指定帧率。</summary>
     public void RequestAnimationFrame(Action<IRenderContext, Rect> callback, double fps)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -1185,16 +1341,20 @@ public class Canvas : UIElement, ITextSelectable
         RequestFrame(fps);
     }
 
+    /// <summary>取消动画帧回调。</summary>
     public void CancelAnimationFrame() => _animationFrameCallback = null;
 
+    /// <inheritdoc/>
     protected override void OnDetachedCore()
     {
         CancelAnimationFrame();
         base.OnDetachedCore();
     }
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize) => new(300, 140);
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         // 轻量背景：避免每帧绘制大量网格 Path（软件光栅很贵）

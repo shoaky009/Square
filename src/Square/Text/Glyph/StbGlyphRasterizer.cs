@@ -5,13 +5,18 @@ using StbTrueTypeSharp;
 
 namespace Square.Text.Glyph;
 
+/// <summary>基于 stb_truetype 的字形光栅器，用于非 Windows 平台或自定义字体的回退光栅化。</summary>
 internal sealed class StbGlyphRasterizer
 {
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
     private readonly FontCollection _fonts = FontCollection.Shared;
 
+    /// <summary>当前是否已加载任何可用字体。</summary>
     public bool IsAvailable => _fonts.HasAnyFont;
 
+    /// <summary>光栅化指定字体的单个字符，返回字形位图与度量；不可用或无字形时返回 null。</summary>
+    /// <param name="font">目标字体。</param>
+    /// <param name="character">要光栅化的字符。</param>
     public RasterizedGlyph? Rasterize(Font font, char character)
     {
         if (!IsAvailable) return null;
@@ -100,6 +105,7 @@ internal sealed class StbGlyphRasterizer
         char Character);
 }
 
+/// <summary>已加载或延迟加载的字体条目，封装 stbtt_fontinfo 与字体数据来源。</summary>
 internal sealed class FontEntry
 {
     private readonly string? _path;
@@ -107,6 +113,7 @@ internal sealed class FontEntry
     private byte[]? _data;
     private StbTrueType.stbtt_fontinfo? _info;
 
+    /// <summary>字体族名称。</summary>
     public string Family { get; }
 
     /// <summary>已加载字节（内存中）；路径字体在首次使用时再读入。</summary>
@@ -125,6 +132,8 @@ internal sealed class FontEntry
         _offset = offset;
     }
 
+    /// <summary>获取或初始化 stbtt_fontinfo；首次调用时加载字体数据。</summary>
+    /// <returns>字体信息；加载失败返回 null。</returns>
     public StbTrueType.stbtt_fontinfo? AcquireFontInfo()
     {
         if (_info != null) return _info;
@@ -180,6 +189,7 @@ internal sealed class FontCollection
     private string? _japaneseFamily;
     private string? _koreanFamily;
 
+    /// <summary>是否已加载任何字体。</summary>
     public bool HasAnyFont { get; private set; }
 
     private FontCollection()
@@ -222,12 +232,19 @@ internal sealed class FontCollection
             return _byFamily.ContainsKey(Normalize(family));
     }
 
+    /// <summary>判断指定字体族是否为已注册的自定义字体族。</summary>
+    /// <param name="family">字体族名称。</param>
+    /// <returns>是自定义族返回 true。</returns>
     public bool IsCustomFamily(string family)
     {
         lock (_gate)
             return _customFamilies.Contains(Normalize(family));
     }
 
+    /// <summary>按请求字体族与字符解析最合适的字体条目。</summary>
+    /// <param name="requestedFamily">请求的字体族名称。</param>
+    /// <param name="character">用于脚本回退判断的字符。</param>
+    /// <returns>匹配的字体条目；无可用字体返回 null。</returns>
     public FontEntry? Resolve(string requestedFamily, char character)
     {
         lock (_gate)

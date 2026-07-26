@@ -9,57 +9,70 @@ public class TreeItem : UIElement, ITextSelectable
 {
     private const float RowHeight = 28f;
 
+    /// <summary>初始化 <see cref="TreeItem"/> 的新实例。</summary>
     public TreeItem()
     {
         Style.SetCascaded("display", "flex", int.MinValue);
         Style.SetCascaded("flex-direction", "column", int.MinValue);
     }
 
+    /// <summary>初始化 <see cref="TreeItem"/> 的新实例并设置文本。</summary>
     public TreeItem(string text) : this() => TextContent = text;
 
+    /// <summary>文本内容。</summary>
     public string TextContent
     {
         get => GetProperty<string>(nameof(TextContent)) ?? "";
         set => SetProperty(nameof(TextContent), value);
     }
 
+    /// <summary>文字颜色。</summary>
     public Color Color
     {
         get => Properties.HasValue(nameof(Color)) ? GetProperty<Color>(nameof(Color)) : Color.Black;
         set => SetProperty(nameof(Color), value);
     }
 
+    /// <summary>字号（像素）。</summary>
     public float FontSize
     {
         get => Properties.HasValue(nameof(FontSize)) ? GetProperty<float>(nameof(FontSize)) : 14f;
         set => SetProperty(nameof(FontSize), value);
     }
 
+    /// <summary>是否展开子项。</summary>
     public bool IsExpanded
     {
         get => Properties.HasValue(nameof(IsExpanded)) && GetProperty<bool>(nameof(IsExpanded));
         set => SetProperty(nameof(IsExpanded), value);
     }
 
+    /// <summary>是否处于选中状态。</summary>
     public bool IsSelected
     {
         get => GetProperty<bool>(nameof(IsSelected));
         set => SetProperty(nameof(IsSelected), value);
     }
 
+    /// <summary>子项集合。</summary>
     public IReadOnlyList<TreeItem> Items => Children.OfType<TreeItem>().ToArray();
+    /// <summary>是否包含子项。</summary>
     public bool HasItems => Items.Count > 0;
+    /// <inheritdoc/>
     public string SelectableText => TextContent;
 
+    /// <inheritdoc/>
     public Rect SelectableTextBounds => ControlDrawing.GetTextBounds(
         this, TextContent, FontSize, new Point(Geometry.X + 20, Geometry.Y + 5));
 
+    /// <inheritdoc/>
     public override Size Measure(Size availableSize)
     {
         var text = ControlDrawing.MeasureText(this, TextContent, FontSize, availableSize);
         return new Size(text.Width + 24, RowHeight);
     }
 
+    /// <inheritdoc/>
     public override void Paint(IRenderContext ctx)
     {
         var row = new Rect(Geometry.X, Geometry.Y, Geometry.Width, Math.Min(RowHeight, Geometry.Height));
@@ -89,6 +102,7 @@ public class TreeItem : UIElement, ITextSelectable
             ControlDrawing.DrawText(ctx, this, TextContent, new Point(row.X + 20, row.Y + 5), foreground, FontSize);
     }
 
+    /// <summary>展开当前节点，返回是否实际发生展开。</summary>
     public bool Expand()
     {
         if (!HasItems || IsExpanded) return false;
@@ -97,6 +111,7 @@ public class TreeItem : UIElement, ITextSelectable
         return true;
     }
 
+    /// <summary>折叠当前节点，返回是否实际发生折叠。</summary>
     public bool Collapse()
     {
         if (!HasItems || !IsExpanded) return false;
@@ -105,8 +120,10 @@ public class TreeItem : UIElement, ITextSelectable
         return true;
     }
 
+    /// <summary>切换展开/折叠状态。</summary>
     public bool Toggle() => IsExpanded ? Collapse() : Expand();
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(string name)
     {
         base.OnPropertyChanged(name);
@@ -145,6 +162,7 @@ public class Tree : ScrollViewer
 {
     private TreeItem? _activeItem;
 
+    /// <summary>初始化 <see cref="Tree"/> 的新实例。</summary>
     public Tree()
     {
         Style.SetCascaded("display", "flex", int.MinValue);
@@ -157,8 +175,10 @@ public class Tree : ScrollViewer
         });
     }
 
+    /// <summary>当前选中的节点。</summary>
     public TreeItem? SelectedItem => GetAllItems().FirstOrDefault(item => item.IsSelected);
 
+    /// <summary>选中指定节点，返回是否实际改变了选择。</summary>
     public bool SelectItem(TreeItem? item)
     {
         if (item == null || !item.IsEnabled || !item.IsVisible || !ContainsItem(item)) return false;
@@ -177,6 +197,7 @@ public class Tree : ScrollViewer
         return true;
     }
 
+    /// <summary>清除选择。</summary>
     public void ClearSelection()
     {
         var selected = SelectedItem;
@@ -187,6 +208,7 @@ public class Tree : ScrollViewer
         DispatchEvent(StandardEvents.CreateChange());
     }
 
+    /// <summary>处理键盘导航，返回是否已处理。</summary>
     public bool HandleKey(int keyCode)
     {
         if (!IsEnabled) return false;

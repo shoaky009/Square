@@ -2,11 +2,15 @@ using System.Reflection;
 
 namespace Square.Resources;
 
+/// <summary>应用程序资源访问入口。</summary>
 public static class ApplicationResource
 {
+    /// <summary>打开入口程序集的资源流。</summary>
     public static Stream Open(string path)
         => Open(path, Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly());
 
+    /// <summary>打开指定程序集的资源流。</summary>
+    /// <exception cref="FileNotFoundException">资源未找到。</exception>
     public static Stream Open(string path, Assembly assetAssembly)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -26,6 +30,7 @@ public static class ApplicationResource
               ?? throw new FileNotFoundException($"Application resource '{path}' could not be opened.", path);
     }
 
+    /// <summary>读取入口程序集资源的全部字节。</summary>
     public static byte[] ReadAllBytes(string path)
     {
         using var stream = Open(path);
@@ -34,6 +39,7 @@ public static class ApplicationResource
         return buffer.ToArray();
     }
 
+    /// <summary>读取指定程序集资源的全部字节。</summary>
     public static byte[] ReadAllBytes(string path, Assembly assetAssembly)
     {
         using var stream = Open(path, assetAssembly);

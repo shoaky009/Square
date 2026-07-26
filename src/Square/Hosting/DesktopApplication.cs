@@ -12,6 +12,7 @@ using Reconciler = Square.UI.Reconciler;
 
 namespace Square.Hosting;
 
+/// <summary>桌面平台应用程序：驱动平台宿主、布局、渲染与输入分发。</summary>
 public sealed class DesktopApplication : Application, IAppWindowRuntime
 {
     private const double TextSelectionFrameIntervalSeconds = 1d / 60d;
@@ -45,8 +46,10 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
     private bool _renderRequested;
     private KeyModifiers? _devToolsModifiers;
 
+    /// <summary>主窗口。</summary>
     public AppWindow MainWindow { get; }
 
+    /// <summary>基于现有窗口构造桌面应用程序。</summary>
     public DesktopApplication(AppWindow window)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -57,15 +60,17 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         window.BindApplication(Dispatcher, this);
     }
 
-    /// <summary>Compatibility constructor for a single content root.</summary>
+    /// <summary>兼容构造函数：直接由内容根构造单窗口应用程序。</summary>
     [Obsolete("Create an AppWindow, call Load(content), then pass it to DesktopApplication.")]
     public DesktopApplication(Element contentRoot, PlatformHostCreateInfo hostCreateInfo)
         : this(CreateWindow(contentRoot, hostCreateInfo))
     {
     }
 
+    /// <summary>主窗口对应的文档。</summary>
     public Document Document => _document;
 
+    /// <summary>渲染后端名称（已废弃，请使用 <see cref="AppWindow.RenderBackend"/>）。</summary>
     [Obsolete("Use MainWindow.RenderBackend.")]
     public string RenderBackend
     {
@@ -81,6 +86,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         }
     }
 
+    /// <summary>窗口背景色（已废弃，请使用 <see cref="AppWindow.Background"/>）。</summary>
     [Obsolete("Use MainWindow.Background.")]
     public Color Background
     {
@@ -88,6 +94,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.Background = value;
     }
 
+    /// <summary>渲染模式（已废弃，请使用 <see cref="AppWindow.RenderingMode"/>）。</summary>
     [Obsolete("Use MainWindow.RenderingMode.")]
     public RenderMode RenderingMode
     {
@@ -95,6 +102,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.RenderingMode = value;
     }
 
+    /// <summary>最大脏矩形数量（已废弃，请使用 <see cref="AppWindow.MaxDirtyRectCount"/>）。</summary>
     [Obsolete("Use MainWindow.MaxDirtyRectCount.")]
     public int MaxDirtyRectCount
     {
@@ -102,6 +110,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.MaxDirtyRectCount = value;
     }
 
+    /// <summary>触发全帧重绘的脏区面积比例上限（已废弃，请使用 <see cref="AppWindow.MaxDirtyAreaRatio"/>）。</summary>
     [Obsolete("Use MainWindow.MaxDirtyAreaRatio.")]
     public float MaxDirtyAreaRatio
     {
@@ -109,6 +118,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.MaxDirtyAreaRatio = value;
     }
 
+    /// <summary>是否显示渲染诊断覆盖层（已废弃，请使用 <see cref="AppWindow.ShowRenderDiagnosticsOverlay"/>）。</summary>
     [Obsolete("Use MainWindow.ShowRenderDiagnosticsOverlay.")]
     public bool ShowRenderDiagnosticsOverlay
     {
@@ -116,6 +126,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.ShowRenderDiagnosticsOverlay = value;
     }
 
+    /// <summary>是否显示脏区合并矩形覆盖层（已废弃，请使用 <see cref="AppWindow.ShowDirtyUnionOverlay"/>）。</summary>
     [Obsolete("Use MainWindow.ShowDirtyUnionOverlay.")]
     public bool ShowDirtyUnionOverlay
     {
@@ -123,9 +134,11 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         set => MainWindow.ShowDirtyUnionOverlay = value;
     }
 
+    /// <summary>最近一次渲染诊断信息（已废弃，请使用 <see cref="AppWindow.LastRenderDiagnostics"/>）。</summary>
     [Obsolete("Use MainWindow.LastRenderDiagnostics.")]
     public RenderDiagnostics LastRenderDiagnostics => MainWindow.LastRenderDiagnostics;
 
+    /// <summary>全局按键事件（已废弃，请使用 <see cref="AppWindow.GlobalKeyEvent"/>）。</summary>
     [Obsolete("Use MainWindow.GlobalKeyEvent.")]
     public event Action<int, KeyAction>? GlobalKeyEvent
     {
@@ -215,30 +228,37 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         e.StopPropagation();
     }
 
+    /// <inheritdoc/>
     public void RequestRender() => _renderRequested = true;
 
+    /// <inheritdoc/>
     public void Close()
     {
         MainWindow.Close();
     }
 
+    /// <inheritdoc/>
     public Task InjectPointerAsync(DevToolsPointerInput input) => Dispatcher.InvokeAsync(() =>
     {
         WithDevToolsModifiers(input.Modifiers, () => HandleMouse(input.Position, input.Action));
     });
 
+    /// <inheritdoc/>
     public Task InjectKeyAsync(DevToolsKeyInput input) => Dispatcher.InvokeAsync(() =>
     {
         WithDevToolsModifiers(input.Modifiers, () => HandleKey(input.KeyCode, input.Action));
     });
 
+    /// <inheritdoc/>
     public Task InjectTextAsync(string text) => Dispatcher.InvokeAsync(() => HandleTextInput(text ?? ""));
 
+    /// <inheritdoc/>
     public Task InjectWheelAsync(DevToolsWheelInput input) => Dispatcher.InvokeAsync(() =>
     {
         WithDevToolsModifiers(input.Modifiers, () => HandleWheel(input.Position, input.Delta));
     });
 
+    /// <inheritdoc/>
     public Task<Bitmap> CaptureRendererBitmapAsync()
     {
         var completion = new TaskCompletionSource<Bitmap>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -281,18 +301,21 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         return completion.Task;
     }
 
+    /// <inheritdoc/>
     public Task<ElementInspectionSnapshot> CaptureInspectionSnapshotAsync(bool includeSourcePaths = true,
         bool includeTextContent = true) =>
         InvokeOnDispatcherAsync(() =>
             new ElementInspectionSnapshot(CreateInspectionNode(_root, includeSourcePaths, includeTextContent,
                 includeChildren: true)));
 
+    /// <inheritdoc/>
     public Task<ElementInspectionNode?> InspectElementAsync(int debugId, bool includeSourcePaths = true,
         bool includeTextContent = true) =>
         InvokeOnDispatcherAsync(() => FindElementByDebugId(_root, debugId) is { } element
             ? CreateInspectionNode(element, includeSourcePaths, includeTextContent, includeChildren: true)
             : null);
 
+    /// <inheritdoc/>
     public Task<ElementInspectionNode?> HitTestInspectionAsync(Point point, bool includeSourcePaths = true,
         bool includeTextContent = true) =>
         InvokeOnDispatcherAsync(() => HitTest(point) is { } element

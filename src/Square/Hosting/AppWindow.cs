@@ -28,6 +28,7 @@ public sealed class AppWindow : IRenderBackendApplication
     private object? _dialogResult;
     private bool _hasDialogResult;
 
+    /// <summary>以指定标题和初始尺寸构造应用程序窗口。</summary>
     public AppWindow(string title, int width = 800, int height = 600)
     {
         ArgumentNullException.ThrowIfNull(title);
@@ -43,6 +44,7 @@ public sealed class AppWindow : IRenderBackendApplication
         _dispatcher = _document.Context.Dispatcher;
     }
 
+    /// <summary>窗口标题。</summary>
     public string Title
     {
         get
@@ -58,45 +60,62 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>窗口对应的 DOM 文档。</summary>
     public Document Document => _document;
 
     internal UIDocument WindowDocument => _document;
 
+    /// <summary>窗口加载的内容根元素。</summary>
     public Element? Content { get; private set; }
 
+    /// <summary>自定义标题栏元素。</summary>
     public UIElement? CustomTitleBar { get; private set; }
 
+    /// <summary>标题栏样式。</summary>
     public TitleStyle TitleStyle { get; set; } = TitleStyle.System;
 
+    /// <summary>边框样式。</summary>
     public BorderStyle BorderStyle { get; set; } = BorderStyle.Resizable;
 
     internal IntPtr OwnerHandle { get; set; }
 
     internal bool IsModal { get; set; }
 
+    /// <summary>渲染后端名称。</summary>
     public string RenderBackend { get; set; } = "Software";
 
+    /// <summary>软件渲染表面类型。</summary>
     public SoftwareRenderSurfaceKind SoftwareSurface { get; set; } = SoftwareRenderSurfaceKind.Auto;
 
+    /// <summary>窗口背景色。</summary>
     public Color Background { get; set; } = Color.White;
 
+    /// <summary>渲染模式。</summary>
     public RenderMode RenderingMode { get; set; } = RenderMode.FullFrame;
 
+    /// <summary>允许的最大脏矩形数量。</summary>
     public int MaxDirtyRectCount { get; set; } = 16;
 
+    /// <summary>触发全帧重绘的脏区面积比例上限。</summary>
     public float MaxDirtyAreaRatio { get; set; } = 0.35f;
 
+    /// <summary>是否显示渲染诊断覆盖层。</summary>
     public bool ShowRenderDiagnosticsOverlay { get; set; }
 
+    /// <summary>是否显示脏区合并矩形覆盖层。</summary>
     public bool ShowDirtyUnionOverlay { get; set; } = true;
 
+    /// <summary>最近一次渲染的诊断信息。</summary>
     public RenderDiagnostics LastRenderDiagnostics { get; internal set; } =
         new(RenderMode.FullFrame, true, "NotRendered", 0, 0, Rect.Empty);
 
+    /// <summary>窗口关联的调度器。</summary>
     public Dispatcher Dispatcher => _dispatcher;
 
+    /// <summary>窗口关联的状态存储作用域。</summary>
     public StoreScope Stores => _document.Context.Stores;
 
+    /// <summary>客户区尺寸。</summary>
     public Size ClientSize
     {
         get
@@ -105,6 +124,7 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>DPI 缩放系数。</summary>
     public float DpiScale
     {
         get
@@ -113,6 +133,7 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>窗口状态。</summary>
     public AppWindowState State
     {
         get
@@ -121,6 +142,7 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>窗口是否已关闭。</summary>
     public bool IsClosed
     {
         get
@@ -129,6 +151,7 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>原生窗口句柄。</summary>
     public IntPtr NativeWindow
     {
         get
@@ -138,11 +161,16 @@ public sealed class AppWindow : IRenderBackendApplication
         }
     }
 
+    /// <summary>客户区尺寸变化时触发。</summary>
     public event Action<Size>? SizeChanged;
+    /// <summary>窗口状态变化时触发。</summary>
     public event Action<AppWindowState>? StateChanged;
+    /// <summary>窗口关闭时触发。</summary>
     public event Action? Closed;
+    /// <summary>全局按键事件。</summary>
     public event Action<int, KeyAction>? GlobalKeyEvent;
 
+    /// <summary>加载内容根元素到窗口正文。</summary>
     public void Load(Element content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -157,6 +185,7 @@ public sealed class AppWindow : IRenderBackendApplication
         _document.Body.Children.Add(content);
     }
 
+    /// <summary>加载自定义标题栏元素。</summary>
     public void LoadCustomTitleBar(UIElement titleBar)
     {
         ArgumentNullException.ThrowIfNull(titleBar);
@@ -172,28 +201,36 @@ public sealed class AppWindow : IRenderBackendApplication
         TitleStyle = TitleStyle.Custom;
     }
 
+    /// <summary>请求关闭窗口。</summary>
     public void Close()
     {
         lock (_gate) _closeRequested = true;
         Post(static host => host.Close());
     }
 
+    /// <summary>异步关闭窗口。</summary>
     public Task CloseAsync() => InvokeAsync(static host => host.Close());
 
+    /// <summary>异步最小化窗口。</summary>
     public Task MinimizeAsync() => InvokeAsync(static host => host.Minimize());
 
+    /// <summary>异步最大化窗口。</summary>
     public Task MaximizeAsync() => InvokeAsync(static host => host.Maximize());
 
+    /// <summary>异步还原窗口。</summary>
     public Task RestoreAsync() => InvokeAsync(static host => host.Restore());
 
+    /// <summary>异步开始窗口拖动。</summary>
     public Task BeginMoveAsync() => InvokeAsync(static host => host.BeginMove());
 
+    /// <summary>打开非模态子窗口显示指定内容。</summary>
     public void Open(Element content, Size? size = null)
     {
         var child = CreateChildWindow(content, size, isModal: false);
         StartChildWindow(child, failure: null);
     }
 
+    /// <summary>打开模态对话框并返回其结果。</summary>
     public Task<object?> OpenDialog(Element content, Size? size = null)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -204,6 +241,7 @@ public sealed class AppWindow : IRenderBackendApplication
         return completion.Task;
     }
 
+    /// <summary>打开模态对话框并返回强类型结果。</summary>
     public async Task<T?> OpenDialog<T>(Element content, Size? size = null)
     {
         var result = await OpenDialog(content, size).ConfigureAwait(false);
@@ -213,6 +251,7 @@ public sealed class AppWindow : IRenderBackendApplication
             $"The dialog result is '{result.GetType().FullName}', not '{typeof(T).FullName}'.");
     }
 
+    /// <summary>关闭模态对话框并返回结果。</summary>
     public void CloseDialog<T>(T result)
     {
         lock (_gate)
@@ -225,35 +264,47 @@ public sealed class AppWindow : IRenderBackendApplication
         Close();
     }
 
+    /// <summary>最小化窗口。</summary>
     public void Minimize() => Post(static host => host.Minimize());
 
+    /// <summary>最大化窗口。</summary>
     public void Maximize() => Post(static host => host.Maximize());
 
+    /// <summary>还原窗口。</summary>
     public void Restore() => Post(static host => host.Restore());
 
+    /// <summary>请求重新渲染窗口。</summary>
     public void RequestRender() => RequireRuntime().RequestRender();
 
+    /// <summary>注入 DevTools 指针事件。</summary>
     public Task InjectPointerAsync(DevToolsPointerInput input) => RequireRuntime().InjectPointerAsync(input);
 
+    /// <summary>注入 DevTools 按键事件。</summary>
     public Task InjectKeyAsync(DevToolsKeyInput input) => RequireRuntime().InjectKeyAsync(input);
 
+    /// <summary>注入 DevTools 文本输入。</summary>
     public Task InjectTextAsync(string text) => RequireRuntime().InjectTextAsync(text);
 
+    /// <summary>注入 DevTools 滚轮事件。</summary>
     public Task InjectWheelAsync(DevToolsWheelInput input) => RequireRuntime().InjectWheelAsync(input);
 
+    /// <summary>捕获当前渲染器位图。</summary>
     public Task<Bitmap> CaptureRendererBitmapAsync() => RequireRuntime().CaptureRendererBitmapAsync();
 
+    /// <summary>捕获元素检查快照。</summary>
     public Task<ElementInspectionSnapshot> CaptureInspectionSnapshotAsync(
         bool includeSourcePaths = true,
         bool includeTextContent = true) =>
         RequireRuntime().CaptureInspectionSnapshotAsync(includeSourcePaths, includeTextContent);
 
+    /// <summary>按调试 ID 检查元素。</summary>
     public Task<ElementInspectionNode?> InspectElementAsync(
         int debugId,
         bool includeSourcePaths = true,
         bool includeTextContent = true) =>
         RequireRuntime().InspectElementAsync(debugId, includeSourcePaths, includeTextContent);
 
+    /// <summary>按命中测试检查元素。</summary>
     public Task<ElementInspectionNode?> HitTestInspectionAsync(
         Point point,
         bool includeSourcePaths = true,
@@ -488,16 +539,24 @@ public sealed class AppWindow : IRenderBackendApplication
         _runtime ?? throw new InvalidOperationException("The AppWindow is not bound to a DesktopApplication.");
 }
 
+/// <summary>标题栏样式。</summary>
 public enum TitleStyle
 {
+    /// <summary>使用系统默认标题栏。</summary>
     System,
+    /// <summary>隐藏标题栏。</summary>
     Hidden,
+    /// <summary>使用自定义标题栏。</summary>
     Custom
 }
 
+/// <summary>窗口边框样式。</summary>
 public enum BorderStyle
 {
+    /// <summary>可调整大小的边框。</summary>
     Resizable,
+    /// <summary>固定边框。</summary>
     Fixed,
+    /// <summary>无边框。</summary>
     None
 }

@@ -6,6 +6,7 @@ public static class ElementRegistry
     private static readonly Dictionary<string, Func<Element>> Factories =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>按标签名注册元素工厂。</summary>
     public static void Register(string tagName, Func<Element> factory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tagName);

@@ -6,11 +6,14 @@ namespace Square.UI;
 /// </summary>
 public sealed class Text : CharacterData
 {
+    /// <summary>构造文本节点并指定初始数据。</summary>
     public Text(string data = "") : base(data)
     {
     }
 
+    /// <inheritdoc />
     public override NodeType NodeTypeValue => NodeType.Text;
 
+    /// <inheritdoc />
     public override string NodeName => "#text";
 }

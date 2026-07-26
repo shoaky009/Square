@@ -3,10 +3,12 @@ using Square.UI;
 
 namespace Square.Controls;
 
+/// <summary>注册内置控件类型到 <see cref="ElementRegistry"/>，幂等。</summary>
 public static class ControlRegistration
 {
     private static bool _registered;
 
+    /// <summary>注册所有默认控件与 SVG 元素。</summary>
     public static void RegisterDefaults()
     {
         if (_registered) return;

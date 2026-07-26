@@ -5,32 +5,48 @@ using Square.Graphics;
 
 namespace Square.Text.Glyph;
 
+/// <summary>光栅化后的字形位图与度量信息。</summary>
 public sealed class RasterizedGlyph
 {
+    /// <summary>字形位图宽度（像素）。</summary>
     public required int Width { get; init; }
+    /// <summary>字形位图高度（像素）。</summary>
     public required int Height { get; init; }
+    /// <summary>位图每行字节数（已按 4 字节对齐）。</summary>
     public required int Stride { get; init; }
+    /// <summary>字形相对于原点的水平偏移（像素）。</summary>
     public required int OffsetX { get; init; }
+    /// <summary>字形顶部相对于基线的垂直偏移（像素）。</summary>
     public required int OffsetY { get; init; }
+    /// <summary>该字形的水平步进宽度（像素）。</summary>
     public required int AdvanceX { get; init; }
+    /// <summary>灰度覆盖率数据（0..255），按 Stride 逐行排列。</summary>
     public required byte[] Coverage { get; init; }
 }
 
+/// <summary>系统字形光栅器，优先使用 Win32 GDI，不可用时回退到 stb_truetype。</summary>
 public sealed partial class SystemGlyphRasterizer
 {
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
     private readonly StbGlyphRasterizer _stbRasterizer = new();
     private readonly bool _cacheGlyphs;
 
+    /// <summary>初始化实例。</summary>
+    /// <param name="cacheGlyphs">是否缓存已光栅化的字形。</param>
     public SystemGlyphRasterizer(bool cacheGlyphs = true)
     {
         _cacheGlyphs = cacheGlyphs;
     }
 
+    /// <summary>当前平台是否可用光栅化（Windows 或已加载字体）。</summary>
     public bool IsAvailable => OperatingSystem.IsWindows() || _stbRasterizer.IsAvailable;
 
+    /// <summary>清空字形缓存。</summary>
     public void Clear() => _cache.Clear();
 
+    /// <summary>光栅化指定字体的单个字符，返回字形位图与度量；不可用或失败时返回 null。</summary>
+    /// <param name="font">目标字体。</param>
+    /// <param name="character">要光栅化的字符。</param>
     public RasterizedGlyph? Rasterize(Font font, char character)
     {
         if (!IsAvailable) return null;
@@ -277,10 +293,15 @@ internal static class SystemTextMeasurementRegistration
     }
 }
 
+/// <summary>基于系统光栅器提供字体与字形度量。</summary>
 internal sealed class SystemTextMetricsProvider(SystemGlyphRasterizer rasterizer) : ITextMetricsProvider
 {
     private readonly object _sync = new();
 
+    /// <summary>获取指定字体的整体度量。</summary>
+    /// <param name="font">目标字体。</param>
+    /// <param name="metrics">输出的字体度量。</param>
+    /// <returns>始终返回 true。</returns>
     public bool TryGetFontMetrics(Font font, out FontMetrics metrics)
     {
         var height = Math.Max(1, font.Size * TextLayout.DefaultLineHeight);
@@ -289,6 +310,11 @@ internal sealed class SystemTextMetricsProvider(SystemGlyphRasterizer rasterizer
         return true;
     }
 
+    /// <summary>获取指定字体的单个字形度量。</summary>
+    /// <param name="font">目标字体。</param>
+    /// <param name="rune">目标字符。</param>
+    /// <param name="metrics">输出的字形度量。</param>
+    /// <returns>成功获取返回 true；字符非 BMP 或光栅失败返回 false。</returns>
     public bool TryGetGlyphMetrics(Font font, Rune rune, out GlyphMetrics metrics)
     {
         if (!rune.IsBmp || !rasterizer.IsAvailable)

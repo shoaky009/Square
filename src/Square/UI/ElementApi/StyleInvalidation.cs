@@ -4,6 +4,7 @@ using Square.UI;
 
 internal static class StyleInvalidation
 {
+    /// <summary>根据 CSS 属性名返回所需失效标志。</summary>
     public static ElementInvalidation ForProperty(string property)
     {
         property = StyleAccessor.NormalizePropertyName(property);

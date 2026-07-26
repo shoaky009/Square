@@ -3,16 +3,23 @@ using Square.UI;
 
 namespace Square.Router;
 
+/// <summary>路由控件，根据当前路径激活匹配的组件。</summary>
 public sealed class Router : View
 {
     private bool _started;
 
+    /// <summary>初始路径。</summary>
     public string InitialPath { get; set; } = "/";
+    /// <summary>路由定义列表。</summary>
     public List<RouteDefinition> Routes { get; } = [];
+    /// <summary>导航历史。</summary>
     public INavigationHistory? History { get; set; }
+    /// <summary>当前路由上下文。</summary>
     public RouteContext? Current { get; private set; }
+    /// <summary>导航完成事件。</summary>
     public event Action<RouteContext>? Navigated;
 
+    /// <summary>启动路由。</summary>
     public void Start()
     {
         if (_started) return;
@@ -22,6 +29,8 @@ public sealed class Router : View
         Activate(History.Current);
     }
 
+    /// <summary>导航到指定路径。</summary>
+    /// <returns>匹配成功返回 true。</returns>
     public bool Navigate(string location, bool replace = false)
     {
         EnsureStarted();
@@ -31,14 +40,17 @@ public sealed class Router : View
         return true;
     }
 
+    /// <summary>替换当前路径。</summary>
     public bool Replace(string location) => Navigate(location, replace: true);
 
+    /// <summary>后退。</summary>
     public bool Back()
     {
         EnsureStarted();
         return History!.Back();
     }
 
+    /// <summary>前进。</summary>
     public bool Forward()
     {
         EnsureStarted();

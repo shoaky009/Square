@@ -2,10 +2,13 @@ using Square.Graphics;
 
 namespace Square.Backends;
 
+/// <summary>Software CPU 光栅后端工厂。</summary>
 public sealed class RenderBackendFactory : IRenderBackendFactory
 {
+    /// <summary>后端名称。</summary>
     public string Name => "Software";
 
+    /// <summary>创建软件渲染上下文。</summary>
     public IRenderContext CreateContext(RenderContextCreateInfo info)
     {
         var width = (int)Math.Ceiling(info.CanvasSize.Width * info.DpiScale);

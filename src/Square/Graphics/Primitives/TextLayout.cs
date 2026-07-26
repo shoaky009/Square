@@ -3,25 +3,38 @@ using System.Text;
 
 namespace Square.Graphics;
 
+/// <summary>文本布局，负责测量、换行、偏移定位与命中测试。</summary>
 public sealed class TextLayout
 {
+    /// <summary>默认行高倍数（1.2）。</summary>
     public const float DefaultLineHeight = 1.2f;
     private static Func<Rune, Font, float?>? _advanceProvider;
 
+    /// <summary>文本内容。</summary>
     public string Text { get; set; } = "";
+    /// <summary>字体。</summary>
     public Font Font { get; set; } = new();
+    /// <summary>最大尺寸，Width 用于换行。</summary>
     public Size MaxSize { get; set; } = new(float.MaxValue, float.MaxValue);
+    /// <summary>文本对齐方式。</summary>
     public TextAlignment Alignment { get; set; } = TextAlignment.Left;
+    /// <summary>行高倍数（相对字号）。</summary>
     public float LineHeight { get; set; } = DefaultLineHeight;
 
+    /// <summary>构造默认布局。</summary>
     public TextLayout() { }
+    /// <summary>构造指定文本和字体的布局。</summary>
     public TextLayout(string text, Font font) { Text = text; Font = font; }
 
+    /// <summary>注册字符前进宽度提供器（兼容旧 API，已被 <see cref="TextMetrics"/> 取代）。</summary>
     public static void RegisterAdvanceProvider(Func<Rune, Font, float?> provider)
         => _advanceProvider = provider ?? throw new ArgumentNullException(nameof(provider));
 
+    /// <summary>测量文本尺寸。</summary>
     public Size Measure() => MeasureCore();
 
+    /// <summary>测量从行首到指定 UTF-16 偏移的水平距离。</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="offset"/> 越界。</exception>
     public float MeasureOffset(int offset)
     {
         if (offset < 0 || offset > Text.Length) throw new ArgumentOutOfRangeException(nameof(offset));
@@ -37,6 +50,7 @@ public sealed class TextLayout
         return width;
     }
 
+    /// <summary>按水平坐标命中测试，返回最近的 UTF-16 偏移。</summary>
     public int HitTestOffset(float x)
     {
         if (string.IsNullOrEmpty(Text) || x <= 0) return 0;
@@ -68,6 +82,7 @@ public sealed class TextLayout
         return new Size(constrainWidth && wrapped ? maxWidth : widestLine, lines.Count * lineHeight);
     }
 
+    /// <summary>按字号估算字符前进宽度（回退，不依赖字体度量）。</summary>
     public static float MeasureRuneAdvance(Rune rune, float fontSize)
     {
         var category = Rune.GetUnicodeCategory(rune);
@@ -77,6 +92,7 @@ public sealed class TextLayout
         return IsFullWidth(rune.Value) ? fontSize : fontSize * 0.5f;
     }
 
+    /// <summary>测量字符前进宽度，优先使用注册的度量提供器。</summary>
     public static float MeasureRuneAdvance(Rune rune, Font font)
     {
         if (TextMetrics.IsZeroAdvanceCategory(rune)) return 0;

@@ -8,6 +8,7 @@ public abstract class SVGElement : Element
     /// <inheritdoc />
     public override string? NamespaceURI => "http://www.w3.org/2000/svg";
 
+    /// <inheritdoc />
     public override void InvalidatePaint()
     {
         base.InvalidatePaint();

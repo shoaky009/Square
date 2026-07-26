@@ -118,6 +118,7 @@ public class Event
 /// <summary>滚轮事件（Square 对齐 DOM WheelEvent 的最小实现）。</summary>
 public sealed class WheelEvent : Event
 {
+    /// <summary>用横向/纵向增量与可选初始化选项创建滚轮事件。</summary>
     public WheelEvent(float deltaX, float deltaY, EventInit? init = null)
         : base(StandardEvents.Wheel, init ?? StandardEvents.GetDefaultInit(StandardEvents.Wheel))
     {
@@ -125,13 +126,16 @@ public sealed class WheelEvent : Event
         DeltaY = deltaY;
     }
 
+    /// <summary>横向滚动增量。</summary>
     public float DeltaX { get; }
+    /// <summary>纵向滚动增量。</summary>
     public float DeltaY { get; }
 }
 
 /// <summary>键盘事件（Square 对齐 DOM KeyboardEvent 的最小实现）。</summary>
 public sealed class KeyboardEvent : Event
 {
+    /// <summary>用类型名、键码与修饰键状态创建键盘事件。</summary>
     public KeyboardEvent(string type, int keyCode, bool shiftKey = false, bool controlKey = false, bool altKey = false,
         EventInit? init = null)
         : base(type, init ?? StandardEvents.GetDefaultInit(type))
@@ -142,8 +146,12 @@ public sealed class KeyboardEvent : Event
         AltKey = altKey;
     }
 
+    /// <summary>键码。</summary>
     public int KeyCode { get; }
+    /// <summary>是否按下 Shift 键。</summary>
     public bool ShiftKey { get; }
+    /// <summary>是否按下 Control 键。</summary>
     public bool ControlKey { get; }
+    /// <summary>是否按下 Alt 键。</summary>
     public bool AltKey { get; }
 }

@@ -7,6 +7,7 @@ namespace Square.Runtime.Binding;
 /// <summary>AOT-safe runtime protocol for Vue object-form property and event bindings.</summary>
 public static class SqvObjectBinding
 {
+    /// <summary>用静态字典一次性绑定属性。</summary>
     public static IDisposable BindProperties(
         Element target,
         IReadOnlyDictionary<string, object?> values) =>
@@ -30,6 +31,7 @@ public static class SqvObjectBinding
         return binding;
     }
 
+    /// <summary>用静态字典绑定事件监听器。</summary>
     public static IDisposable BindEvents(
         EventTarget target,
         IReadOnlyDictionary<string, Action<Event>> listeners) =>
@@ -163,6 +165,7 @@ public static class SqvObjectBinding
 /// <summary>Maps Vue/SQV attribute names to Square property names without reflection.</summary>
 public static class SqvPropertyNames
 {
+    /// <summary>将 Vue/SQV 属性名映射为 Square 属性名；未知名称原样返回。</summary>
     public static string Map(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

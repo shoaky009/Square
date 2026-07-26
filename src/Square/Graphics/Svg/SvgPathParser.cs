@@ -4,6 +4,7 @@ namespace Square.Graphics.Svg;
 
 internal static class SvgPathParser
 {
+    /// <summary>解析 SVG path 数据字符串并返回 <see cref="PathGeometry"/>；空或空白返回 null。</summary>
     public static PathGeometry? Parse(string data)
     {
         if (string.IsNullOrWhiteSpace(data)) return null;

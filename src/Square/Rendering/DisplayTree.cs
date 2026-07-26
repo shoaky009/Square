@@ -6,12 +6,14 @@ using System.Text;
 
 namespace Square.Rendering;
 
+/// <summary>显示树：将文档元素树映射为可渲染的节点树，并维护脏区。</summary>
 public sealed class DisplayTree
 {
     private readonly DisplayNode _root = new();
     private readonly List<Rect> _dirtyRects = [];
     private readonly List<IPopupElement> _popups = [];
 
+    /// <summary>以指定元素为根重建整棵显示树。</summary>
     public void BuildFrom(Element element)
     {
         _root.Element = element;
@@ -45,12 +47,14 @@ public sealed class DisplayTree
         }
     }
 
+    /// <summary>将指定矩形加入脏区队列。</summary>
     public void Invalidate(Rect rect)
     {
         if (!rect.IsEmpty)
             _dirtyRects.Add(rect);
     }
 
+    /// <summary>遍历显示树更新脏节点与几何变化。</summary>
     public void UpdateDirty() => UpdateDirty(_root, default);
 
     private void UpdateDirty(DisplayNode node, Point visualOffset)
@@ -201,6 +205,7 @@ public sealed class DisplayTree
         return inflated.IntersectsWith(b);
     }
 
+    /// <summary>计算两矩形的并集（空矩形视为另一矩形）。</summary>
     public static Rect Union(Rect a, Rect b)
     {
         if (a.IsEmpty) return b;
@@ -212,8 +217,10 @@ public sealed class DisplayTree
         return new Rect(x0, y0, x1 - x0, y1 - y0);
     }
 
+    /// <summary>计算矩形面积（空矩形返回 0）。</summary>
     public static float Area(Rect r) => r.IsEmpty ? 0 : r.Width * r.Height;
 
+    /// <summary>渲染整棵显示树。</summary>
     public void Render(IRenderContext ctx) => Render(ctx, dirtyClip: null);
 
     /// <summary>
@@ -241,6 +248,7 @@ public sealed class DisplayTree
         _dirtyRects.Clear();
     }
 
+    /// <summary>对所有打开的弹出层进行命中测试。</summary>
     public Element? HitTestPopups(Point point)
     {
         for (var i = _popups.Count - 1; i >= 0; i--)
@@ -252,6 +260,7 @@ public sealed class DisplayTree
         return null;
     }
 
+    /// <summary>将指针移动事件分发至相关弹出层，返回是否有状态变化。</summary>
     public bool HandlePointerMove(Point point)
     {
         var changed = false;
@@ -263,6 +272,7 @@ public sealed class DisplayTree
         return changed;
     }
 
+    /// <summary>关闭不包含指定点且需在按下外部关闭的弹出层。</summary>
     public bool DismissPopupsOutside(Point point)
     {
         var changed = false;
@@ -277,6 +287,7 @@ public sealed class DisplayTree
         return changed;
     }
 
+    /// <summary>关闭最顶层支持 Esc 关闭的弹出层。</summary>
     public bool DismissTopmostPopupOnEscape()
     {
         for (var i = _popups.Count - 1; i >= 0; i--)
@@ -289,6 +300,7 @@ public sealed class DisplayTree
         return false;
     }
 
+    /// <summary>将按键事件转发给最顶层打开的弹出层。</summary>
     public bool HandlePopupKey(int keyCode, bool shift, bool control, bool alt)
     {
         for (var i = _popups.Count - 1; i >= 0; i--)
@@ -300,6 +312,7 @@ public sealed class DisplayTree
         return false;
     }
 
+    /// <summary>收集指定根元素子树内所有文本片段。</summary>
     public List<TextFragment> CollectTextFragments(Element root)
     {
         var fragments = new List<TextFragment>();

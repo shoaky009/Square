@@ -5,6 +5,7 @@ namespace Square.Hosting;
 
 internal static class RenderDecision
 {
+    /// <summary>根据脏矩形分布与渲染模式判定本帧采用全帧或脏区渲染。</summary>
     public static RenderDiagnostics Decide(
         RenderMode mode,
         IReadOnlyList<Rect> dirtyRects,

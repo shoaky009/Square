@@ -29,33 +29,61 @@ public enum BoxSizing { BorderBox, ContentBox }
 /// <summary>从 CSS 推导的布局样式快照。</summary>
 public sealed class ComputedStyle
 {
+    /// <summary>显示模式。</summary>
     public DisplayMode Display { get; set; } = DisplayMode.Block;
+    /// <summary>Flex 主轴方向。</summary>
     public FlexDirection FlexDirection { get; set; } = FlexDirection.Row;
+    /// <summary>主轴对齐方式。</summary>
     public JustifyContent JustifyContent { get; set; } = JustifyContent.FlexStart;
+    /// <summary>交叉轴对齐方式。</summary>
     public AlignItems AlignItems { get; set; } = AlignItems.Stretch;
+    /// <summary>放大因子。</summary>
     public float FlexGrow { get; set; }
+    /// <summary>收缩因子。</summary>
     public float FlexShrink { get; set; } = 1f;
+    /// <summary>基准尺寸（NaN 表示自动）。</summary>
     public float FlexBasis { get; set; } = float.NaN;
+    /// <summary>子项间距。</summary>
     public float Gap { get; set; }
+    /// <summary>宽度（NaN 表示自动）。</summary>
     public float Width { get; set; } = float.NaN;
+    /// <summary>高度（NaN 表示自动）。</summary>
     public float Height { get; set; } = float.NaN;
+    /// <summary>四向内边距简写值。</summary>
     public float Padding { get; set; }
+    /// <summary>左内边距。</summary>
     public float PaddingLeft { get; set; }
+    /// <summary>上内边距。</summary>
     public float PaddingTop { get; set; }
+    /// <summary>右内边距。</summary>
     public float PaddingRight { get; set; }
+    /// <summary>下内边距。</summary>
     public float PaddingBottom { get; set; }
+    /// <summary>四向外边距简写值。</summary>
     public float Margin { get; set; }
+    /// <summary>左外边距。</summary>
     public float MarginLeft { get; set; }
+    /// <summary>上外边距。</summary>
     public float MarginTop { get; set; }
+    /// <summary>右外边距。</summary>
     public float MarginRight { get; set; }
+    /// <summary>下外边距。</summary>
     public float MarginBottom { get; set; }
+    /// <summary>盒尺寸计算方式。</summary>
     public BoxSizing BoxSizing { get; set; } = BoxSizing.BorderBox;
+    /// <summary>Grid 列模板。</summary>
     public string GridTemplateColumns { get; set; } = "";
+    /// <summary>Grid 行模板。</summary>
     public string GridTemplateRows { get; set; } = "";
+    /// <summary>Grid 起始列号。</summary>
     public int GridColumn { get; set; } = 1;
+    /// <summary>Grid 起始行号。</summary>
     public int GridRow { get; set; } = 1;
+    /// <summary>Grid 列跨度。</summary>
     public int GridColumnSpan { get; set; } = 1;
+    /// <summary>Grid 行跨度。</summary>
     public int GridRowSpan { get; set; } = 1;
+    /// <summary>Grid 区域名称。</summary>
     public string GridArea { get; set; } = "";
 }
 
@@ -67,12 +95,14 @@ public sealed class LayoutEngine
 {
     private readonly Config _yogaConfig;
 
+    /// <summary>创建布局引擎实例。</summary>
     public LayoutEngine()
     {
         _yogaConfig = YGConfigNew();
         YGConfigSetUseWebDefaults(_yogaConfig, true);
     }
 
+    /// <summary>测量元素在给定可用尺寸下的期望尺寸。</summary>
     public void Measure(Element element, Size availableSize)
     {
         var style = GetComputedStyle(element, availableSize.Width, availableSize.Height);
@@ -96,6 +126,7 @@ public sealed class LayoutEngine
             ClearDirtyRecursive(child);
     }
 
+    /// <summary>按最终矩形排列元素及其子树。</summary>
     public void Arrange(Element element, Rect finalRect)
     {
         var style = GetComputedStyle(element, finalRect.Width, finalRect.Height);

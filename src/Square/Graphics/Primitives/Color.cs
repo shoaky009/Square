@@ -1,32 +1,48 @@
 namespace Square.Graphics;
 
+/// <summary>表示 BGRA 颜色（不透明度为 0–255）。</summary>
 public readonly struct Color : IEquatable<Color>
 {
+    /// <summary>红色通道（0–255）。</summary>
     public readonly byte R, G, B, A;
 
+    /// <summary>用 RGBA 分量构造颜色，<paramref name="a"/> 默认为 255。</summary>
     public Color(byte r, byte g, byte b, byte a = 255)
     {
         R = r; G = g; B = b; A = a;
     }
 
+    /// <summary>从 RGBA 分量构造颜色。</summary>
     public static Color FromRgba(byte r, byte g, byte b, byte a) => new(r, g, b, a);
+    /// <summary>从 RGB 分量构造不透明颜色。</summary>
     public static Color FromRgb(byte r, byte g, byte b) => new(r, g, b, 255);
 
+    /// <summary>完全透明（RGBA = 0,0,0,0）。</summary>
     public static readonly Color Transparent = new(0, 0, 0, 0);
+    /// <summary>黑色（RGBA = 0,0,0,255）。</summary>
     public static readonly Color Black = new(0, 0, 0, 255);
+    /// <summary>白色（RGBA = 255,255,255,255）。</summary>
     public static readonly Color White = new(255, 255, 255, 255);
+    /// <summary>红色（RGBA = 255,0,0,255）。</summary>
     public static readonly Color Red = new(255, 0, 0, 255);
+    /// <summary>绿色（RGBA = 0,255,0,255）。</summary>
     public static readonly Color Green = new(0, 255, 0, 255);
+    /// <summary>蓝色（RGBA = 0,0,255,255）。</summary>
     public static readonly Color Blue = new(0, 0, 255, 255);
 
+    /// <summary>打包为 32 位 BGRA 值（A 在最高字节，B 在最低字节）。</summary>
     public uint ToPackedBgra() => (uint)(A << 24 | R << 16 | G << 8 | B);
 
+    /// <summary>解析 CSS 十六进制颜色字符串（#RGB / #RRGGBB / #AARRGGBB）。</summary>
+    /// <exception cref="FormatException"><paramref name="hex"/> 不是合法颜色。</exception>
     public static Color Parse(string hex)
     {
         if (TryParse(hex, out var color)) return color;
         throw new FormatException($"Invalid color hex: {hex}");
     }
 
+    /// <summary>尝试解析 CSS 十六进制颜色字符串。</summary>
+    /// <returns>解析成功返回 true；失败返回 false。</returns>
     public static bool TryParse(string? value, out Color color)
     {
         color = default;
@@ -89,11 +105,17 @@ public readonly struct Color : IEquatable<Color>
         return false;
     }
 
+    /// <summary>按 RGBA 分量比较相等。</summary>
     public bool Equals(Color other) => R == other.R && G == other.G && B == other.B && A == other.A;
+    /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is Color c && Equals(c);
+    /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(R, G, B, A);
+    /// <summary>相等运算符。</summary>
     public static bool operator ==(Color a, Color b) => a.Equals(b);
+    /// <summary>不相等运算符。</summary>
     public static bool operator !=(Color a, Color b) => !a.Equals(b);
 
+    /// <summary>返回 #AARRGGBB 形式的字符串。</summary>
     public override string ToString() => $"#{A:X2}{R:X2}{G:X2}{B:X2}";
 }
