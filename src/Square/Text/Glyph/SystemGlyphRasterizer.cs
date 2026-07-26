@@ -247,12 +247,16 @@ public sealed partial class SystemGlyphRasterizer
 internal static class SystemTextMeasurementRegistration
 {
     private static readonly SystemGlyphRasterizer Rasterizer = new();
+    private static readonly ITextMetricsProvider MetricsProvider = new SystemTextMetricsProvider(Rasterizer);
     private static readonly object Sync = new();
 
 #pragma warning disable CA2255 // Square.Text installs the optional font metrics provider for Square.Graphics.
     [ModuleInitializer]
     internal static void Register()
-        => TextLayout.RegisterAdvanceProvider(MeasureAdvance);
+    {
+        TextLayout.RegisterAdvanceProvider(MeasureAdvance);
+        TextMetrics.RegisterProvider(MetricsProvider);
+    }
 #pragma warning restore CA2255
 
     private static float? MeasureAdvance(Rune rune, Font font)
@@ -270,5 +274,53 @@ internal static class SystemTextMeasurementRegistration
             : new Font(family, font.Size, font.Weight, font.Style);
         lock (Sync)
             return Rasterizer.Rasterize(effectiveFont, (char)rune.Value)?.AdvanceX;
+    }
+}
+
+internal sealed class SystemTextMetricsProvider(SystemGlyphRasterizer rasterizer) : ITextMetricsProvider
+{
+    private readonly object _sync = new();
+
+    public bool TryGetFontMetrics(Font font, out FontMetrics metrics)
+    {
+        var height = Math.Max(1, font.Size * TextLayout.DefaultLineHeight);
+        var ascent = font.Size * 0.8f;
+        metrics = new FontMetrics(-ascent, -ascent, height - ascent, height - ascent, 0);
+        return true;
+    }
+
+    public bool TryGetGlyphMetrics(Font font, Rune rune, out GlyphMetrics metrics)
+    {
+        if (!rune.IsBmp || !rasterizer.IsAvailable)
+        {
+            metrics = default;
+            return false;
+        }
+
+        RasterizedGlyph? glyph;
+        lock (_sync)
+            glyph = rasterizer.Rasterize(font, (char)rune.Value);
+        if (glyph == null)
+        {
+            metrics = default;
+            return false;
+        }
+
+        var fontMetrics = GetFontMetrics(font);
+        metrics = new GlyphMetrics(
+            glyph.AdvanceX,
+            new Rect(
+                glyph.OffsetX,
+                glyph.OffsetY + fontMetrics.Top,
+                glyph.Width,
+                glyph.Height));
+        return true;
+    }
+
+    private static FontMetrics GetFontMetrics(Font font)
+    {
+        var height = Math.Max(1, font.Size * TextLayout.DefaultLineHeight);
+        var ascent = font.Size * 0.8f;
+        return new FontMetrics(-ascent, -ascent, height - ascent, height - ascent, 0);
     }
 }

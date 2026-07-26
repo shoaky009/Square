@@ -81,6 +81,12 @@ dotnet build Square.slnx
 dotnet run --project samples/Square.Sample.Vue/Square.Sample.Vue.csproj
 ```
 
+主示例可选择 CPU Skia 后端：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj -- --backend Skia
+```
+
 运行 RichText 示例：
 
 ```bash

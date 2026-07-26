@@ -529,7 +529,7 @@ public sealed class RichTextEditor : UIElement, ITextEditor
             return pixels;
         if (float.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var multiplier) && multiplier > 0)
             return font.Size * multiplier;
-        return font.Size * TextLayout.DefaultLineHeight;
+        return TextMetrics.GetLineHeight(font, TextLayout.DefaultLineHeight);
     }
 
     private float ResolvePadding()

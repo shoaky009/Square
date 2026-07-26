@@ -7,6 +7,7 @@
   <Project Path="src/Square.Images/Square.Images.csproj" />
   <Project Path="src/Square.DevTools/Square.DevTools.csproj" />
   <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
+  <Project Path="src/Square.Backends.Skia/Square.Backends.Skia.csproj" />
   <Folder Name="/Samples/">
     <Project Path="samples/Square.Sample.HelloWorld/Square.Sample.HelloWorld.csproj" />
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />
@@ -16,6 +17,7 @@
   <Folder Name="/Tests/">
     <Project Path="tests/Square.Backends.Tests/Square.Backends.Tests.csproj" />
     <Project Path="tests/Square.Backends.Vulkan.Tests/Square.Backends.Vulkan.Tests.csproj" />
+    <Project Path="tests/Square.Backends.Skia.Tests/Square.Backends.Skia.Tests.csproj" />
     <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
     <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
     <Project Path="tests/Square.Images.Tests/Square.Images.Tests.csproj" />

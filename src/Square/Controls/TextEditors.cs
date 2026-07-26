@@ -447,13 +447,9 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     }
 
     private Point GetTextOrigin(float fontSize, float lineHeight)
-    {
-        var naturalLineHeight = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
-        var textOffset = (lineHeight - naturalLineHeight) / 2f;
-        return new Point(
+        => new(
             Geometry.X + TextPaddingX - _horizontalScroll,
-            GetFirstLineTop(lineHeight) + textOffset);
-    }
+            GetFirstLineTop(lineHeight));
 
     private float GetFirstLineTop(float lineHeight) => IsMultiline
         ? Geometry.Y + TextPaddingY
@@ -461,7 +457,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     private (float Top, float Height) GetVisualLineBox(float fontSize, float lineHeight, int lineIndex)
     {
-        var naturalLineHeight = MathF.Round(fontSize * TextLayout.DefaultLineHeight);
+        var font = ControlDrawing.ResolveFont(this, fontSize);
+        var naturalLineHeight = TextMetrics.GetFontMetrics(font).Height;
         var visualHeight = Math.Max(lineHeight, naturalLineHeight);
         var lineTop = GetFirstLineTop(lineHeight) + lineIndex * lineHeight;
         return (MathF.Round(lineTop + (lineHeight - visualHeight) / 2f), visualHeight);

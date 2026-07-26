@@ -1,6 +1,5 @@
 using System.Text;
 using Square.Graphics;
-using Square.Text.Glyph;
 
 namespace Square.Extensions.RichText;
 
@@ -19,8 +18,6 @@ public sealed record RichTextLayoutLine(
 
 public sealed class RichTextBlockLayout
 {
-    private static readonly SystemGlyphRasterizer GlyphRasterizer = new();
-
     public RichTextBlockLayout(RichTextBlock block, Rect bounds, IReadOnlyList<RichTextLayoutLine> lines)
     {
         Block = block;
@@ -105,14 +102,7 @@ public sealed class RichTextBlockLayout
     }
 
     internal static float MeasureAdvance(Font font, Rune rune)
-    {
-        if (GlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
-        {
-            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null) return glyph.AdvanceX;
-        }
-        return TextLayout.MeasureRuneAdvance(rune, font);
-    }
+        => TextMetrics.GetGlyphMetrics(font, rune).AdvanceX;
 
     internal static float MeasureText(string text, Font font)
     {
@@ -168,7 +158,7 @@ public static class RichTextLayoutEngine
         ArgumentNullException.ThrowIfNull(block);
         ArgumentNullException.ThrowIfNull(baseFont);
         maxWidth = float.IsFinite(maxWidth) && maxWidth > 0 ? maxWidth : float.PositiveInfinity;
-        lineHeight = lineHeight > 0 ? lineHeight : baseFont.Size * TextLayout.DefaultLineHeight;
+        lineHeight = lineHeight > 0 ? lineHeight : TextMetrics.GetLineHeight(baseFont, TextLayout.DefaultLineHeight);
 
         var tokens = new List<LayoutToken>();
         var offset = 0;

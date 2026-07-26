@@ -9,11 +9,14 @@
     <PublishAot Condition="'$(SquareSamplePublishAot)' == 'true'">true</PublishAot>
     <SquareSampleUseVulkan Condition="'$(SquareSampleUseVulkan)' == '' and '$(SquareSamplePublishAot)' != 'true'">true</SquareSampleUseVulkan>
     <SquareSampleUseVulkan Condition="'$(SquareSampleUseVulkan)' == ''">false</SquareSampleUseVulkan>
+    <SquareSampleUseSkia Condition="'$(SquareSampleUseSkia)' == '' and '$(SquareSamplePublishAot)' != 'true'">true</SquareSampleUseSkia>
+    <SquareSampleUseSkia Condition="'$(SquareSampleUseSkia)' == ''">false</SquareSampleUseSkia>
     <SquareSampleUseDevTools Condition="'$(SquareSampleUseDevTools)' == '' and '$(SquareSamplePublishAot)' != 'true'">true</SquareSampleUseDevTools>
     <SquareSampleUseDevTools Condition="'$(SquareSampleUseDevTools)' == ''">false</SquareSampleUseDevTools>
     <EmitCompilerGeneratedFiles Condition="'$(SquareEmitCompilerGeneratedFiles)' == 'true'">true</EmitCompilerGeneratedFiles>
     <OptimizationPreference>Size</OptimizationPreference>
     <DefineConstants Condition="'$(SquareSampleUseVulkan)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_VULKAN</DefineConstants>
+    <DefineConstants Condition="'$(SquareSampleUseSkia)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_SKIA</DefineConstants>
     <DefineConstants Condition="'$(SquareSampleUseDevTools)' == 'true'">$(DefineConstants);SQUARE_SAMPLE_DEVTOOLS</DefineConstants>
   </PropertyGroup>
 
@@ -22,6 +25,7 @@
     <ProjectReference Include="..\..\src\Square.Platform.Win32\Square.Platform.Win32.csproj" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <ProjectReference Include="..\..\src\Square.Platform.X11\Square.Platform.X11.csproj" Condition="'$(SquareTargetPlatform)' == 'X11'" />
     <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" Condition="'$(SquareSampleUseVulkan)' == 'true'" />
+    <ProjectReference Include="..\..\src\Square.Backends.Skia\Square.Backends.Skia.csproj" Condition="'$(SquareSampleUseSkia)' == 'true'" />
     <ProjectReference Include="..\..\src\Square.DevTools\Square.DevTools.csproj" Condition="'$(SquareSampleUseDevTools)' == 'true'" />
     <ProjectReference Include="..\..\src\Square.Compiler\Square.Compiler.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>

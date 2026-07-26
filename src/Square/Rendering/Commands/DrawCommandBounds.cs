@@ -48,7 +48,7 @@ internal static class DrawCommandBounds
     {
         FillRectCommand fill => fill.Rect,
         DrawRectCommand draw => draw.Rect.Inflate(Math.Max(1f, draw.Pen.Width) / 2f, Math.Max(1f, draw.Pen.Width) / 2f),
-        DrawTextCommand text => new Rect(text.Origin, text.Text.Measure()),
+        DrawTextCommand text => TextMetrics.MeasureInkBounds(text.Text, text.Origin),
         DrawImageCommand image => image.Dest,
         FillGeometryCommand fill => GetGeometryBounds(fill.Geometry),
         DrawGeometryCommand draw => GetGeometryBounds(draw.Geometry).Inflate(Math.Max(1f, draw.Pen.Width) / 2f, Math.Max(1f, draw.Pen.Width) / 2f),

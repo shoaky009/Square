@@ -29,8 +29,17 @@ Display Tree (DrawCommand 列表)
   ↓ (Square.Graphics)
 IRenderContext
   ↓ (Square.Backends)
-Backend (Software / Vulkan / ...)
+Backend (Software / Skia / Vulkan / ...)
 ```
+
+Skia 后端位于独立的 `Square.Backends.Skia` 包，首版使用 CPU raster surface，并通过宿主已有的
+BGRA 帧回调呈现。应用可调用 `window.UseSkiaBackend()` 选择它。该后端当前使用全帧渲染，
+不声明 dirty-region 支持。项目会按 `SquareTargetPlatform` 选择 Win32 或 Linux 原生资产，后端包
+应按目标平台构建；GPU Skia 与 NativeAOT 兼容性仍需单独验证。
+
+注册 Skia 后端后，`TextMetrics` 会以 `SKFont.Metrics` 和 Skia glyph bounds 作为字体度量基准。
+`TextLayout`、字符 fragment、选择区、光标、RichText 和 DrawCommand dirty bounds 共用该度量；
+CSS `line-height` 仍控制行进距离，Skia font bounds 用于计算行盒内 baseline 与实际墨迹范围。
 
 ---
 

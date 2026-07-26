@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Text;
 using Square.Events;
 using Square.Graphics;
-using global::Square.Text.Glyph;
 using Square.UI;
 using FontManager = global::Square.Text.FontManager;
 
@@ -1235,8 +1234,6 @@ internal sealed class DomTextContent
 
 internal static class ControlDrawing
 {
-    private static readonly SystemGlyphRasterizer GlyphRasterizer = new();
-
     /// <summary>从元素 CSS 字体相关属性解析 <see cref="Font"/>（font-family/size/weight/style）。</summary>
     internal static Font ResolveFont(Element element, float defaultSize)
     {
@@ -1291,27 +1288,14 @@ internal static class ControlDrawing
     }
 
     internal static float MeasureRenderedRuneAdvance(Rune rune, Font font)
-    {
-        if (GlyphRasterizer.IsAvailable && rune.IsBmp)
-        {
-            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null) return glyph.AdvanceX;
-        }
-
-        return TextLayout.MeasureRuneAdvance(rune, font);
-    }
+        => TextMetrics.GetGlyphMetrics(font, rune).AdvanceX;
 
     internal static (float Left, float Right) MeasureRenderedRuneInkBounds(Rune rune, Font font)
     {
-        var advance = MeasureRenderedRuneAdvance(rune, font);
-        if (GlyphRasterizer.IsAvailable && rune.IsBmp)
-        {
-            var glyph = GlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null)
-                return (Math.Min(0, glyph.OffsetX), Math.Max(advance, glyph.OffsetX + glyph.Width));
-        }
-
-        return (0, advance);
+        var glyph = TextMetrics.GetGlyphMetrics(font, rune);
+        return (
+            Math.Min(0, glyph.InkBounds.Left),
+            Math.Max(glyph.AdvanceX, glyph.InkBounds.Right));
     }
 
     internal static void DrawText(
@@ -1421,7 +1405,8 @@ internal static class ControlDrawing
     internal static float GetStyledLineHeight(Element element, float fontSize)
     {
         var value = element.Style.GetPropertyValue("line-height").Trim();
-        if (string.IsNullOrEmpty(value)) return Math.Max(1, MathF.Round(fontSize * TextLayout.DefaultLineHeight));
+        if (string.IsNullOrEmpty(value))
+            return MathF.Round(TextMetrics.GetLineHeight(ResolveFont(element, fontSize), TextLayout.DefaultLineHeight));
 
         if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
             return Math.Max(1, GetStyledFloat(element, "line-height", fontSize * TextLayout.DefaultLineHeight));
@@ -1429,7 +1414,7 @@ internal static class ControlDrawing
         return float.TryParse(value, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var multiplier)
             ? Math.Max(1, fontSize * multiplier)
-            : Math.Max(1, MathF.Round(fontSize * TextLayout.DefaultLineHeight));
+            : MathF.Round(TextMetrics.GetLineHeight(ResolveFont(element, fontSize), TextLayout.DefaultLineHeight));
     }
 
     internal static Color GetStyledColor(Element element, string name, Color fallback)

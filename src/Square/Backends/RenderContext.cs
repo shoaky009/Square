@@ -1681,7 +1681,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     private void RenderSystemText(TextLayout textLayout, Point origin, Color color)
     {
-        var lineHeight = Math.Max(1, textLayout.Font.Size * textLayout.LineHeight * _dpiScale);
+        var lineHeight = TextMetrics.GetLineHeight(textLayout.Font, textLayout.LineHeight) * _dpiScale;
         var maxWidth = textLayout.MaxSize.Width * _dpiScale;
         var physicalFont = textLayout.Font.WithSize(textLayout.Font.Size * _dpiScale);
         var glyphs = new Dictionary<int, RasterizedGlyph?>();

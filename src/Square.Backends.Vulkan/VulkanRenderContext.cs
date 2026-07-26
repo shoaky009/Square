@@ -430,7 +430,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
             return;
         }
 
-        var lineHeight = text.Font.Size * text.LineHeight;
+        var lineHeight = TextMetrics.GetLineHeight(text.Font, text.LineHeight);
         var advances = new Dictionary<int, float>();
         var lines = TextWrapping.Wrap(text.Text, text.MaxSize.Width, (offset, rune) =>
         {
@@ -621,7 +621,7 @@ internal sealed unsafe class VulkanRenderContext : IRenderContext, IDpiResizable
     private void DrawPixelAlignedText(TextLayout text, Point origin, uint packed)
     {
         var physicalOrigin = TransformPoint(origin);
-        var lineHeight = Math.Max(1, text.Font.Size * text.LineHeight * DpiScale);
+        var lineHeight = TextMetrics.GetLineHeight(text.Font, text.LineHeight) * DpiScale;
         var advances = new Dictionary<int, float>();
         var lines = TextWrapping.Wrap(text.Text, text.MaxSize.Width * DpiScale, (offset, rune) =>
         {

@@ -59,7 +59,7 @@ public sealed class TextLayout
         if (string.IsNullOrEmpty(Text))
             return Size.Zero;
 
-        var lineHeight = Font.Size * LineHeight;
+        var lineHeight = TextMetrics.GetLineHeight(Font, LineHeight);
         var maxWidth = MaxSize.Width;
         var lines = TextWrapping.Wrap(Text, maxWidth, (_, rune) => MeasureRuneAdvance(rune, Font));
         var widestLine = lines.Count == 0 ? 0 : lines.Max(line => line.Width);
@@ -79,9 +79,16 @@ public sealed class TextLayout
 
     public static float MeasureRuneAdvance(Rune rune, Font font)
     {
-        var category = Rune.GetUnicodeCategory(rune);
-        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
-            return 0;
+        if (TextMetrics.IsZeroAdvanceCategory(rune)) return 0;
+        var provided = TextMetrics.GetGlyphMetrics(font, rune).AdvanceX;
+        if (provided >= 0 && float.IsFinite(provided)) return provided;
+        var measured = _advanceProvider?.Invoke(rune, font);
+        if (measured is >= 0 and float value && float.IsFinite(value)) return value;
+        return MeasureRuneAdvanceFallback(rune, font);
+    }
+
+    internal static float MeasureRuneAdvanceFallback(Rune rune, Font font)
+    {
         var measured = _advanceProvider?.Invoke(rune, font);
         if (measured is >= 0 and float value && float.IsFinite(value)) return value;
         var advance = MeasureRuneAdvance(rune, font.Size);

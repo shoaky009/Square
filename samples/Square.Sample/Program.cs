@@ -2,6 +2,9 @@ using System.Diagnostics;
 #if SQUARE_SAMPLE_VULKAN
 using Square.Backends.Vulkan;
 #endif
+#if SQUARE_SAMPLE_SKIA
+using Square.Backends.Skia;
+#endif
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
@@ -45,6 +48,12 @@ public static class Program
             window.UseVulkanBackend();
 #else
             throw new NotSupportedException("This build does not include Vulkan. Build with -p:SquareSampleUseVulkan=true to enable it.");
+#endif
+        else if (string.Equals(backend, "Skia", StringComparison.OrdinalIgnoreCase))
+#if SQUARE_SAMPLE_SKIA
+            window.UseSkiaBackend();
+#else
+            throw new NotSupportedException("This build does not include Skia. Build with -p:SquareSampleUseSkia=true to enable it.");
 #endif
         ConfigureRendering(window, args);
         ConfigureDebugOverlayToggle(window);

@@ -2,15 +2,12 @@ using Square.Controls;
 using Square.Graphics;
 using Square.UI;
 using Square.Rendering.Tree;
-using Square.Text.Glyph;
 using System.Text;
 
 namespace Square.Rendering;
 
 public sealed class DisplayTree
 {
-    private static readonly SystemGlyphRasterizer TextFragmentGlyphRasterizer = new();
-
     private readonly DisplayNode _root = new();
     private readonly List<Rect> _dirtyRects = [];
     private readonly List<IPopupElement> _popups = [];
@@ -330,13 +327,13 @@ public sealed class DisplayTree
         var text = command.Text.Text;
         if (string.IsNullOrEmpty(text)) return null;
 
-        var lineHeight = command.Text.Font.Size * command.Text.LineHeight;
+        var lineHeight = TextMetrics.GetLineHeight(command.Text.Font, command.Text.LineHeight);
         var maxWidth = command.Text.MaxSize.Width;
         var characters = new List<TextCharacterFragment>();
         var advances = new Dictionary<int, float>();
         var lines = TextWrapping.Wrap(text, maxWidth, (offset, rune) =>
         {
-            var advance = MeasureRenderedAdvance(command.Text.Font, rune);
+            var advance = TextMetrics.GetGlyphMetrics(command.Text.Font, rune).AdvanceX;
             advances[offset] = advance;
             return advance;
         });
@@ -354,11 +351,17 @@ public sealed class DisplayTree
                 var startOffset = offset;
                 var advance = advances[offset];
                 offset += consumed;
-                var glyphBounds = MeasureRenderedGlyphBounds(command.Text.Font, rune);
+                var glyphBounds = TextMetrics.GetGlyphBoundsInLine(command.Text.Font, rune, lineHeight);
+                var selectionTop = Math.Min(y, y + glyphBounds.Top);
+                var selectionBottom = Math.Max(y + lineHeight, y + glyphBounds.Bottom);
                 var bounds = new Rect(x, y, advance, Math.Max(lineHeight, glyphBounds.Bottom));
                 var selectionLeft = Math.Min(x, x + glyphBounds.Left);
                 var selectionRight = Math.Max(x + advance, x + glyphBounds.Right);
-                var selectionBounds = new Rect(selectionLeft, y, selectionRight - selectionLeft, bounds.Height);
+                var selectionBounds = new Rect(
+                    selectionLeft,
+                    selectionTop,
+                    selectionRight - selectionLeft,
+                    selectionBottom - selectionTop);
                 characters.Add(new TextCharacterFragment(startOffset, offset, bounds, selectionBounds));
                 x += advance;
             }
@@ -367,30 +370,12 @@ public sealed class DisplayTree
 
         if (characters.Count == 0) return null;
         var bottom = characters.Max(character => character.Bounds.Bottom);
-        var boundsAll = new Rect(command.Origin.X, command.Origin.Y, maxRight - command.Origin.X, bottom - command.Origin.Y);
+        var boundsAll = new Rect(
+            command.Origin.X,
+            command.Origin.Y,
+            maxRight - command.Origin.X,
+            bottom - command.Origin.Y);
         return new TextFragment(element, text, command.Text.Font, boundsAll, characters);
-    }
-
-    private static float MeasureRenderedAdvance(Font font, Rune rune)
-    {
-        if (TextFragmentGlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
-        {
-            var glyph = TextFragmentGlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null) return glyph.AdvanceX;
-        }
-
-        return TextLayout.MeasureRuneAdvance(rune, font);
-    }
-
-    private static Rect MeasureRenderedGlyphBounds(Font font, Rune rune)
-    {
-        if (TextFragmentGlyphRasterizer.IsAvailable && rune.Value <= char.MaxValue)
-        {
-            var glyph = TextFragmentGlyphRasterizer.Rasterize(font, (char)rune.Value);
-            if (glyph != null) return new Rect(glyph.OffsetX, glyph.OffsetY, glyph.Width, glyph.Height);
-        }
-
-        return new Rect(0, 0, TextLayout.MeasureRuneAdvance(rune, font), font.Size * TextLayout.DefaultLineHeight);
     }
 
     private static bool IsDescendantOrSelf(Element element, Element root)
