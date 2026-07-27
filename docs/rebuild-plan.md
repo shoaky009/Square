@@ -538,7 +538,7 @@ public enum DirectiveEmitPattern
 {
     ControlFlowAttach,  // Show/For/Switch：字段 + new Runtime + AttachTo
     SlotOutlet,         // Slot：Slots.Render + fallback
-    RouterTree,         // Router + 子 Route
+    RouterTree,         // 历史方案，现已删除
     CustomSource        // 仅框架白名单 IDirectiveEmitter
 }
 ```
@@ -620,7 +620,7 @@ if (element.Kind == SqxNodeKind.Directive)
 | Switch | ControlFlowAttach | `SwitchNode` + 子 Match `AddBranch`/`AddDefault` |
 | Match | 子处理 | 不单独 emit |
 | Slot / Outlet | SlotOutlet | `Slots.Render` + fallback |
-| Router | RouterTree | `new Router` + 子 Route + `Start` |
+| Router | RouterTree | 历史方案，已由 `AppWindow.UseRouter` + `RouterView` 替代 |
 | Route | 嵌套 | path / component 静态 factory |
 
 字段计数：`FieldPrefix` + 通用递增，删除专用 counter。
@@ -634,8 +634,8 @@ if (element.Kind == SqxNodeKind.Directive)
 | Switch | | `SwitchNode` | Controls.Primitives |
 | Match | Parent=Switch | — | 同上 |
 | Slot | Outlet | Slot API | Square.UI |
-| Router | | `Router` | Square.Router |
-| Route | SkipStandalone | `RouteDefinition` | Square.Router |
+| Router | | 历史类型，已删除 | Square.Extensions.Routing |
+| Route | SkipStandalone | 历史语法，已删除 | Square.Extensions.Routing |
 
 迁移完成后 **删除** Parser/Emitter 专用分支。
 
@@ -677,7 +677,7 @@ if (element.Kind == SqxNodeKind.Directive)
 | SG 反射执行用户 Emitter | 声明式 Spec + 框架白名单 |
 | Catalog 缓存不失效 | catalog 进入 incremental key |
 | Outlet/Slot 别名 | 解析期归一 `DirectiveId` |
-| Router/Route 嵌套 | `RouterTree` 保留现有递归语义 |
+| Router/Route 嵌套 | 历史方案；当前使用嵌套 `RouterView` |
 
 ---
 
@@ -747,7 +747,7 @@ if (element.Kind == SqxNodeKind.Directive)
 | `Square.CSS` | Element 树；可选 TagName 匹配 |
 | `Square.Controls` | 注册表、Paint、InvalidatePaint、Show/For/Switch 指令元数据 |
 | `Square.Hosting` | UIDocument 主循环、Title 同步 |
-| `Square.Router` | Find(Element)、Link 事件、Router/Route 指令元数据 |
+| `Square.Extensions.Routing` | 当前已替代此历史方案：UseRouter、RouterView、RouterLink、守卫与 KeepAlive |
 | `Square.Compiler` | BuildElementTree、事件签名、**DirectiveCatalog + Emit 管线** |
 | `Square.Directives`（可选新建） | `SqxDirectiveAttribute`、Pattern/Spec 公共类型 |
 | tests / samples / docs | 同步 |

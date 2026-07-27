@@ -589,19 +589,24 @@ var btn = el.Query<Tag.Button>(".cls");
 Square 桌面应用默认采用内存历史。路由声明由 Source Generator 编译为静态组件工厂，不使用反射：
 
 ```xml
-<Router initialPath="/">
-  <Route path="/" component={HomePage} />
-  <Route path="/users" component={UsersLayout}>
-    <Route path="/" component={UsersPage} />
-    <Route path=":id" component={UserPage} />
-  </Route>
-  <Route path="*" component={NotFoundPage} />
-</Router>
+var router = window.UseRouter(routes =>
+{
+    routes.Map("/", static () => new HomePage());
+    routes.Map("/users", static () => new UsersLayout(), route =>
+    {
+        route.KeepAlive = true;
+        route.Map("", static () => new UsersPage());
+        route.Map(":id", static () => new UserPage(), child => child.KeepAlive = true);
+    });
+    routes.Map("*", static () => new NotFoundPage());
+});
 ```
 
 - 匹配优先级：静态段 > `:parameter` > `*wildcard`。
 - 父 Route 有组件时作为布局组件，子路由内容投影到其默认 Slot；`<Outlet />` 是该 Slot 的路由语义别名。
-- `<Link to="...">` 执行声明式导航；`Navigate`、`Replace`、`Back`、`Forward` 提供命令式导航。
+- `<RouterLink to="...">` 执行声明式导航；`Navigate`、`Replace`、`Back`、`Forward` 提供命令式导航。
+- 页面出口使用 `<RouterView>`；父布局中嵌套 RouterView 显示下一层子路由。
+- `<Router>`/`<Route>` 已不再是 SQX 结构语法。
 - `RouteContext` 提供当前 Path、Params 和 Query。
 - 导航替换视觉子树时，沿用 Attached/Loaded/Unloaded/Detached 生命周期顺序。
 - MVP 不包含运行时程序集懒加载、异步守卫、页面缓存和平台 URL 协议；仅预留 preload/历史适配边界。

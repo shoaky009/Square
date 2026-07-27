@@ -1,0 +1,17 @@
+<template>
+  <View class="route-message">
+    <Text class="route-login" text="Guard redirected to login" />
+    <Text ref="ReturnUrl" text="Return URL: -" />
+  </View>
+</template>
+<script lang="csharp">
+  protected override void OnAttachedCore()
+  {
+    var route = Square.Extensions.Routing.RouteLocation.Find(this);
+    ReturnUrl.TextContent = "Return URL: " + (route?.Query.TryGetValue("returnUrl", out var value) == true ? value : "-");
+  }
+</script>
+<style>
+  .route-message { display: flex; flex-direction: column; gap: 4px; }
+  .route-login { color: #b42318; font-size: 14px; }
+</style>

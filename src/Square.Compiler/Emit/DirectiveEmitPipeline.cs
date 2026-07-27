@@ -58,9 +58,6 @@ internal sealed class DirectiveEmitPipeline
             case "SlotOutlet":
                 EmitSlotOutlet(descriptor, element, indent, parentName, localNames);
                 return true;
-            case "RouterTree":
-                EmitRouterTree(element, indent, parentName, localNames);
-                return true;
             default:
                 // Fall back by resolved tag name for known built-ins
                 if (descriptor.TagName == "Show" || descriptor.TagName == "For" || descriptor.TagName == "Switch")
@@ -71,11 +68,6 @@ internal sealed class DirectiveEmitPipeline
                 if (descriptor.TagName == "Slot")
                 {
                     EmitSlotOutlet(descriptor, element, indent, parentName, localNames);
-                    return true;
-                }
-                if (descriptor.TagName == "Router")
-                {
-                    EmitRouterTree(element, indent, parentName, localNames);
                     return true;
                 }
                 return false;
@@ -109,7 +101,7 @@ internal sealed class DirectiveEmitPipeline
                 _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
             }
             _sb.AppendLine(indent + "});");
-            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
+            _sb.AppendLine(indent + parentName + ".RegisterGeneratedResource(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             return;
         }
@@ -140,7 +132,7 @@ internal sealed class DirectiveEmitPipeline
                 _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
             }
             _sb.AppendLine(indent + "});");
-            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
+            _sb.AppendLine(indent + parentName + ".RegisterGeneratedResource(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             return;
         }
@@ -178,7 +170,7 @@ internal sealed class DirectiveEmitPipeline
                 _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
                 _sb.AppendLine(indent + "});");
             }
-            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
+            _sb.AppendLine(indent + parentName + ".RegisterGeneratedResource(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
         }
     }
@@ -219,62 +211,6 @@ internal sealed class DirectiveEmitPipeline
         _sb.AppendLine(indent + "{");
         _emitNodes(element.Children, indent + "    ", parentName, localNames);
         _sb.AppendLine(indent + "}");
-    }
-
-    private void EmitRouterTree(SqxElement element, string indent, string parentName, IReadOnlyList<string> localNames)
-    {
-        var refAttr = FindAttr(element, "ref");
-        var isRef = refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue);
-        var variableName = isRef ? refAttr.RawValue : _nextVariable();
-        if (isRef)
-            _sb.AppendLine(indent + variableName + " = new Square.Router.Router();");
-        else
-            _sb.AppendLine(indent + "var " + variableName + " = new Square.Router.Router();");
-
-        var initialPath = FindAttr(element, "initialPath");
-        if (initialPath != null)
-        {
-            if (initialPath.IsExpression)
-                _sb.AppendLine(indent + variableName + ".InitialPath = " + initialPath.RawValue + ";");
-            else
-                _sb.AppendLine(indent + variableName + ".InitialPath = \"" + Escape(initialPath.RawValue ?? "/") + "\";");
-        }
-
-        foreach (var attribute in element.Attributes)
-        {
-            if (attribute.Name == "initialPath" || attribute.Name == "ref") continue;
-            _emitAttribute(variableName, attribute, indent, localNames);
-        }
-
-        foreach (var route in element.Children.OfType<SqxElement>())
-        {
-            if (!_catalog.TryGet(route.TagName, out var childDesc) || childDesc.TagName != "Route")
-                continue;
-            var routeName = EmitRouteDefinition(route, indent);
-            _sb.AppendLine(indent + variableName + ".Routes.Add(" + routeName + ");");
-        }
-
-        _sb.AppendLine(indent + variableName + ".Start();");
-        _sb.AppendLine(indent + parentName + ".Children.Add(" + variableName + ");");
-    }
-
-    private string EmitRouteDefinition(SqxElement element, string indent)
-    {
-        var variableName = _nextVariable();
-        var path = FindAttr(element, "path")?.RawValue ?? "/";
-        var component = FindAttr(element, "component")?.RawValue;
-        var factory = string.IsNullOrWhiteSpace(component) ? "null" : "() => new " + component + "()";
-        _sb.AppendLine(indent + "var " + variableName + " = new Square.Router.RouteDefinition(\"" + Escape(path) + "\", " + factory + ");");
-
-        foreach (var child in element.Children.OfType<SqxElement>())
-        {
-            if (!_catalog.TryGet(child.TagName, out var childDesc) || childDesc.TagName != "Route")
-                continue;
-            var childName = EmitRouteDefinition(child, indent);
-            _sb.AppendLine(indent + variableName + ".Children.Add(" + childName + ");");
-        }
-
-        return variableName;
     }
 
     private static SqxAttribute FindAttr(SqxElement element, string name) =>

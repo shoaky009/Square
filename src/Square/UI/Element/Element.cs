@@ -25,6 +25,7 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private Point _scrollOffset;
     private int _zIndex;
     private readonly List<IDisposable> _bindings = [];
+    private List<IDisposable>? _generatedResources;
     private int _debugId;
 
     [ThreadStatic]
@@ -405,6 +406,36 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
         OnPropertyChanged(name);
         ((IComponentLifecycle)this).OnPropChanged(name);
         Invalidate(PropertyInvalidation.ForProperty(name));
+    }
+
+    /// <summary>登记与此元素子树同生命周期的生成资源。</summary>
+    public void RegisterGeneratedResource(IDisposable resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        (_generatedResources ??= []).Add(resource);
+    }
+
+    /// <summary>
+    /// 永久丢弃此生成子树并释放响应式绑定与生成资源。
+    /// 普通移除和重新挂载不会调用此方法。
+    /// </summary>
+    public void DiscardGeneratedSubtree()
+    {
+        var children = Children.ToArray();
+
+        if (_generatedResources != null)
+        {
+            for (var i = _generatedResources.Count - 1; i >= 0; i--)
+                _generatedResources[i].Dispose();
+            _generatedResources.Clear();
+        }
+
+        for (var i = _bindings.Count - 1; i >= 0; i--)
+            _bindings[i].Dispose();
+        _bindings.Clear();
+
+        foreach (var child in children)
+            child.DiscardGeneratedSubtree();
     }
 
     /// <summary>

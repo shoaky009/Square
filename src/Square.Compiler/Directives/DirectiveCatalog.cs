@@ -184,19 +184,6 @@ internal sealed class DirectiveCatalog
             Pattern = "SlotOutlet",
             PrimaryAttribute = "name"
         });
-        catalog.Add(new DirectiveDescriptor
-        {
-            TagName = "Router",
-            Pattern = "RouterTree",
-            AllowedChildTags = ImmutableArray.Create("Route")
-        });
-        catalog.Add(new DirectiveDescriptor
-        {
-            TagName = "Route",
-            ParentTag = "Router",
-            SkipStandaloneEmit = true,
-            PrimaryAttribute = "path"
-        });
         return catalog;
     }
 }

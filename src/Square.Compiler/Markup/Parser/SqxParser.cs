@@ -106,8 +106,6 @@ public sealed class SqxParser
         "Switch" => SqxNodeKind.Switch,
         "Match" => SqxNodeKind.Match,
         "Slot" or "Outlet" => SqxNodeKind.Slot,
-        "Router" => SqxNodeKind.Router,
-        "Route" => SqxNodeKind.Route,
         _ => SqxNodeKind.Element
     };
 }

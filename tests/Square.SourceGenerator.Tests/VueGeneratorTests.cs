@@ -193,8 +193,9 @@ public class VueGeneratorTests
 
         Assert.Contains("SqvObjectBinding.BindProperties", generated);
         Assert.Contains("SqvObjectBinding.BindEvents", generated);
-        Assert.Contains("private readonly System.Collections.Generic.List<System.IDisposable> _generatedBindings", generated);
-        Assert.Contains("foreach (var binding in _generatedBindings) binding.Dispose();", generated);
+        Assert.Contains(".RegisterGeneratedResource(SqvObjectBinding.BindProperties", generated);
+        Assert.Contains(".RegisterGeneratedResource(SqvObjectBinding.BindEvents", generated);
+        Assert.DoesNotContain("_generatedBindings", generated);
     }
 
     [Fact]
@@ -552,7 +553,7 @@ public class VueGeneratorTests
     }
 
     [Fact]
-    public void GeneratedCleanupCoexistsWithUserDetachHook()
+    public void GeneratedResourcesSurviveOrdinaryDetach()
     {
         const string source = """
             <template><Button ref={SaveButton}>Save</Button></template>
@@ -564,8 +565,8 @@ public class VueGeneratorTests
         var result = RunGenerator(new InMemoryAdditionalText("Cleanup.sqx", source));
         var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
 
-        Assert.Contains("protected override void OnGeneratedDetachedCore()", generated);
-        Assert.Contains("SaveButton = null!;", generated);
+        Assert.DoesNotContain("protected override void OnGeneratedDetachedCore()", generated);
+        Assert.Equal(1, generated.Split("SaveButton = null!;").Length - 1);
         Assert.Contains("protected override void OnDetachedCore()", generated);
     }
 
@@ -913,7 +914,9 @@ public class VueGeneratorTests
 
         Assert.Equal(2, generated.Split("new ShowNode(").Length - 1);
         Assert.Contains("ForNode.Create(Items", generated);
-        Assert.Contains("_generatedDirectives.Add", generated);
+        Assert.Contains(".RegisterGeneratedResource(_show", generated);
+        Assert.Contains(".RegisterGeneratedResource(_for", generated);
+        Assert.DoesNotContain("_generatedDirectives", generated);
     }
 
     [Fact]

@@ -43,4 +43,29 @@ public class SlotsTests
         Assert.Throws<KeyNotFoundException>(() => props.Get<int>("missing"));
         Assert.Throws<InvalidCastException>(() => props.Get<string>("count"));
     }
+
+    [Fact]
+    public void DiscardingSlotHostReleasesProjectedContentResources()
+    {
+        var slots = new SlotCollection();
+        var host = new View();
+        var resource = new TrackingDisposable();
+        slots.Set("", parent =>
+        {
+            var child = new Square.Controls.Text("Projected");
+            child.RegisterGeneratedResource(resource);
+            parent.Children.Add(child);
+        });
+        slots.Render("", host);
+
+        host.DiscardGeneratedSubtree();
+
+        Assert.Equal(1, resource.DisposeCount);
+    }
+
+    private sealed class TrackingDisposable : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+        public void Dispose() => DisposeCount++;
+    }
 }

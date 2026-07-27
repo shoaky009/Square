@@ -144,16 +144,6 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
-    public void ReportsRouteAtRootAsIllegalStandalone()
-    {
-        const string source = "<template><Route path=\"/\" component={Page} /></template>";
-
-        var diagnostics = RunGenerator(new InMemoryAdditionalText("BadRoute.sqx", source));
-
-        Assert.Contains(diagnostics, d => d.Id is "SQXD003" or "SQXD005");
-    }
-
-    [Fact]
     public void ReportsPropTypeMismatchForIntPropWithStringConstant()
     {
         const string component = """
@@ -356,16 +346,6 @@ public class GeneratorDiagnosticsTests
         var diagnostics = RunGenerator(new InMemoryAdditionalText(
             "InvalidSwitch.sqx",
             "<template><Switch><Text text=\"bad\" /></Switch></template>"));
-
-        Assert.Contains(diagnostics, d => d.Id == "SQXD006");
-    }
-
-    [Fact]
-    public void ReportsInvalidRouterChild()
-    {
-        var diagnostics = RunGenerator(new InMemoryAdditionalText(
-            "InvalidRouter.sqx",
-            "<template><Router><Text text=\"bad\" /></Router></template>"));
 
         Assert.Contains(diagnostics, d => d.Id == "SQXD006");
     }

@@ -4,6 +4,7 @@ using Square.Platform;
 using Square.Sample.Vue.Components;
 using Square.UI;
 using Square.Backends.Vulkan;
+using Square.Extensions.Routing;
 namespace Square.Sample.Vue;
 
 public static class Program
@@ -13,6 +14,21 @@ public static class Program
         System.Console.WriteLine("Square Vue Template Sample");
         ImageSourceRegistration.RegisterDefaults();
         var window = new AppWindow("Square Vue Template Sample", 900, 980);
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("/", static () => new RouteShell(), route =>
+            {
+                route.KeepAlive = true;
+                route.Map("", static () => new RouteHomePage());
+                route.Map("users/:id", static () => new RouteUserPage(), child => child.KeepAlive = true);
+                route.Map("admin", static () => new RouteAdminPage());
+                route.Map("login", static () => new RouteLoginPage());
+            });
+            routes.Map("*", static () => new RouteHomePage());
+        });
+        router.BeforeEach((to, _) => to.Path == "/admin"
+            ? RouteGuardResult.Redirect("/login?returnUrl=/admin")
+            : RouteGuardResult.Allow);
         window.RenderingMode = RenderMode.DirtyRegion;
         window.Load(new Main());
         var app = new DesktopApplication(window);

@@ -4,18 +4,18 @@ using Square.Controls;
 using Square.Controls.Primitives;
 using Square.CSS.Engine;
 using Square.Events;
+using Square.Extensions.Routing;
 using Square.Graphics;
+using Square.Hosting;
 using Square.Platform;
 using Square.Rendering;
 using Square.Runtime;
 using Square.Runtime.Binding;
 using Square.Resources;
-using Square.Router;
 using Square.Sample;
 using Square.Sample.Components;
 using Square.UI;
 using Xunit;
-using RouterControl = Square.Router.Router;
 using VueMain = Square.Sample.Vue.Components.Main;
 using VueTabs = Square.Sample.Vue.Components.Tabs;
 
@@ -95,10 +95,8 @@ public class M1IntegrationTests
         var select = Assert.Single(root.QueryAll<Select>());
         Assert.Single(root.QueryAll<Square.Controls.Image>());
         Assert.Single(root.QueryAll<Canvas>());
-        var router = Assert.Single(root.QueryAll<RouterControl>());
+        Assert.Single(root.QueryAll<RouterView>());
         Assert.Single(root.QueryAll<OverflowSamplesPage>());
-        Assert.Equal("/", router.Current?.Path);
-        Assert.Single(router.QueryAll<RouteHomePage>());
         Assert.Equal(["Blue", "Green", "Orange"], select.Options);
 
         textPage.Name.Value = "Square";
@@ -642,16 +640,27 @@ public class M1IntegrationTests
     [Fact]
     public void GeneratedNestedRouterNavigatesWithParamsQueryLinksAndHistory()
     {
+        var window = new AppWindow("Router test");
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("/", static () => new RouteShell(), route =>
+            {
+                route.KeepAlive = true;
+                route.Map("", static () => new RouteHomePage());
+                route.Map("users/:id", static () => new RouteUserPage(), child => child.KeepAlive = true);
+            });
+        });
         var component = new Main();
+        window.Load(component);
         component.BuildElementTree();
         ((IComponentLifecycle)component).OnAttached();
-        var router = Assert.Single(component.QueryAll<RouterControl>());
+        var routerView = component.QueryAll<RouterView>().First();
 
         var layout = new LayoutEngine();
         layout.Measure(component, new Size(900, 980));
         layout.Arrange(component, new Rect(0, 0, 900, 980));
-        var routeLinks = router.QueryAll<Square.Router.Link>();
-        Assert.Equal(2, routeLinks.Count);
+        var routeLinks = routerView.QueryAll<RouterLink>();
+        Assert.Equal(4, routeLinks.Count);
         Assert.Same(routeLinks[0].Parent, routeLinks[1].Parent);
         Assert.Equal("flex", routeLinks[0].Parent?.Style.Get("display"));
         Assert.Equal("row", routeLinks[0].Parent?.Style.Get("flex-direction"));
@@ -661,53 +670,64 @@ public class M1IntegrationTests
         ((IComponentLifecycle)visibleShell).OnAttached();
         layout.Measure(visibleShell, new Size(600, 180));
         layout.Arrange(visibleShell, new Rect(0, 0, 600, 180));
-        var visibleLinks = visibleShell.QueryAll<Square.Router.Link>();
+        var visibleLinks = visibleShell.QueryAll<RouterLink>();
+        Assert.Equal(4, visibleLinks.Count);
         Assert.True(visibleLinks[1].Geometry.X >= visibleLinks[0].Geometry.Right + 6f,
             $"first={visibleLinks[0].Geometry}, second={visibleLinks[1].Geometry}");
 
-        var userLink = routeLinks.Single(link => link.To.Contains("users"));
+        var userLink = routeLinks.Single(link => link.To.Contains("users/42", StringComparison.Ordinal));
         userLink.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal("/users/42", router.Current?.Path);
         Assert.Equal("42", router.Current?.Parameters["id"]);
         Assert.Equal("profile", router.Current?.Query["tab"]);
-        var userPage = Assert.Single(router.QueryAll<RouteUserPage>());
-        Assert.Same(router.Current, RouteContext.Find(userPage));
+        var userPage = Assert.Single(routerView.QueryAll<RouteUserPage>());
+        Assert.Same(router.Current, RouteLocation.Find(userPage));
         Assert.Contains(userPage.QueryAll<Square.Controls.Text>(),
             text => text.TextContent == "Current route: /users/42  tab=profile");
 
         Assert.True(router.Back());
         Assert.Equal("/", router.Current?.Path);
-        Assert.Single(router.QueryAll<RouteHomePage>());
+        Assert.Single(routerView.QueryAll<RouteHomePage>());
         Assert.True(router.Forward());
-        Assert.Single(router.QueryAll<RouteUserPage>());
+        Assert.Single(routerView.QueryAll<RouteUserPage>());
     }
 
     [Fact]
     public void RouteMatcherPrioritizesStaticThenParameterThenWildcard()
     {
-        var staticRoute = new RouteDefinition("users/settings");
-        var parameterRoute = new RouteDefinition("users/:id");
-        var wildcardRoute = new RouteDefinition("*");
-        var routes = new[] { wildcardRoute, parameterRoute, staticRoute };
+        var window = new AppWindow("Matcher");
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("*", static () => new View());
+            routes.Map("users/:id", static () => new View());
+            routes.Map("users/settings", static () => new View());
+        });
+        var wildcardRoute = router.Routes[0];
+        var parameterRoute = router.Routes[1];
+        var staticRoute = router.Routes[2];
 
-        Assert.Same(staticRoute, RouteMatcher.Match(routes, "/users/settings")?.Branch[^1]);
-        var parameterMatch = RouteMatcher.Match(routes, "/users/42");
-        Assert.Same(parameterRoute, parameterMatch?.Branch[^1]);
+        Assert.Same(staticRoute, RouteMatcher.Match(router.Routes, "/users/settings")?.Branch[^1].Definition);
+        var parameterMatch = RouteMatcher.Match(router.Routes, "/users/42");
+        Assert.Same(parameterRoute, parameterMatch?.Branch[^1].Definition);
         Assert.Equal("42", parameterMatch?.Parameters["id"]);
-        Assert.Same(wildcardRoute, RouteMatcher.Match(routes, "/other/path")?.Branch[^1]);
+        Assert.Same(wildcardRoute, RouteMatcher.Match(router.Routes, "/other/path")?.Branch[^1].Definition);
     }
 
     [Fact]
-    public void RouterSwapsAttachedPagesUsingVisualLifecycle()
+    public void RouterViewSwapsAttachedPagesUsingVisualLifecycle()
     {
         var attached = new List<string>();
         var detached = new List<string>();
-        var router = new RouterControl();
-        router.Routes.Add(new RouteDefinition("/", () => new TrackingPage("home", attached, detached)));
-        router.Routes.Add(new RouteDefinition("other", () => new TrackingPage("other", attached, detached)));
-        router.Start();
-        ((IComponentLifecycle)router).OnAttached();
+        var window = new AppWindow("Lifecycle");
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("/", () => new TrackingPage("home", attached, detached));
+            routes.Map("other", () => new TrackingPage("other", attached, detached));
+        });
+        var view = new RouterView();
+        window.Load(view);
+        ((IComponentLifecycle)view).OnAttached();
 
         Assert.Equal(["home"], attached);
         Assert.True(router.Navigate("/other"));
@@ -716,26 +736,27 @@ public class M1IntegrationTests
     }
 
     [Fact]
-    public void RouterUnsubscribesFromHistoryWhileDetached()
+    public void RouterGuardsCanCancelAndRedirectNavigation()
     {
-        var history = new MemoryNavigationHistory("/");
-        var router = new RouterControl { History = history };
-        router.Routes.Add(new RouteDefinition("/", () => new View()));
-        router.Routes.Add(new RouteDefinition("other", () => new View()));
-        var navigations = 0;
-        router.Navigated += _ => navigations++;
+        var window = new AppWindow("Guards");
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("/", static () => new View());
+            routes.Map("other", static () => new View());
+            routes.Map("login", static () => new View());
+        });
+        router.BeforeEach((to, _) => to.Path == "/other"
+            ? RouteGuardResult.Redirect("/login")
+            : RouteGuardResult.Allow);
+        var view = new RouterView();
+        window.Load(view);
+        ((IComponentLifecycle)view).OnAttached();
 
-        ((IComponentLifecycle)router).OnAttached();
-        Assert.Equal(1, navigations);
-        ((IComponentLifecycle)router).OnDetached();
-
-        history.Push("/other");
-        Assert.Equal(1, navigations);
-
-        ((IComponentLifecycle)router).OnAttached();
-        Assert.Equal(2, navigations);
-        history.Push("/");
-        Assert.Equal(3, navigations);
+        Assert.True(router.Navigate("/other"));
+        Assert.Equal("/login", router.Current?.Path);
+        using var cancel = router.BeforeEach((to, _) => to.Path == "/" ? RouteGuardResult.Cancel : RouteGuardResult.Allow);
+        Assert.False(router.Navigate("/"));
+        Assert.Equal("/login", router.Current?.Path);
     }
 
     [Fact]
@@ -1809,10 +1830,8 @@ public class M1IntegrationTests
         Assert.Equal(1, tabs.SelectedIndex);
         Assert.Equal("#ffffff", secondButton.Style.Get("background"));
 
-        var router = Assert.Single(tabs.QueryAll<RouterControl>());
-        Assert.True(router.Back());
-        Assert.Equal(2, firstPages.Count);
-        Assert.Contains(firstPages[1], tabs.QueryAll<View>());
+        firstButton.DispatchEvent(StandardEvents.CreateClick());
+        Assert.Same(firstPage, tabs.QueryAll<View>().Single(view => view == firstPage));
         Assert.Equal(0, tabs.SelectedIndex);
         ((IComponentLifecycle)tabs).OnDetached();
     }
@@ -2059,6 +2078,145 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void RemovedForEntryDiscardsBindingsAndGeneratedResources()
+    {
+        var root = new View();
+        var items = new ObservableCollection<string> { "row" };
+        var source = new ObservableValue<string>("first");
+        var resource = new TrackingDisposable();
+        Square.Controls.Text? removed = null;
+        var loop = ForNode.Create(items, _ =>
+        {
+            removed = new Square.Controls.Text();
+            removed.BindProperty("TextContent", source);
+            removed.RegisterGeneratedResource(resource);
+            return removed;
+        });
+        loop.AttachTo(root);
+
+        Assert.Equal("first", removed!.TextContent);
+        items.RemoveAt(0);
+        Reconciler.Current.Flush();
+        source.Value = "second";
+
+        Assert.Equal("first", removed.TextContent);
+        Assert.Equal(1, resource.DisposeCount);
+        loop.Dispose();
+        Assert.Equal(1, resource.DisposeCount);
+    }
+
+    [Fact]
+    public void UnkeyedForMoveRetainsIdentityWithoutDetachOrDispose()
+    {
+        var root = new View();
+        var attached = new List<string>();
+        var detached = new List<string>();
+        var resources = new Dictionary<string, TrackingDisposable>();
+        var nodes = new Dictionary<string, TrackingText>();
+        var items = new ObservableCollection<string> { "first", "second" };
+        var loop = ForNode.Create(items, item =>
+        {
+            var node = new TrackingText(item, attached, detached);
+            var resource = new TrackingDisposable();
+            node.RegisterGeneratedResource(resource);
+            nodes[item] = node;
+            resources[item] = resource;
+            return node;
+        });
+        loop.AttachTo(root);
+        ((IComponentLifecycle)root).OnAttached();
+
+        items.Move(1, 0);
+        Reconciler.Current.Flush();
+
+        Assert.Same(nodes["second"], root.Children[0]);
+        Assert.Same(nodes["first"], root.Children[1]);
+        Assert.Empty(detached);
+        Assert.All(resources.Values, resource => Assert.Equal(0, resource.DisposeCount));
+
+        loop.Dispose();
+        Assert.All(resources.Values, resource => Assert.Equal(1, resource.DisposeCount));
+    }
+
+    [Fact]
+    public void KeyedReplacementDiscardsOldEntryResources()
+    {
+        var root = new View();
+        var items = new ObservableCollection<KeyedItem> { new(1, "old") };
+        var resources = new List<TrackingDisposable>();
+        var loop = ForNode.Create(items, item => item.Id, item =>
+        {
+            var node = new Square.Controls.Text(item.Name);
+            var resource = new TrackingDisposable();
+            node.RegisterGeneratedResource(resource);
+            resources.Add(resource);
+            return node;
+        });
+        loop.AttachTo(root);
+
+        items[0] = new KeyedItem(1, "new");
+        Reconciler.Current.Flush();
+
+        Assert.Equal(2, resources.Count);
+        Assert.Equal(1, resources[0].DisposeCount);
+        Assert.Equal(0, resources[1].DisposeCount);
+        loop.Dispose();
+        Assert.Equal(1, resources[1].DisposeCount);
+    }
+
+    [Fact]
+    public void OrdinaryDetachKeepsBindingsUntilExplicitDiscard()
+    {
+        var firstParent = new View();
+        var secondParent = new View();
+        var text = new Square.Controls.Text();
+        var source = new ObservableValue<string>("first");
+        text.BindProperty("TextContent", source);
+        firstParent.Children.Add(text);
+
+        firstParent.Children.Remove(text);
+        source.Value = "second";
+        secondParent.Children.Add(text);
+
+        Assert.Equal("second", text.TextContent);
+        secondParent.Children.Remove(text);
+        text.DiscardGeneratedSubtree();
+        source.Value = "third";
+        Assert.Equal("second", text.TextContent);
+    }
+
+    [Fact]
+    public void ShowDisposeReleasesActiveAndCachedBranchResources()
+    {
+        var visible = new ObservableValue<bool>(true);
+        var root = new View();
+        var mainResource = new TrackingDisposable();
+        var fallbackResource = new TrackingDisposable();
+        var show = new ShowNode(
+            visible,
+            () =>
+            {
+                var node = new View();
+                node.RegisterGeneratedResource(mainResource);
+                return node;
+            },
+            () =>
+            {
+                var node = new View();
+                node.RegisterGeneratedResource(fallbackResource);
+                return node;
+            });
+        show.AttachTo(root);
+
+        visible.Value = false;
+        Reconciler.Current.Flush();
+        show.Dispose();
+
+        Assert.Equal(1, mainResource.DisposeCount);
+        Assert.Equal(1, fallbackResource.DisposeCount);
+    }
+
+    [Fact]
     public void KeyedForNodeRejectsDuplicateKeys()
     {
         var items = new ObservableCollection<KeyedItem>
@@ -2127,6 +2285,13 @@ public class M1IntegrationTests
     {
         protected override void OnAttachedCore() => attached.Add(TextContent);
         protected override void OnDetachedCore() => detached.Add(TextContent);
+    }
+
+    private sealed class TrackingDisposable : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
     }
 
     private sealed class TrackingPage(

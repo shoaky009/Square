@@ -129,6 +129,8 @@ public sealed class ShowNode : IDisposable
         _subscription = null;
         if (_child != null && _parent != null) _parent.Children.Remove(_child);
         if (_fallback != null && _parent != null) _parent.Children.Remove(_fallback);
+        _child?.DiscardGeneratedSubtree();
+        _fallback?.DiscardGeneratedSubtree();
         _child = null;
         _fallback = null;
         _parent = null;
@@ -288,6 +290,7 @@ internal sealed class ForFallbackNode<T> : IForNode
         if (_observableSource != null) _observableSource.CollectionChanged -= OnChanged;
         if (_fallback != null && _parent != null && _fallback.Parent == _parent) _parent.Children.Remove(_fallback);
         _inner.Dispose();
+        _fallback?.DiscardGeneratedSubtree();
         _fallback = null;
         _parent = null;
     }
@@ -383,6 +386,7 @@ internal sealed class IndexNode<T> : IForNode
     {
         var previous = _nodes[index];
         if (previous != null && _parent != null && previous.Parent == _parent) _parent.Children.Remove(previous);
+        previous?.DiscardGeneratedSubtree();
         _nodes[index] = replacement;
     }
 
@@ -390,6 +394,7 @@ internal sealed class IndexNode<T> : IForNode
     {
         var node = _nodes[index];
         if (node != null && _parent != null && node.Parent == _parent) _parent.Children.Remove(node);
+        node?.DiscardGeneratedSubtree();
         _nodes.RemoveAt(index);
     }
 
@@ -422,6 +427,7 @@ internal sealed class IndexNode<T> : IForNode
         if (_parent != null)
             foreach (var node in _nodes)
                 if (node?.Parent == _parent) _parent.Children.Remove(node);
+        foreach (var node in _nodes) node?.DiscardGeneratedSubtree();
         _nodes.Clear();
         _parent = null;
     }
@@ -525,20 +531,30 @@ internal sealed class KeyedForNode<T, TKey> : IForNode where TKey : notnull
 
         var next = new List<Entry>();
         var seen = new HashSet<TKey>(EqualityComparer<TKey>.Default);
-        var index = 0;
-        foreach (var item in _source())
+        try
         {
-            var key = SelectKey(item, index);
-            if (key is null)
-                throw new InvalidOperationException("ForNode keys cannot be null.");
-            if (!seen.Add(key))
-                throw new InvalidOperationException("Duplicate key '" + key + "' in ForNode source.");
+            var index = 0;
+            foreach (var item in _source())
+            {
+                var key = SelectKey(item, index);
+                if (key is null)
+                    throw new InvalidOperationException("ForNode keys cannot be null.");
+                if (!seen.Add(key))
+                    throw new InvalidOperationException("Duplicate key '" + key + "' in ForNode source.");
 
-            if (oldByKey.TryGetValue(key, out var existing) && SameItem(existing.Item, item))
-                next.Add(existing);
-            else
-                next.Add(new Entry(key, item, Build(item, index)));
-            index++;
+                if (oldByKey.TryGetValue(key, out var existing) && SameItem(existing.Item, item))
+                    next.Add(existing);
+                else
+                    next.Add(new Entry(key, item, Build(item, index)));
+                index++;
+            }
+        }
+        catch
+        {
+            var existingEntries = new HashSet<Entry>(_entries);
+            foreach (var entry in next)
+                if (!existingEntries.Contains(entry)) entry.Node?.DiscardGeneratedSubtree();
+            throw;
         }
 
         if (_parent != null)
@@ -550,6 +566,10 @@ internal sealed class KeyedForNode<T, TKey> : IForNode where TKey : notnull
                     _parent.Children.Remove(entry.Node);
             }
         }
+
+        var retainedEntries = new HashSet<Entry>(next);
+        foreach (var entry in _entries)
+            if (!retainedEntries.Contains(entry)) entry.Node?.DiscardGeneratedSubtree();
 
         _entries = next;
         ApplyTreeOrder();
@@ -594,6 +614,7 @@ internal sealed class KeyedForNode<T, TKey> : IForNode where TKey : notnull
             foreach (var entry in _entries)
                 if (entry.Node?.Parent == _parent) _parent.Children.Remove(entry.Node);
         }
+        foreach (var entry in _entries) entry.Node?.DiscardGeneratedSubtree();
         _entries.Clear();
         _parent = null;
     }
@@ -648,6 +669,7 @@ internal sealed class ReactiveForNode<T> : IForNode
         if (_parent == null) return;
         foreach (var child in _children)
             if (child.Parent == _parent) _parent.Children.Remove(child);
+        foreach (var child in _children) child.DiscardGeneratedSubtree();
         _children.Clear();
         var i = 0;
         foreach (var item in _source.Value)
@@ -666,6 +688,7 @@ internal sealed class ReactiveForNode<T> : IForNode
         if (_parent != null)
             foreach (var child in _children)
                 if (child.Parent == _parent) _parent.Children.Remove(child);
+        foreach (var child in _children) child.DiscardGeneratedSubtree();
         _children.Clear();
         _parent = null;
     }
@@ -737,6 +760,7 @@ public sealed class ForNode<T> : IForNode
             foreach (var (_, node) in _nodes)
                 if (node != null) _parent.Children.Remove(node);
         }
+        foreach (var (_, node) in _nodes) node?.DiscardGeneratedSubtree();
         _nodes.Clear();
 
         var i = 0;
@@ -825,6 +849,7 @@ public sealed class ForNode<T> : IForNode
         if (nodeIndex < 0 || nodeIndex >= _nodes.Count) return;
         var node = _nodes[nodeIndex].node;
         if (node != null && _parent != null) _parent.Children.Remove(node);
+        node?.DiscardGeneratedSubtree();
         _nodes.RemoveAt(nodeIndex);
     }
 
@@ -832,10 +857,15 @@ public sealed class ForNode<T> : IForNode
     {
         if (oldIndex < 0 || oldIndex >= _nodes.Count || newIndex < 0 || newIndex >= _nodes.Count) return;
         var entry = _nodes[oldIndex];
-        if (entry.node != null && _parent != null) _parent.Children.Remove(entry.node);
         _nodes.RemoveAt(oldIndex);
         _nodes.Insert(newIndex, entry);
-        InsertNode(newIndex);
+        if (entry.node != null && _parent != null && entry.node.Parent == _parent)
+        {
+            var current = _parent.Children.IndexOf(entry.node);
+            var target = GetInsertionIndex(newIndex);
+            if (target > current) target--;
+            if (current != target) _parent.Children.Move(current, target);
+        }
     }
 
     /// <inheritdoc/>
@@ -848,6 +878,7 @@ public sealed class ForNode<T> : IForNode
             foreach (var (_, node) in _nodes)
                 if (node != null) _parent.Children.Remove(node);
         }
+        foreach (var (_, node) in _nodes) node?.DiscardGeneratedSubtree();
         _nodes.Clear();
         _parent = null;
     }
@@ -947,8 +978,8 @@ public sealed class SwitchNode : IDisposable
             branch.Child ??= branch.Build();
             if (branch.Child != null)
             {
-                _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), branch.Child);
                 branch.Child.BuildElementTree();
+                _parent.Children.Insert(Math.Min(_index, _parent.Children.Count), branch.Child);
             }
         }
     }
@@ -963,6 +994,7 @@ public sealed class SwitchNode : IDisposable
             foreach (var branch in _branches)
                 if (branch.Child != null) _parent.Children.Remove(branch.Child);
         }
+        foreach (var branch in _branches) branch.Child?.DiscardGeneratedSubtree();
         foreach (var branch in _branches) branch.Subscription?.Dispose();
         _branches.Clear();
         _parent = null;

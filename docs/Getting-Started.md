@@ -456,6 +456,8 @@ Button {
 | 属性 | `[disabled]` `[variant=primary]` | ✅ 基础 |
 | 伪类 | `:hover` `:focus` `:active` `:disabled` `:checked` | ✅ |
 
+`Button` 内置基础交互反馈：悬停提亮，按下压暗并让文字下移 1px。可以继续使用 `Button:hover` / `Button:active` 覆盖背景色；默认反馈会基于覆盖后的颜色绘制。
+
 详见 [`CSS-Spec.md`](CSS-Spec.md)。
 
 ---
@@ -577,27 +579,76 @@ el.RemoveEventListener("click", handler);
 
 ## 13. 路由
 
-### 13.1 声明路由
+路由位于可选的 `Square.Extensions.Routing` 命名空间。
 
-```xml
-<Router initialPath="/">
-  <Route path="/" component={HomePage} />
-  <Route path="/users" component={UserList}>
-    <Route path=":id" component={UserDetail} />
-  </Route>
-  <Route path="*" component={NotFound} />
-</Router>
+### 13.1 注册路由
+
+```csharp
+using Square.Extensions.Routing;
+
+var router = window.UseRouter(routes =>
+{
+    routes.Map("/", static () => new HomePage());
+    routes.Map("/users", static () => new UsersLayout(), route =>
+    {
+        route.KeepAlive = true;
+        route.Map("", static () => new UserList());
+        route.Map(":id", static () => new UserDetail(), child => child.KeepAlive = true);
+    });
+    routes.Map("*", static () => new NotFound());
+});
 ```
 
 匹配优先级：静态段 > `:parameter` > `*wildcard`。
 
+模板出口：
+
+```vue
+<template>
+  <RouterView ref="router" />
+</template>
+
+<script lang="csharp">
+  using Square.Extensions.Routing;
+</script>
+```
+
+布局组件内再放一个 `<RouterView>` 即可显示下一层子路由。
+
 ### 13.2 导航
 
-```xml
-<Link to="/users/42">用户 42</Link>
+```vue
+<RouterLink to="/users/42">用户 42</RouterLink>
 ```
 
 命令式导航：`Navigate`、`Replace`、`Back`、`Forward`。
+
+路由守卫：
+
+```csharp
+router.BeforeEach((to, from) =>
+    to.Path == "/admin" && !IsSignedIn
+        ? RouteGuardResult.Redirect("/login")
+        : RouteGuardResult.Allow);
+```
+
+### 13.3 运行仓库路由 Sample
+
+SQX 和 SQV 主示例都包含完整路由页面：
+
+```bash
+dotnet run --project samples/Square.Sample/Square.Sample.csproj
+dotnet run --project samples/Square.Sample.Vue/Square.Sample.Vue.csproj
+```
+
+在主界面选择 `Router` 页签，可以验证：
+
+- `Home`、`User 42`、`User 7` 参数路由和查询参数。
+- `Protected` 经过 `BeforeEach` 守卫重定向到登录页，并显示 `returnUrl`。
+- 在用户页输入 KeepAlive note，切换到其他路由再返回，输入状态仍保留。
+- `Back` / `Forward` 执行历史导航。
+- `Go User 7` 演示通过 `RouterView` ref 命令式导航。
+- `Clear Cache` 清理各层 RouterView 的 KeepAlive 页面缓存。
 
 详见 [`Sqx-Spec.md`](Sqx-Spec.md) §10。
 

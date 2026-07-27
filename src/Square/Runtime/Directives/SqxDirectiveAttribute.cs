@@ -30,7 +30,7 @@ public sealed class SqxDirectiveAttribute : Attribute
     /// <summary>为 true 时不作为独立树节点发射（如 Route 仅在 Router 内处理）。</summary>
     public bool SkipStandaloneEmit { get; set; }
 
-    /// <summary>发射模式名（ControlFlowAttach、SlotOutlet、RouterTree 等）。</summary>
+    /// <summary>发射模式名（ControlFlowAttach、SlotOutlet 等）。</summary>
     public string Pattern { get; set; } = "ControlFlowAttach";
 
     /// <summary>生成代码中使用的运行时类型名（如 ShowNode）。</summary>

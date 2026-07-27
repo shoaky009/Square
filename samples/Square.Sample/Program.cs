@@ -8,6 +8,7 @@ using Square.Backends.Skia;
 using Square.Graphics;
 using Square.Graphics.Codecs;
 using Square.Hosting;
+using Square.Extensions.Routing;
 using Square.Sample.Components;
 using Square.Platform;
 #if SQUARE_SAMPLE_DEVTOOLS
@@ -38,6 +39,21 @@ public static class Program
         }
 
         var window = new AppWindow("Square Framework", 900, 980);
+        var router = window.UseRouter(routes =>
+        {
+            routes.Map("/", static () => new RouteShell(), route =>
+            {
+                route.KeepAlive = true;
+                route.Map("", static () => new RouteHomePage());
+                route.Map("users/:id", static () => new RouteUserPage(), child => child.KeepAlive = true);
+                route.Map("admin", static () => new RouteAdminPage());
+                route.Map("login", static () => new RouteLoginPage());
+            });
+            routes.Map("*", static () => new RouteHomePage());
+        });
+        router.BeforeEach((to, _) => to.Path == "/admin"
+            ? RouteGuardResult.Redirect("/login?returnUrl=/admin")
+            : RouteGuardResult.Allow);
         window.Load(CreatePage(args));
         window.LoadCustomTitleBar(new MyTitleBar());
         window.BorderStyle = BorderStyle.Resizable;

@@ -248,7 +248,7 @@ _for0 = new ForNode<Item>(
 
 ### 8.5 路由声明
 
-`<Router>`/`<Route>` 是生成器已知节点。`component={PageType}` 编译为静态 `Func<UIElement>`，避免 `Activator`、反射和运行时程序集扫描。嵌套路由编译为 `RouteDefinition.Children`；布局 Route 将子分支作为默认 Slot 传给父页面组件。
+旧 `<Router>`/`<Route>` 结构语法已删除。路由通过 `AppWindow.UseRouter` 使用静态页面工厂注册；模板中的 `<RouterView>` / `<RouterLink>` 是 `Square.Extensions.Routing` 普通组件，不需要生成器特殊发射逻辑。
 
 ---
 

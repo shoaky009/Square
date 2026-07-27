@@ -493,6 +493,31 @@ public class SoftwareRendererTests
     }
 
     [Fact]
+    public void ButtonHoverAndActiveStatesProvideDefaultVisualFeedback()
+    {
+        static int Brightness(ReadOnlySpan<byte> pixel) => pixel[0] + pixel[1] + pixel[2];
+
+        var button = new Button("Press") { Geometry = new Rect(2, 2, 100, 40) };
+
+        var normalContext = CreateContext(110, 50);
+        button.Paint(normalContext);
+        var normal = normalContext.GetBitmap().GetPixel(8, 8);
+
+        button.SetState(ElementState.Hover, true);
+        var hoverContext = CreateContext(110, 50);
+        button.Paint(hoverContext);
+        var hover = hoverContext.GetBitmap().GetPixel(8, 8);
+
+        button.SetState(ElementState.Active, true);
+        var activeContext = CreateContext(110, 50);
+        button.Paint(activeContext);
+        var active = activeContext.GetBitmap().GetPixel(8, 8);
+
+        Assert.True(Brightness(hover) > Brightness(normal));
+        Assert.True(Brightness(active) < Brightness(normal));
+    }
+
+    [Fact]
     public void OverflowHiddenClipsRenderedChildrenToParentBounds()
     {
         var root = new View { Geometry = new Rect(0, 0, 40, 20) };

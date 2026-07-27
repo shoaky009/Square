@@ -1,17 +1,43 @@
 <template>
   <View class="router-page sample-page">
     <Text class="page-title" text="Router and component slots" />
-    <Router class="router-demo" initialPath="/">
-      <Route path="/" component={RouteShell}>
-        <Route path="/" component={RouteHomePage} />
-        <Route path="users/:id" component={RouteUserPage} />
-      </Route>
-      <Route path="*" component={RouteHomePage} />
-    </Router>
+    <View class="router-actions">
+      <Button onClick={GoBack}>Back</Button>
+      <Button onClick={GoForward}>Forward</Button>
+      <Button onClick={GoUser7}>Go User 7</Button>
+      <Button onClick={ClearCache}>Clear Cache</Button>
+    </View>
+    <Text ref={CurrentRoute} class="route-status" text="Current route: /" />
+    <RouterView ref={router} class="router-demo" />
   </View>
 </template>
+<script lang="csharp">
+  using Square.Extensions.Routing;
+
+  protected override void OnAttachedCore()
+  {
+    base.OnAttachedCore();
+    if (!router.TryGetRouter(out var service)) return;
+    service.Navigated += OnNavigated;
+    if (service.Current != null) OnNavigated(service.Current);
+  }
+
+  protected override void OnDetachedCore()
+  {
+    if (router.TryGetRouter(out var service)) service.Navigated -= OnNavigated;
+    base.OnDetachedCore();
+  }
+
+  private void GoBack() => router.Back();
+  private void GoForward() => router.Forward();
+  private void GoUser7() => router.Navigate("/users/7?tab=activity");
+  private void ClearCache() { if (router.TryGetRouter(out var service)) service.ClearCache(); }
+  private void OnNavigated(RouteLocation route) => CurrentRoute.TextContent = "Current route: " + route.FullPath;
+</script>
 <style>
   .sample-page { display: flex; flex-direction: column; gap: 12px; padding: 0; }
   .page-title { color: #202124; font-size: 18px; }
+  .router-actions { display: flex; flex-direction: row; gap: 6px; }
+  .route-status { color: #475467; font-size: 13px; }
   .router-demo { height: 180px; }
 </style>

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Square\Square.csproj" />
+    <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform.Win32\Square.Platform.Win32.csproj" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <ProjectReference Include="..\..\src\Square.Platform.X11\Square.Platform.X11.csproj" Condition="'$(SquareTargetPlatform)' == 'X11'" />
     <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" Condition="'$(SquareSampleUseVulkan)' == 'true'" />

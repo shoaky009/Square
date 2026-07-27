@@ -1,51 +1,54 @@
 using Square.UI;
 
-namespace Square.Router;
+namespace Square.Extensions.Routing;
 
-/// <summary>路由上下文，包含路径、参数和查询字符串。</summary>
-public sealed class RouteContext
+public sealed class RouteLocation
 {
-    internal const string PropertyName = "__route_context";
+    internal const string PropertyName = "__routing_location";
 
-    internal RouteContext(
-        string location,
+    internal RouteLocation(
+        string fullPath,
         string path,
         IReadOnlyDictionary<string, string> parameters,
-        IReadOnlyDictionary<string, string> query)
+        IReadOnlyDictionary<string, string> query,
+        IReadOnlyList<RouteMatchEntry> matched)
     {
-        Location = location;
+        FullPath = fullPath;
         Path = path;
         Parameters = parameters;
         Query = query;
+        Matched = matched;
     }
 
-    /// <summary>完整位置（含查询字符串）。</summary>
-    public string Location { get; }
-    /// <summary>路径部分。</summary>
+    public string FullPath { get; }
     public string Path { get; }
-    /// <summary>路径参数。</summary>
     public IReadOnlyDictionary<string, string> Parameters { get; }
-    /// <summary>查询字符串参数。</summary>
     public IReadOnlyDictionary<string, string> Query { get; }
+    public IReadOnlyList<RouteMatchEntry> Matched { get; }
 
-    /// <summary>从元素树向上查找所属路由上下文。</summary>
-    public static RouteContext? Find(Element Element)
+    public T? GetMeta<T>(int depth = -1)
     {
-        for (Element? current = Element; current != null; current = current.Parent)
-            if (current.Properties.TryGetValue(PropertyName, out RouteContext context)) return context;
+        if (Matched.Count == 0) return default;
+        var index = depth < 0 ? Matched.Count - 1 : depth;
+        return index >= 0 && index < Matched.Count && Matched[index].Definition.Meta is T value ? value : default;
+    }
+
+    public static RouteLocation? Find(Element element)
+    {
+        for (Element? current = element; current != null; current = current.Parent)
+            if (current.Properties.TryGetValue(PropertyName, out RouteLocation value)) return value;
         return null;
     }
 
-    internal static (string Path, IReadOnlyDictionary<string, string> Query) ParseLocation(string location)
+    internal static (string Path, IReadOnlyDictionary<string, string> Query) Parse(string location)
     {
         location = string.IsNullOrWhiteSpace(location) ? "/" : location.Trim();
-        var hashIndex = location.IndexOf('#');
-        if (hashIndex >= 0) location = location[..hashIndex];
+        var hash = location.IndexOf('#');
+        if (hash >= 0) location = location[..hash];
         var queryIndex = location.IndexOf('?');
         var path = queryIndex >= 0 ? location[..queryIndex] : location;
         if (string.IsNullOrEmpty(path)) path = "/";
         if (!path.StartsWith("/", StringComparison.Ordinal)) path = "/" + path;
-
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (queryIndex >= 0 && queryIndex + 1 < location.Length)
         {
@@ -57,9 +60,15 @@ public sealed class RouteContext
                 query[Decode(key)] = Decode(value);
             }
         }
-
         return (path, query);
     }
 
     private static string Decode(string value) => Uri.UnescapeDataString(value.Replace('+', ' '));
+}
+
+public interface IRouteAware
+{
+    void OnRouteActivated(RouteLocation route) { }
+    void OnRouteDeactivated(RouteLocation route) { }
+    void OnRouteUpdated(RouteLocation to, RouteLocation from) { }
 }

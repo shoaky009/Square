@@ -83,7 +83,7 @@ Backend + Platform host (Software/Win32/X11/...)
 | `Square.Backends` | 软件渲染后端与后端注册 | 纯托管 BGRA 软件渲染；脏区 Present；像素/裁剪缓存与批量填充优化 |
 | `Square.Platform` | 平台宿主抽象与实现 | `IPlatformHost`、Win32、X11、截图；P/Invoke 使用 `LibraryImport` |
 | `Square.Hosting` | 桌面应用组合层 | `DesktopApplication`、`RenderMode`、`RenderDecision`、`RenderDiagnostics` |
-| `Square.Router` | 内存路由与导航控件 | Route matcher、nested branch、history、Link、路由指令 |
+| `Square.Extensions.Routing` | 可选窗口路由 | Route matcher、nested RouterView、history、guards、KeepAlive、RouterLink |
 | `Square.Extensions` | 可选扩展模块 | Markdown 渲染扩展，基于 Markdig |
 | `Square.DevTools` | 本地 HTTP 调试与自动化 | localhost + token；renderer PNG 截图；指针、键盘、文本、滚轮输入注入 |
 | `Square.Text` | 文本、字体、选择与测量基础 | Font manager、FontFaceSet、文本测量、caret/selection/hit test 基础 |
@@ -350,7 +350,7 @@ new DesktopApplication(document, hostInfo).Run();
 
 ### 9.1 路由
 
-`Square.Router` 当前提供内存路由：
+`Square.Extensions.Routing` 当前提供窗口级内存路由：
 
 - `Router` 控件继承自 `View`。
 - `RouteDefinition` 描述路径和组件工厂。

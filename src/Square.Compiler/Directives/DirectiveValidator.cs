@@ -102,21 +102,18 @@ internal static class DirectiveValidator
         directiveId is "Show" or "For" or "Index"; // Match 的 when 可选（default 分支）
 
     private static bool IsKnownPattern(string pattern) =>
-        pattern is "ControlFlowAttach" or "SlotOutlet" or "RouterTree";
+        pattern is "ControlFlowAttach" or "SlotOutlet";
 
     private static bool IsKnownTagFallback(string id) =>
-        id is "Show" or "For" or "Index" or "Switch" or "Match" or "Slot" or "Router" or "Route";
+        id is "Show" or "For" or "Index" or "Switch" or "Match" or "Slot";
 
     /// <summary>
-    /// Match → Switch；Route → Router 或 Route（嵌套路由）。
+    /// Match → Switch。
     /// </summary>
     private static bool IsValidParent(string id, DirectiveDescriptor descriptor, string parentDirectiveId)
     {
         if (string.IsNullOrEmpty(descriptor.ParentTag) && !descriptor.SkipStandaloneEmit)
             return true;
-
-        if (id == "Route")
-            return parentDirectiveId is "Router" or "Route";
 
         if (id == "Match")
             return parentDirectiveId == "Switch";
@@ -130,7 +127,6 @@ internal static class DirectiveValidator
 
     private static string DescribeExpectedParent(string id, DirectiveDescriptor descriptor)
     {
-        if (id == "Route") return "Router 或 Route";
         if (id == "Match") return "Switch";
         return descriptor.ParentTag ?? "(非根)";
     }

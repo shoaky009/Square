@@ -64,7 +64,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Runtime` | `Application`、生命周期、调度、信号、DOM 事件 | UI Dispatcher；`EventTarget`/`Event`；`[SqxDirective]` 特性 |
 | `Square.UI` | `Node`/`Element`/`UIElement`/`Document`/`UIDocument`/`XMLDocument`/`SVGDocument`、属性 | UI Element Tree；嵌入 SVG DOM；Style/ClassList/Children；Reconciler 批量更新 |
 | `Square.Controls` | 控件 + 结构原语运行时 + 动画 | 控件 = 元素 + 行为 + 默认样式；指令 marker；`CreateElement` 注册 |
-| `Square.Router` | 路由匹配、内存历史与路由控件 | 静态 RouteDefinition、参数/通配符、Link、嵌套布局；不依赖 Platform |
+| `Square.Extensions.Routing` | 可选窗口路由、守卫、KeepAlive 与嵌套 RouterView | `AppWindow.UseRouter` 静态页面工厂、参数/通配符、RouterLink、按路径缓存 |
 | `Square.CSS` | CSS 引擎 | Selector/Cascade/Specificity/Var/Inheritance；Animation；Theme；M1 子集 |
 | `Square.Graphics` | `IRenderContext` 抽象 + 绘图原语 | 工厂 `IRenderBackendFactory`；原语 Geometry/Brush/Pen/Font/Path/Transform/Clip |
 | `Square.Rendering` | Element→Layout→Display Tree→DrawCommand | Flex/Block 经 Yoga.Net（Meta Yoga C# 移植）；Grid 内置；保留模式、脏区/增量 |
@@ -162,9 +162,9 @@ SQV 示例：
 
 ### 4.7 路由
 
-`Square.Router` 位于 UI/Controls 之上、Platform 之下无依赖。桌面默认使用 `MemoryNavigationHistory`，未来平台可提供 URL/系统导航适配器。路由页面类型由 Source Generator 生成静态构造委托，满足 NativeAOT 的零反射约束。
+路由位于可选的 `Square.Extensions.Routing` 中，通过 `AppWindow.UseRouter` 注册窗口级 Router。页面使用静态构造委托，满足 NativeAOT 的零反射约束；布局组件通过嵌套 `<RouterView>` 显示下一层匹配页面。
 
-路由切换通过 `ChildrenCollection` 替换当前分支，因此沿用视觉树生命周期和布局失效机制。静态段、参数段、通配符的匹配顺序确定，不进行运行时路由程序集发现。
+路由切换通过 `ChildrenCollection` 替换当前层页面，因此沿用视觉树生命周期和布局失效机制。`KeepAlive` 页面按路由定义和实际匹配路径缓存，查询变化复用页面实例；非缓存页面离开时释放生成子树资源。
 
 ### 4.8 Tabs 自定义组合示例
 

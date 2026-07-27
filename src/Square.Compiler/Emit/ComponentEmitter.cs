@@ -145,7 +145,6 @@ namespace Square.Compiler.Emit
         private void EmitFields()
         {
             _sb.AppendLine("    private bool _visualTreeBuilt;");
-            _sb.AppendLine("    private readonly System.Collections.Generic.List<System.IDisposable> _generatedDirectives = new System.Collections.Generic.List<System.IDisposable>();");
             foreach (var item in _refs)
                 _sb.AppendLine("    internal " + item.TypeName + " " + item.Name + " = null!;");
 
@@ -157,34 +156,7 @@ namespace Square.Compiler.Emit
             // Vue 专属结构节点
             EmitStructFields("_vfor", "IForNode");
             EmitStructFields("_vif", "ShowNode");
-            if (_hasObjectBindings)
-                _sb.AppendLine("    private readonly System.Collections.Generic.List<System.IDisposable> _generatedBindings = new();");
             _sb.AppendLine();
-
-            var hasStructs = _structCounts.Count > 0;
-            if (_refs.Count > 0 || hasStructs || _hasObjectBindings)
-            {
-                _sb.AppendLine("    protected override void OnGeneratedDetachedCore()");
-                _sb.AppendLine("    {");
-                foreach (var item in _refs)
-                    _sb.AppendLine("        " + item.Name + " = null!;");
-                _sb.AppendLine("        foreach (var directive in _generatedDirectives) directive.Dispose();");
-                _sb.AppendLine("        _generatedDirectives.Clear();");
-                EmitNullFields("_show");
-                EmitNullFields("_for");
-                EmitNullFields("_index");
-                EmitNullFields("_switch");
-                EmitNullFields("_vfor");
-                EmitNullFields("_vif");
-                if (_hasObjectBindings)
-                {
-                    _sb.AppendLine("        foreach (var binding in _generatedBindings) binding.Dispose();");
-                    _sb.AppendLine("        _generatedBindings.Clear();");
-                }
-                _sb.AppendLine("        base.OnGeneratedDetachedCore();");
-                _sb.AppendLine("    }");
-                _sb.AppendLine();
-            }
         }
 
         private void EmitStructFields(string prefix, string typeName)
@@ -294,25 +266,25 @@ namespace Square.Compiler.Emit
 
             if (attribute.IsDynamicProperty)
             {
-                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindProperty(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
+                _sb.AppendLine(indent + variableName + ".RegisterGeneratedResource(SqvObjectBinding.BindProperty(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
                 return;
             }
 
             if (attribute.IsDynamicEvent)
             {
-                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindEvent(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
+                _sb.AppendLine(indent + variableName + ".RegisterGeneratedResource(SqvObjectBinding.BindEvent(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
                 return;
             }
 
             if (attribute.Name == "__sqv_bind_object")
             {
-                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindProperties(" + variableName + ", " + attribute.RawValue + "));");
+                _sb.AppendLine(indent + variableName + ".RegisterGeneratedResource(SqvObjectBinding.BindProperties(" + variableName + ", " + attribute.RawValue + "));");
                 return;
             }
 
             if (attribute.Name == "__sqv_on_object")
             {
-                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindEvents(" + variableName + ", " + attribute.RawValue + "));");
+                _sb.AppendLine(indent + variableName + ".RegisterGeneratedResource(SqvObjectBinding.BindEvents(" + variableName + ", " + attribute.RawValue + "));");
                 return;
             }
 
@@ -475,7 +447,7 @@ namespace Square.Compiler.Emit
             EmitFactoryBody(directive.Children, indent + "    ",
                 AddLocals(localNames, item, directive.IndexName));
             _sb.AppendLine(indent + "});");
-            _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
+            _sb.AppendLine(indent + parentName + ".RegisterGeneratedResource(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
         }
 
@@ -501,7 +473,7 @@ namespace Square.Compiler.Emit
                 _sb.AppendLine(indent + "{");
                 EmitFactoryBody(branch.Children, indent + "    ", localNames);
                 _sb.AppendLine(indent + "});");
-                _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
+                _sb.AppendLine(indent + parentName + ".RegisterGeneratedResource(" + field + ");");
                 _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             }
         }
@@ -803,8 +775,7 @@ namespace Square.Compiler.Emit
             "polyline" => "Square.UI.Svg.SVGPolylineElement",
             "polygon" => "Square.UI.Svg.SVGPolygonElement",
             "titlebar" => "Square.Controls.TitleBar",
-            "link" => "Square.Router.Link",
-            "router" => "Square.Router.Router",
+            "link" => "Square.Controls.Link",
             _ => tag
         };
 

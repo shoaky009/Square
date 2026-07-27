@@ -1,16 +1,31 @@
 <template>
-  <Text ref={RouteLabel} class="route-page" text="Current route: /users/:id" />
+  <View class="route-user">
+    <Text ref={RouteLabel} class="route-page" text="Current route: /users/:id" />
+    <Input ref={DraftInput} placeholder="KeepAlive note" onInput={OnDraftInput} />
+    <Text ref={DraftLabel} class="route-draft" text="Saved in this cached page: " />
+  </View>
 </template>
 <script lang="csharp">
   protected override void OnAttachedCore()
   {
-    var route = Square.Router.RouteContext.Find(this);
+    var route = Square.Extensions.Routing.RouteLocation.Find(this);
     if (route == null) return;
     var id = route.Parameters.TryGetValue("id", out var value) ? value : "?";
     var tab = route.Query.TryGetValue("tab", out var query) ? query : "-";
     RouteLabel.TextContent = "Current route: /users/" + id + "  tab=" + tab;
+    DraftInput.Value = Draft;
+    DraftLabel.TextContent = "Saved in this cached page: " + Draft;
+  }
+
+  private string Draft = "";
+  private void OnDraftInput()
+  {
+    Draft = DraftInput.Value;
+    DraftLabel.TextContent = "Saved in this cached page: " + Draft;
   }
 </script>
 <style>
   .route-page { color: #b54708; font-size: 14px; }
+  .route-user { display: flex; flex-direction: column; gap: 6px; }
+  .route-draft { color: #6941c6; font-size: 12px; }
 </style>

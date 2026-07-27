@@ -13,7 +13,7 @@
   private readonly List<(Button Button, Action Handler)> _tabHandlers = [];
   private Button[] _tabButtons = [];
   private string[] _tabPaths = [];
-  private Square.Router.Router? _router;
+  private SwitchNode? _pageSwitch;
   private bool _tabsReady;
   private bool _syncingRoute;
 
@@ -47,22 +47,22 @@
   protected override void OnAttachedCore()
   {
     _tabButtons = TabList.Children.OfType<Button>().ToArray();
-    if (_router == null)
+    if (_pageSwitch == null)
     {
       var pairCount = Math.Min(_tabButtons.Length, PageFactories.Length);
       _tabPaths = new string[pairCount];
-      _router = new Square.Router.Router { InitialPath = ResolveInitialPath(pairCount) };
-      _router.ClassList.Add("tab-router");
+      _pageSwitch = new SwitchNode();
       for (var i = 0; i < pairCount; i++)
       {
-        var pageFactory = PageFactories[i];
+        var index = i;
         var path = Paths.Length == pairCount ? NormalizePath(Paths[i]) : "/tabs/" + i;
         _tabPaths[i] = path;
-        _router.Routes.Add(new Square.Router.RouteDefinition(path, pageFactory));
+        var pageFactory = PageFactories[i];
+        _pageSwitch.AddBranch(() => SelectedIndex == index, pageFactory);
       }
-      PanelHost.Children.Add(_router);
+      PanelHost.RegisterGeneratedResource(_pageSwitch);
+      _pageSwitch.AttachTo(PanelHost);
     }
-    _router.Navigated += OnNavigated;
 
     for (var i = 0; i < _tabButtons.Length; i++)
     {
@@ -73,6 +73,8 @@
     }
 
     _tabsReady = true;
+    if (_tabPaths.Length > 0) ShowPage(Math.Clamp(SelectedIndex, 0, _tabPaths.Length - 1));
+    Reconciler.Current.Flush();
   }
 
   protected override void OnDetachedCore()
@@ -80,7 +82,6 @@
     foreach (var entry in _tabHandlers)
       entry.Button.RemoveEventListener("click", entry.Handler);
     _tabHandlers.Clear();
-    if (_router != null) _router.Navigated -= OnNavigated;
     _tabsReady = false;
   }
 
@@ -98,15 +99,14 @@
 
   private bool NavigateTo(int index)
   {
-    if (_router == null || _tabPaths.Length == 0) return false;
+    if (_pageSwitch == null || _tabPaths.Length == 0) return false;
     var selected = Math.Clamp(index, 0, _tabPaths.Length - 1);
-    return _router.Navigate(_tabPaths[selected]);
+    ShowPage(selected);
+    return true;
   }
 
-  private void OnNavigated(Square.Router.RouteContext route)
+  private void ShowPage(int selected)
   {
-    var selected = Array.FindIndex(_tabPaths, path => string.Equals(path, route.Path, StringComparison.Ordinal));
-    if (selected < 0) return;
     _syncingRoute = true;
     try
     {
@@ -116,6 +116,8 @@
     {
       _syncingRoute = false;
     }
+    _pageSwitch?.Update();
+    Reconciler.Current.Flush();
 
     for (var i = 0; i < _tabButtons.Length; i++)
     {

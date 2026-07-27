@@ -9,17 +9,17 @@ namespace Square.Markup.Tests;
 public class SqxParserTests
 {
     [Fact]
-    public void ParsesSlotsAndNestedRouteDefinitionsAsStructuralNodes()
+    public void ParsesSlotsWhileLegacyRouterTagsRemainOrdinaryElements()
     {
         const string source = "<template><Router initialPath=\"/\"><Route path=\"/\" component={Shell}><Route path=\":id\" component={Page} /></Route></Router><Slot name=\"header\" /><Outlet /></template>";
 
         var document = new SqxParser().Parse(source, "Composition.sqx");
 
         var router = Assert.IsType<SqxElement>(document.Template.Roots[0]);
-        Assert.Equal(SqxNodeKind.Router, router.Kind);
+        Assert.Equal(SqxNodeKind.Element, router.Kind);
         var route = Assert.IsType<SqxElement>(Assert.Single(router.Children));
-        Assert.Equal(SqxNodeKind.Route, route.Kind);
-        Assert.Equal(SqxNodeKind.Route, Assert.IsType<SqxElement>(Assert.Single(route.Children)).Kind);
+        Assert.Equal(SqxNodeKind.Element, route.Kind);
+        Assert.Equal(SqxNodeKind.Element, Assert.IsType<SqxElement>(Assert.Single(route.Children)).Kind);
         Assert.Equal(SqxNodeKind.Slot, Assert.IsType<SqxElement>(document.Template.Roots[1]).Kind);
         Assert.Equal(SqxNodeKind.Slot, Assert.IsType<SqxElement>(document.Template.Roots[2]).Kind);
     }

@@ -219,6 +219,18 @@ View {
 | `:nth-child(n)` | 位置 | ✅ 支持整数、`odd`、`even` |
 | `:not(...)` | 否定 | ⚠️ 仅支持简单参数（类型、类、ID、`*`） |
 
+`Button` 即使没有组件 CSS，也提供默认交互反馈：悬停时背景轻微提亮；按下时背景压暗、显示 1px 内描边，并将文字下移 1px。该反馈不改变布局尺寸。显式 `Button:hover` / `Button:active` 背景样式会先参与级联，控件再基于最终颜色生成轻微明暗反馈。
+
+```css
+Button:hover {
+  background: #175cd3;
+}
+
+Button:active {
+  background: #0b4a9e;
+}
+```
+
 ---
 
 ## 12. Animation（M2）✅ 已实现

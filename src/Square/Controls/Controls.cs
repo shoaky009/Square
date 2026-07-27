@@ -314,12 +314,22 @@ public class Button : UIElement, ITextSelectable
         var foreground = IsEnabled
             ? ControlDrawing.GetStyledColor(this, "color", Foreground)
             : Color.FromRgb(235, 235, 235);
+        var active = IsEnabled && HasState(ElementState.Active);
+        var hovered = IsEnabled && HasState(ElementState.Hover);
+        if (active)
+            background = ControlDrawing.Blend(background, Color.Black, 0.18f);
+        else if (hovered)
+            background = ControlDrawing.Blend(background, Color.White, 0.10f);
         ControlDrawing.DrawStyledBackground(ctx, this, background);
+        if (active)
+            ControlDrawing.DrawStyledBorder(ctx, this,
+                ControlDrawing.Blend(background, Color.Black, 0.28f), 1);
 
         var textSize = ControlDrawing.MeasureText(this, TextContent, 14f);
+        var pressOffset = active ? 1f : 0f;
         var textPosition = new Point(
             Geometry.X + (Geometry.Width - textSize.Width) / 2f,
-            Geometry.Y + (Geometry.Height - textSize.Height) / 2f);
+            Geometry.Y + (Geometry.Height - textSize.Height) / 2f + pressOffset);
         ControlDrawing.DrawText(ctx, this, TextContent, textPosition, foreground, 14f);
     }
 
@@ -1588,4 +1598,17 @@ internal static class ControlDrawing
         if (string.IsNullOrWhiteSpace(value)) return fallback;
         return Color.TryParse(value, out var color) ? color : fallback;
     }
+
+    internal static Color Blend(Color from, Color to, float amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return new Color(
+            BlendChannel(from.R, to.R, amount),
+            BlendChannel(from.G, to.G, amount),
+            BlendChannel(from.B, to.B, amount),
+            from.A);
+    }
+
+    private static byte BlendChannel(byte from, byte to, float amount) =>
+        (byte)Math.Clamp((int)MathF.Round(from + (to - from) * amount), 0, 255);
 }

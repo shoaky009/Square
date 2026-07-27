@@ -853,7 +853,7 @@ public sealed class PropertyStore
 | `MenuSeparator` | `UIElement` | — |
 | `Text` | `UIElement` | `TextContent`, `Color`, `FontSize` |
 | `ListItem` | `UIElement` | `TextContent`, `Marker`, `Color`, `FontSize`（类似 HTML `li`） |
-| `Link` | `UIElement` | `TextContent`, `Href`, `Color`, `FontSize`, `Underline`（类似 HTML `a`；路由导航见 `Square.Router.Link`） |
+| `Link` | `UIElement` | `TextContent`, `Href`, `Color`, `FontSize`, `Underline`（类似 HTML `a`；应用内路由导航见 `Square.Extensions.Routing.RouterLink`） |
 | `Button` | `UIElement` | `TextContent`, `Background`, `Foreground` |
 | `CheckBox` | `UIElement` | `IsChecked`, `TextContent` |
 | `Radio` | `UIElement` | `IsChecked`, `TextContent`, `GroupName` |
@@ -1000,6 +1000,8 @@ public class Button : UIElement
     public override void Render(IRenderContext ctx);
 }
 ```
+
+默认交互绘制：`:hover` 时背景轻微提亮；`:active` 时背景压暗、增加 1px 内描边，并将文字下移 1px。禁用按钮不应用这些反馈。组件 CSS 中的 `background` / `background-color` 和 `Button:hover` / `Button:active` 仍可覆盖基础颜色。
 
 ### CheckBox
 
@@ -1922,26 +1924,28 @@ public readonly record struct TextCharacterFragment(int StartOffset, int EndOffs
 
 ---
 
-## 10. Square.Router — 路由
+## 10. Square.Extensions.Routing — 路由
 
 ### Router
 
 ```csharp
-namespace Square.Router;
+namespace Square.Extensions.Routing;
 
-public sealed class Router : View
+public sealed class Router : IDisposable
 {
-    public string InitialPath { get; set; }
-    public List<RouteDefinition> Routes { get; }
-    public INavigationHistory? History { get; set; }
-    public RouteContext? Current { get; }
-    public event Action<RouteContext>? Navigated;
+    public AppWindow Window { get; }
+    public IReadOnlyList<RouteDefinition> Routes { get; }
+    public INavigationHistory History { get; set; }
+    public RouteLocation? Current { get; }
+    public event Action<RouteLocation>? Navigated;
 
-    public void Start();
     public bool Navigate(string location, bool replace = false);
     public bool Replace(string location);
     public bool Back();
     public bool Forward();
+    public IDisposable BeforeEach(Func<RouteLocation, RouteLocation?, RouteGuardResult> guard);
+    public void ClearCache();
+    public void RemoveCache(string matchedPath);
 }
 ```
 
@@ -1949,44 +1953,80 @@ public sealed class Router : View
 |---|---|
 | `Routes` | 路由声明列表 |
 | `History` | 导航历史；默认 `MemoryNavigationHistory` |
-| `Current` | 当前 `RouteContext` |
+| `Current` | 当前 `RouteLocation` |
 | `Navigate(location, replace)` | 导航到指定路径；路径不匹配返回 false |
 | `Back/Forward` | 历史导航 |
 
-### RouteContext
+### AppWindow.UseRouter
 
 ```csharp
-namespace Square.Router;
-
-public sealed class RouteContext
+var router = window.UseRouter(routes =>
 {
-    public string Location { get; }
-    public string Path { get; }
-    public IReadOnlyDictionary<string, string> Params { get; }
-    public IReadOnlyDictionary<string, string> Query { get; }
+    routes.Map("/", static () => new HomePage());
+    routes.Map("users", static () => new UsersLayout(), route =>
+    {
+        route.KeepAlive = true;
+        route.Map(":id", static () => new UserPage(), child => child.KeepAlive = true);
+    });
+});
+```
 
-    public static RouteContext ParseLocation(string location);
-    public static string PropertyName { get; }
+### RouterView / RouterLink
+
+```csharp
+namespace Square.Extensions.Routing;
+
+public sealed class RouterView : View
+{
+    public Router Router { get; }
+    public RouteLocation? Current { get; }
+    public void ConfigureOnce(Action<RouteCollectionBuilder> configure, string initialPath = "/");
+}
+
+public sealed class RouterLink : Square.Controls.Link
+{
+    public string To { get; set; }
+    public bool Replace { get; set; }
+}
+```
+
+### RouteLocation
+
+```csharp
+namespace Square.Extensions.Routing;
+
+public sealed class RouteLocation
+{
+    public string FullPath { get; }
+    public string Path { get; }
+    public IReadOnlyDictionary<string, string> Parameters { get; }
+    public IReadOnlyDictionary<string, string> Query { get; }
+    public IReadOnlyList<RouteMatchEntry> Matched { get; }
+    public T? GetMeta<T>(int depth = -1);
+    public static RouteLocation? Find(Element element);
 }
 ```
 
 ### RouteDefinition
 
 ```csharp
-namespace Square.Router;
+namespace Square.Extensions.Routing;
 
 public sealed class RouteDefinition
 {
-    public string Path { get; set; }
-    public Func<UIElement>? ComponentFactory { get; set; }
-    public List<RouteDefinition> Children { get; } = [];
+    public string Path { get; }
+    public string? Name { get; set; }
+    public bool KeepAlive { get; set; }
+    public object? Meta { get; set; }
+    public Func<RouteLocation, string>? CacheKeySelector { get; set; }
+    public List<RouteDefinition> Children { get; }
 }
 ```
 
 ### INavigationHistory
 
 ```csharp
-namespace Square.Router;
+namespace Square.Extensions.Routing;
 
 public interface INavigationHistory
 {
@@ -2107,19 +2147,7 @@ public class Swiper : View
 
 `Swiper` 将直接子元素作为页面，同时只显示当前页。左右键导航，Home/End 跳到首尾页；`Loop` 开启时首尾循环。当前基础版本提供离散分页与 `change` 事件，不包含拖拽手势或过渡动画。
 
-### Link（路由，继承控件 Link）
-
-```csharp
-namespace Square.Router;
-
-public sealed class Link : Square.Controls.Link
-{
-    public string To { get; set; }      // 应用内路径；同步到 Href
-    public bool Replace { get; set; }
-}
-```
-
-`.sqx` 中的 `<Link>` 映射为 `Square.Router.Link`（需引用 Router）。纯样式超链接可直接 `new Square.Controls.Link(...)`。
+模板中的 `<Link>` 始终映射为普通 `Square.Controls.Link`；应用内导航使用可选扩展的 `<RouterLink>`。
 
 ---
 
@@ -2303,7 +2331,7 @@ private void OnClick(Event e) { }
 | `Square.Platform` | `IPlatformHost`, `IPlatformFactory`, `IPlatformScreenshotProvider`, `PlatformHostCreateInfo`, `PlatformRegistry`, `PlatformScreenshot` |
 | `Square.Platform.Win32` | `Win32PlatformFactory` |
 | `Square.Platform.X11` | `X11PlatformFactory` |
-| `Square.Router` | `Router`, `RouteContext`, `RouteDefinition`, `Link`, `INavigationHistory` |
+| `Square.Extensions.Routing` | `Router`, `RouterView`, `RouterLink`, `RouteLocation`, `RouteDefinition`, `INavigationHistory` |
 | `Square.Controls.Animation` | `Animation<T>`, `Clock`, `Easing` |
 | `Square.Extensions.Markdown` | `MarkdownViewer` |
 | `Square.Extensions` | `ExtensionRegistration` |
