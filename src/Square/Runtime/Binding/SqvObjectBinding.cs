@@ -7,6 +7,37 @@ namespace Square.Runtime.Binding;
 /// <summary>AOT-safe runtime protocol for Vue object-form property and event bindings.</summary>
 public static class SqvObjectBinding
 {
+    /// <summary>绑定单个动态名称属性。</summary>
+    public static IDisposable BindProperty<TName, T>(Element target, TName name, T value) =>
+        name is IReactiveValue<string> reactiveName
+            ? new DynamicPropertyBinding<T>(target, reactiveName, value)
+            : new DynamicPropertyBinding<T>(target, GetStaticName(name), value);
+
+    /// <summary>绑定单个动态名称属性，并响应属性值变化。</summary>
+    public static IDisposable BindProperty<TName, T>(Element target, TName name, ObservableValue<T> value) =>
+        name is IReactiveValue<string> reactiveName
+            ? new DynamicPropertyBinding<T>(target, reactiveName, (IReactiveValue<T>)value)
+            : new DynamicPropertyBinding<T>(target, GetStaticName(name), (IReactiveValue<T>)value);
+
+    /// <summary>绑定单个动态名称属性，并响应通用响应式属性值变化。</summary>
+    public static IDisposable BindProperty<TName, T>(Element target, TName name, IReactiveValue<T> value) =>
+        name is IReactiveValue<string> reactiveName
+            ? new DynamicPropertyBinding<T>(target, reactiveName, value)
+            : new DynamicPropertyBinding<T>(target, GetStaticName(name), value);
+
+    /// <summary>绑定动态名称事件。</summary>
+    public static IDisposable BindEvent<TName>(EventTarget target, TName name, Action<Event> listener) =>
+        name is IReactiveValue<string> reactiveName
+            ? new DynamicEventBinding(target, reactiveName, listener)
+            : new DynamicEventBinding(target, GetStaticName(name), listener);
+
+    /// <summary>绑定动态名称无参数事件。</summary>
+    public static IDisposable BindEvent<TName>(EventTarget target, TName name, Action listener) =>
+        BindEvent(target, name, _ => listener());
+
+    private static string GetStaticName<TName>(TName name) =>
+        name as string ?? throw new ArgumentException("Dynamic SQV argument names must be string or IReactiveValue<string>.", nameof(name));
+
     /// <summary>用静态字典一次性绑定属性。</summary>
     public static IDisposable BindProperties(
         Element target,
@@ -158,6 +189,123 @@ public static class SqvObjectBinding
         {
             foreach (var listener in _listeners) listener.Dispose();
             _listeners.Clear();
+        }
+    }
+
+    private sealed class DynamicPropertyBinding<T> : IDisposable
+    {
+        private readonly Element _target;
+        private string? _name;
+        private T _value;
+        private IDisposable? _nameSubscription;
+        private IDisposable? _valueSubscription;
+        private bool _disposed;
+
+        public DynamicPropertyBinding(Element target, string name, T value)
+        {
+            _target = target;
+            _value = value;
+            SetName(name);
+        }
+
+        public DynamicPropertyBinding(Element target, string name, IReactiveValue<T> value) : this(target, name, value.Value)
+        {
+            _valueSubscription = value.Subscribe(SetValue,
+                new ReactiveSubscriptionOptions { Dispatcher = target.Dispatcher });
+        }
+
+        public DynamicPropertyBinding(Element target, IReactiveValue<string> name, T value) : this(target, name.Value, value)
+        {
+            _nameSubscription = name.Subscribe(SetName,
+                new ReactiveSubscriptionOptions { Dispatcher = target.Dispatcher });
+        }
+
+        public DynamicPropertyBinding(Element target, IReactiveValue<string> name, IReactiveValue<T> value) : this(target, name.Value, value.Value)
+        {
+            _nameSubscription = name.Subscribe(SetName,
+                new ReactiveSubscriptionOptions { Dispatcher = target.Dispatcher });
+            _valueSubscription = value.Subscribe(SetValue,
+                new ReactiveSubscriptionOptions { Dispatcher = target.Dispatcher });
+        }
+
+        private void SetName(string? value)
+        {
+            if (_disposed) return;
+            var mapped = string.IsNullOrWhiteSpace(value) ? null : SqvPropertyNames.Map(value);
+            if (string.Equals(_name, mapped, StringComparison.OrdinalIgnoreCase)) return;
+            if (_name != null) _target.RemoveProperty(_name);
+            _name = mapped;
+            Apply();
+        }
+
+        private void SetValue(T value)
+        {
+            if (_disposed) return;
+            _value = value;
+            Apply();
+        }
+
+        private void Apply()
+        {
+            if (_name == null) return;
+            if (_value is null) _target.RemoveProperty(_name);
+            else _target.SetProperty(_name, _value);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _nameSubscription?.Dispose();
+            _valueSubscription?.Dispose();
+            if (_name != null) _target.RemoveProperty(_name);
+            _name = null;
+        }
+    }
+
+    private sealed class DynamicEventBinding : IDisposable
+    {
+        private readonly EventTarget _target;
+        private readonly Action<Event> _listener;
+        private IDisposable? _nameSubscription;
+        private IDisposable? _registration;
+        private string? _name;
+        private bool _disposed;
+
+        public DynamicEventBinding(EventTarget target, string name, Action<Event> listener)
+        {
+            _target = target;
+            _listener = listener;
+            SetName(name);
+        }
+
+        public DynamicEventBinding(EventTarget target, IReactiveValue<string> name, Action<Event> listener) : this(target, name.Value, listener)
+        {
+            var dispatcher = target is Element element ? element.Dispatcher : null;
+            _nameSubscription = name.Subscribe(SetName,
+                new ReactiveSubscriptionOptions { Dispatcher = dispatcher });
+        }
+
+        private void SetName(string? value)
+        {
+            if (_disposed) return;
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+            if (string.Equals(_name, normalized, StringComparison.Ordinal)) return;
+            _registration?.Dispose();
+            _registration = null;
+            _name = normalized;
+            if (_name != null) _registration = _target.Listen(_name, _listener);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _nameSubscription?.Dispose();
+            _registration?.Dispose();
+            _nameSubscription = null;
+            _registration = null;
+            _name = null;
         }
     }
 }

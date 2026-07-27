@@ -48,6 +48,9 @@ namespace Square.Compiler.Parser
         public int Line;
         public int Position;
         public bool IsModelEvent;
+        public bool IsDynamicProperty;
+        public bool IsDynamicEvent;
+        public string ArgumentExpression;
     }
 
     internal class SqxTemplate

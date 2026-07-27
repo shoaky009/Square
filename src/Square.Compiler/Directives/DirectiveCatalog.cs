@@ -19,7 +19,7 @@ internal sealed class DirectiveDescriptor
 internal sealed class DirectiveCatalog
 {
     private readonly Dictionary<string, DirectiveDescriptor> _byTag =
-        new Dictionary<string, DirectiveDescriptor>(StringComparer.Ordinal);
+        new Dictionary<string, DirectiveDescriptor>(StringComparer.OrdinalIgnoreCase);
 
     public static DirectiveCatalog BuiltIn { get; } = CreateBuiltIn();
 

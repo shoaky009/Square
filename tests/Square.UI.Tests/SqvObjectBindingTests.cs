@@ -98,4 +98,46 @@ public class SqvObjectBindingTests
         Assert.Throws<InvalidOperationException>(() => SqvObjectBinding.BindProperties(button, properties));
         Assert.Throws<InvalidOperationException>(() => SqvObjectBinding.BindEvents(button, events));
     }
+
+    [Fact]
+    public void DynamicPropertyTracksReactiveNameAndValue()
+    {
+        var button = new Button();
+        var name = new ObservableValue<string>("text");
+        var value = new ObservableValue<string>("Save");
+        var binding = SqvObjectBinding.BindProperty(button, name, value);
+
+        Assert.Equal("Save", button.TextContent);
+        value.Value = "Send";
+        Assert.Equal("Send", button.TextContent);
+
+        name.Value = "disabled";
+        Assert.False(button.Properties.HasValue("TextContent"));
+        Assert.True(button.Properties.HasValue("IsDisabled"));
+
+        binding.Dispose();
+        Assert.False(button.Properties.HasValue("IsDisabled"));
+    }
+
+    [Fact]
+    public void DynamicEventMovesListenerWhenReactiveNameChanges()
+    {
+        var button = new Button();
+        var name = new ObservableValue<string>("click");
+        var count = 0;
+        var binding = SqvObjectBinding.BindEvent(button, name, _ => count++);
+
+        button.DispatchEvent(StandardEvents.CreateClick());
+        Assert.Equal(1, count);
+
+        name.Value = "change";
+        button.DispatchEvent(StandardEvents.CreateClick());
+        Assert.Equal(1, count);
+        button.DispatchEvent(new Event("change"));
+        Assert.Equal(2, count);
+
+        binding.Dispose();
+        button.DispatchEvent(new Event("change"));
+        Assert.Equal(2, count);
+    }
 }

@@ -406,6 +406,64 @@ public class VueGeneratorTests
     }
 
     [Fact]
+    public void SqvDynamicArgumentsAndScopedSlotsUseRuntimeProtocols()
+    {
+        const string source = """
+            <template>
+              <Card>
+                <template #[SlotName]="slotProps">
+                  <Button :[PropertyName]="Value" @[EventName].stop.prevent="OnEvent">
+                    {{ slotProps.Get<string>("label") }}
+                  </Button>
+                </template>
+              </Card>
+            </template>
+            <script lang="csharp">
+              public string SlotName = "header";
+              public string PropertyName = "disabled";
+              public string EventName = "click";
+              public bool Value = true;
+              private void OnEvent(Event e) { }
+            </script>
+            """;
+
+        var result = RunGenerator(new InMemoryAdditionalText("DynamicSlots.sqv", source));
+        var generated = Assert.Single(result.GeneratedTrees).GetText().ToString();
+
+        Assert.Empty(result.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        Assert.Contains(".Slots.Set(SlotName, (__slotParent", generated);
+        Assert.Contains("SqvObjectBinding.BindProperty", generated);
+        Assert.Contains("SqvObjectBinding.BindEvent", generated);
+        Assert.Contains("e.StopPropagation();", generated);
+        Assert.Contains("e.PreventDefault();", generated);
+        Assert.Contains("slotProps.Get<string>(\"label\")", generated);
+        Assert.DoesNotContain(".Slots.Set(\"SlotName\"", generated);
+    }
+
+    [Fact]
+    public void SqvSlotOutletEmitsDynamicNameAndScopedProperties()
+    {
+        const string source = """
+            <template>
+              <slot :name="ActiveSlot" :item="CurrentItem" label="Row" />
+            </template>
+            <script lang="csharp">
+              public string ActiveSlot = "row";
+              public int CurrentItem = 4;
+            </script>
+            """;
+
+        var generated = Assert.Single(RunGenerator(
+            new InMemoryAdditionalText("SlotProvider.sqv", source)).GeneratedTrees).GetText().ToString();
+
+        Assert.Contains("new SlotProps()", generated);
+        Assert.Contains(".Set(\"item\", CurrentItem);", generated);
+        Assert.Contains(".Set(\"label\", \"Row\");", generated);
+        Assert.Contains("Slots.Render(ActiveSlot", generated);
+        Assert.DoesNotContain("Slots.Render(\"ActiveSlot\"", generated);
+    }
+
+    [Fact]
     public void SqvInputVModelBindsValueAndWritesBackOnInput()
     {
         const string source = """

@@ -59,7 +59,7 @@ namespace Square.Compiler.Emit
             _sb.AppendLine("    {");
             _sb.AppendLine("        if (_visualTreeBuilt) return;");
             _sb.AppendLine("        _visualTreeBuilt = true;");
-            EmitNodes(_doc.Template.Roots, "        ", "this", null);
+            EmitNodes(_doc.Template.Roots, "        ", "this", Array.Empty<string>());
             if (!string.IsNullOrWhiteSpace(_doc.StyleCode))
                 _sb.AppendLine("        ApplyComponentStyles(this);");
             _sb.AppendLine("    }");
@@ -104,9 +104,9 @@ namespace Square.Compiler.Emit
                     }
                     CollectRefs(element.Children);
                 }
-                else if (node is SqvForDirective forDirective)
+                else if (node is TemplateForDirective forDirective)
                     CollectRefs(forDirective.Children);
-                else if (node is SqvIfChainDirective ifChain)
+                else if (node is TemplateIfChainDirective ifChain)
                     foreach (var branch in ifChain.Branches)
                         CollectRefs(branch.Children);
             }
@@ -128,12 +128,12 @@ namespace Square.Compiler.Emit
                     }
                     CountStructs(element.Children);
                 }
-                else if (node is SqvForDirective)
+                else if (node is TemplateForDirective)
                 {
                     _structCounts["_vfor"] = (_structCounts.TryGetValue("_vfor", out var c) ? c : 0) + 1;
-                    CountStructs(((SqvForDirective)node).Children);
+                    CountStructs(((TemplateForDirective)node).Children);
                 }
-                else if (node is SqvIfChainDirective ifChain)
+                else if (node is TemplateIfChainDirective ifChain)
                 {
                     _structCounts["_vif"] = (_structCounts.TryGetValue("_vif", out var c2) ? c2 : 0) + ifChain.Branches.Count;
                     foreach (var branch in ifChain.Branches)
@@ -208,7 +208,7 @@ namespace Square.Compiler.Emit
                 _sb.AppendLine("        " + prefix + i + " = null!;");
         }
 
-        private void EmitNodes(List<SqxNode> nodes, string indent, string parentName, string localName)
+        private void EmitNodes(List<SqxNode> nodes, string indent, string parentName, IReadOnlyList<string> localNames)
         {
             foreach (var node in nodes)
             {
@@ -222,41 +222,41 @@ namespace Square.Compiler.Emit
                 }
                 else if (node is SqxExpression expression)
                 {
-                    var textName = EmitExpressionText(expression.Expression, indent, localName);
+                    var textName = EmitExpressionText(expression.Expression, indent, localNames);
                     _sb.AppendLine(indent + parentName + ".Children.Add(" + textName + ");");
                 }
                 else if (node is SqxElement element)
                 {
                     if (IsTemplateFragment(element))
                     {
-                        EmitNodes(element.Children, indent, parentName, localName);
+                        EmitNodes(element.Children, indent, parentName, localNames);
                         continue;
                     }
 
                     // Catalog-driven structural directives (Show/For/Switch/Slot/Router/…)
                     if (_catalog.IsDirective(element.TagName))
                     {
-                        _pipeline.TryEmit(element, indent, parentName, localName);
+                        _pipeline.TryEmit(element, indent, parentName, localNames);
                         continue;
                     }
 
-                    var elementName = EmitControl(element, indent, localName, parentName);
+                    var elementName = EmitControl(element, indent, localNames, parentName);
                     _sb.AppendLine(indent + parentName + ".Children.Add(" + elementName + ");");
                     if (RequiresBuildAfterAttach(element.TagName))
                         _sb.AppendLine(indent + elementName + ".BuildElementTree();");
                 }
-                else if (node is SqvForDirective forDirective)
+                else if (node is TemplateForDirective forDirective)
                 {
-                    EmitVFor(forDirective, indent, parentName);
+                    EmitVFor(forDirective, indent, parentName, localNames);
                 }
-                else if (node is SqvIfChainDirective ifChain)
+                else if (node is TemplateIfChainDirective ifChain)
                 {
-                    EmitVIfChain(ifChain, indent, parentName, localName);
+                    EmitVIfChain(ifChain, indent, parentName, localNames);
                 }
             }
         }
 
-        private string EmitControl(SqxElement element, string indent, string localName, string parentName = null)
+        private string EmitControl(SqxElement element, string indent, IReadOnlyList<string> localNames, string parentName = null)
         {
             var refAttr = FindAttr(element, "ref");
             var isRef = refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue);
@@ -276,21 +276,33 @@ namespace Square.Compiler.Emit
                 Escape(_doc.SourcePath) + "\"));");
 
             foreach (var attribute in element.Attributes)
-                EmitAttribute(variableName, attribute, indent, localName);
+                EmitAttribute(variableName, attribute, indent, localNames);
 
             if (usesSlots)
             {
-                EmitComponentSlots(element, variableName, indent, localName);
+                EmitComponentSlots(element, variableName, indent, localNames);
             }
-            else if (!EmitTextContent(element, variableName, indent, localName))
-                EmitNodes(element.Children, indent, variableName, localName);
+            else if (!EmitTextContent(element, variableName, indent, localNames))
+                EmitNodes(element.Children, indent, variableName, localNames);
 
             return variableName;
         }
 
-        private void EmitAttribute(string variableName, SqxAttribute attribute, string indent, string localName)
+        private void EmitAttribute(string variableName, SqxAttribute attribute, string indent, IReadOnlyList<string> localNames)
         {
-            if (attribute.Name == "ref" || attribute.Name == "slot") return;
+            if (attribute.Name == "ref" || attribute.Name == "slot" || attribute.Name == "__sqv_slot_scope") return;
+
+            if (attribute.IsDynamicProperty)
+            {
+                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindProperty(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
+                return;
+            }
+
+            if (attribute.IsDynamicEvent)
+            {
+                _sb.AppendLine(indent + "_generatedBindings.Add(SqvObjectBinding.BindEvent(" + variableName + ", " + attribute.ArgumentExpression + ", " + attribute.RawValue + "));");
+                return;
+            }
 
             if (attribute.Name == "__sqv_bind_object")
             {
@@ -336,7 +348,7 @@ namespace Square.Compiler.Emit
                 else
                 {
                     var propertyName = MapPropName(attribute.Name);
-                    if (IsLocalExpression(attribute.RawValue, localName))
+                    if (IsLocalExpression(attribute.RawValue, localNames))
                         EmitSourceMappedLine(indent, attribute.Line,
                             variableName + ".SetProperty(\"" + propertyName + "\", " + attribute.RawValue + ");");
                     else
@@ -358,7 +370,7 @@ namespace Square.Compiler.Emit
                 _sb.AppendLine(indent + variableName + ".SetProperty(\"" + propName + "\", \"" + Escape(rawValue) + "\");");
         }
 
-        private bool EmitTextContent(SqxElement element, string variableName, string indent, string localName)
+        private bool EmitTextContent(SqxElement element, string variableName, string indent, IReadOnlyList<string> localNames)
         {
             if (!IsTextContentElement(element.TagName)) return false;
             if (FindAttr(element, "text") != null) return true;
@@ -373,7 +385,7 @@ namespace Square.Compiler.Emit
             }
             if (content.Count == 1 && content[0] is SqxExpression expression)
             {
-                if (IsLocalExpression(expression.Expression, localName))
+                if (IsLocalExpression(expression.Expression, localNames))
                     _sb.AppendLine(indent + variableName + ".SetProperty(\"TextContent\", (" + expression.Expression + ")?.ToString() ?? \"\");");
                 else
                     _sb.AppendLine(indent + variableName + ".BindProperty(\"TextContent\", " + expression.Expression + ");");
@@ -400,43 +412,56 @@ namespace Square.Compiler.Emit
             return false;
         }
 
-        private void EmitComponentSlots(SqxElement element, string variableName, string indent, string localName)
+        private void EmitComponentSlots(SqxElement element, string variableName, string indent, IReadOnlyList<string> localNames)
         {
-            var groups = new List<KeyValuePair<string, List<SqxNode>>>();
+            var groups = new List<SlotGroup>();
             foreach (var child in element.Children)
             {
                 if (IsWrapperExpression(child)) continue;
                 var slotName = "";
+                var slotNameIsExpression = false;
+                string slotScope = null;
                 var slotNodes = new List<SqxNode> { child };
                 if (child is SqxElement childElement)
                 {
-                    slotName = FindAttr(childElement, "slot")?.RawValue ?? "";
+                    var slotAttribute = FindAttr(childElement, "slot");
+                    slotName = slotAttribute?.RawValue ?? "";
+                    slotNameIsExpression = slotAttribute?.IsExpression == true;
+                    slotScope = FindAttr(childElement, "__sqv_slot_scope")?.RawValue;
                     if (IsTemplateFragment(childElement))
                         slotNodes = childElement.Children;
                 }
 
-                var groupIndex = groups.FindIndex(pair => pair.Key == slotName);
+                var groupIndex = groups.FindIndex(group =>
+                    group.NameIsExpression == slotNameIsExpression &&
+                    string.Equals(group.Name, slotName, StringComparison.Ordinal) &&
+                    string.Equals(group.Scope, slotScope, StringComparison.Ordinal));
                 if (groupIndex < 0)
                 {
-                    groups.Add(new KeyValuePair<string, List<SqxNode>>(slotName, new List<SqxNode>(slotNodes)));
+                    groups.Add(new SlotGroup(slotName, slotNameIsExpression, slotScope, new List<SqxNode>(slotNodes)));
                 }
                 else
                 {
-                    groups[groupIndex].Value.AddRange(slotNodes);
+                    groups[groupIndex].Nodes.AddRange(slotNodes);
                 }
             }
 
             foreach (var group in groups)
             {
                 var parentParameter = "__slotParent" + _slotCounter++;
-                _sb.AppendLine(indent + variableName + ".Slots.Set(\"" + Escape(group.Key) + "\", " + parentParameter + " =>");
+                var name = group.NameIsExpression ? group.Name : "\"" + Escape(group.Name) + "\"";
+                var parameters = string.IsNullOrWhiteSpace(group.Scope)
+                    ? parentParameter
+                    : "(" + parentParameter + ", " + group.Scope + ")";
+                _sb.AppendLine(indent + variableName + ".Slots.Set(" + name + ", " + parameters + " =>");
                 _sb.AppendLine(indent + "{");
-                EmitNodes(group.Value, indent + "    ", parentParameter, localName);
+                EmitNodes(group.Nodes, indent + "    ", parentParameter,
+                    string.IsNullOrWhiteSpace(group.Scope) ? localNames : AddLocals(localNames, group.Scope));
                 _sb.AppendLine(indent + "});");
             }
         }
 
-        private void EmitVFor(SqvForDirective directive, string indent, string parentName)
+        private void EmitVFor(TemplateForDirective directive, string indent, string parentName, IReadOnlyList<string> localNames)
         {
             var field = "_vfor" + _vforIndex++;
             var item = directive.ItemName;
@@ -447,13 +472,14 @@ namespace Square.Compiler.Emit
                 : lambda + " => " + directive.KeyExpression + ", ";
             _sb.AppendLine(indent + field + " = ForNode.Create(" + directive.SourceExpression + ", " + keySelector + lambda + " =>");
             _sb.AppendLine(indent + "{");
-            EmitFactoryBody(directive.Children, indent + "    ", item);
+            EmitFactoryBody(directive.Children, indent + "    ",
+                AddLocals(localNames, item, directive.IndexName));
             _sb.AppendLine(indent + "});");
             _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
             _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
         }
 
-        private void EmitVIfChain(SqvIfChainDirective chain, string indent, string parentName, string localName)
+        private void EmitVIfChain(TemplateIfChainDirective chain, string indent, string parentName, IReadOnlyList<string> localNames)
         {
             string accumulated = null;
             foreach (var branch in chain.Branches)
@@ -473,14 +499,14 @@ namespace Square.Compiler.Emit
 
                 _sb.AppendLine(indent + field + " = new ShowNode(" + condition + ", () =>");
                 _sb.AppendLine(indent + "{");
-                EmitFactoryBody(branch.Children, indent + "    ", localName);
+                EmitFactoryBody(branch.Children, indent + "    ", localNames);
                 _sb.AppendLine(indent + "});");
                 _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
                 _sb.AppendLine(indent + field + ".AttachTo(" + parentName + ");");
             }
         }
 
-        private void EmitFactoryBody(List<SqxNode> nodes, string indent, string localName)
+        private void EmitFactoryBody(List<SqxNode> nodes, string indent, IReadOnlyList<string> localNames)
         {
             var content = nodes.Where(node => !IsWrapperExpression(node)).ToList();
             if (content.Count == 0)
@@ -491,7 +517,7 @@ namespace Square.Compiler.Emit
 
             if (content.Count == 1)
             {
-                var rootName = EmitFactoryRoot(content[0], indent, localName);
+                var rootName = EmitFactoryRoot(content[0], indent, localNames);
                 if (!string.IsNullOrWhiteSpace(_doc.StyleCode))
                     _sb.AppendLine(indent + "ApplyComponentStyles(" + rootName + ");");
                 _sb.AppendLine(indent + "return " + rootName + ";");
@@ -500,34 +526,34 @@ namespace Square.Compiler.Emit
 
             var fragmentName = NextVariable();
             _sb.AppendLine(indent + "var " + fragmentName + " = new View();");
-            EmitNodes(content, indent, fragmentName, localName);
+            EmitNodes(content, indent, fragmentName, localNames);
             if (!string.IsNullOrWhiteSpace(_doc.StyleCode))
                 _sb.AppendLine(indent + "ApplyComponentStyles(" + fragmentName + ");");
             _sb.AppendLine(indent + "return " + fragmentName + ";");
         }
 
-        private string EmitFactoryRoot(SqxNode node, string indent, string localName)
+        private string EmitFactoryRoot(SqxNode node, string indent, IReadOnlyList<string> localNames)
         {
             if (node is SqxElement element)
             {
                 if (!_catalog.IsDirective(element.TagName))
-                    return EmitControl(element, indent, localName);
+                    return EmitControl(element, indent, localNames);
                 var wrapper = NextVariable();
                 _sb.AppendLine(indent + "var " + wrapper + " = new View();");
-                EmitNodes(new List<SqxNode> { node }, indent, wrapper, localName);
+                EmitNodes(new List<SqxNode> { node }, indent, wrapper, localNames);
                 return wrapper;
             }
             if (node is SqxText text)
                 return EmitText(text.Text, indent);
             if (node is SqxExpression expression)
-                return EmitExpressionText(expression.Expression, indent, localName);
+                return EmitExpressionText(expression.Expression, indent, localNames);
 
             // Vue 专属指令作为工厂根：用 View 包装，使其可作为 Element 返回。
-            if (node is SqvForDirective or SqvIfChainDirective)
+            if (node is TemplateForDirective or TemplateIfChainDirective)
             {
                 var wrapper = NextVariable();
                 _sb.AppendLine(indent + "var " + wrapper + " = new View();");
-                EmitNodes(new List<SqxNode> { node }, indent, wrapper, localName);
+                EmitNodes(new List<SqxNode> { node }, indent, wrapper, localNames);
                 return wrapper;
             }
 
@@ -543,11 +569,11 @@ namespace Square.Compiler.Emit
             return variableName;
         }
 
-        private string EmitExpressionText(string expression, string indent, string localName)
+        private string EmitExpressionText(string expression, string indent, IReadOnlyList<string> localNames)
         {
             var variableName = NextVariable();
             _sb.AppendLine(indent + "var " + variableName + " = new Square.Controls.Text();");
-            if (IsLocalExpression(expression, localName))
+            if (IsLocalExpression(expression, localNames))
                 _sb.AppendLine(indent + variableName + ".SetProperty(\"TextContent\", (" + expression + ")?.ToString() ?? \"\");");
             else
                 _sb.AppendLine(indent + variableName + ".BindProperty(\"TextContent\", " + expression + ");");
@@ -621,12 +647,14 @@ namespace Square.Compiler.Emit
 
         private string NextVariable() => "_v" + _varCounter++;
 
-        private static bool IsLocalExpression(string expression, string localName)
+        private static bool IsLocalExpression(string expression, IReadOnlyList<string> localNames)
         {
-            if (string.IsNullOrWhiteSpace(localName) || string.IsNullOrWhiteSpace(expression)) return false;
+            if (localNames.Count == 0 || string.IsNullOrWhiteSpace(expression)) return false;
             var value = expression.Trim();
-            return value == localName || value.StartsWith(localName + ".", StringComparison.Ordinal) ||
-                   value.StartsWith(localName + "[", StringComparison.Ordinal);
+            foreach (var localName in localNames)
+                if (value == localName || value.StartsWith(localName + ".", StringComparison.Ordinal) ||
+                    value.StartsWith(localName + "[", StringComparison.Ordinal)) return true;
+            return false;
         }
 
         private static bool IsWrapperExpression(SqxNode node)
@@ -650,15 +678,16 @@ namespace Square.Compiler.Emit
                 if (node is SqxElement element)
                 {
                     if (element.Attributes.Any(attribute =>
-                        attribute.Name is "__sqv_bind_object" or "__sqv_on_object"))
+                        attribute.Name is "__sqv_bind_object" or "__sqv_on_object" ||
+                        attribute.IsDynamicProperty || attribute.IsDynamicEvent))
                         return true;
                     if (HasObjectBindings(element.Children)) return true;
                 }
-                else if (node is SqvForDirective forDirective)
+                else if (node is TemplateForDirective forDirective)
                 {
                     if (HasObjectBindings(forDirective.Children)) return true;
                 }
-                else if (node is SqvIfChainDirective ifDirective)
+                else if (node is TemplateIfChainDirective ifDirective)
                 {
                     foreach (var branch in ifDirective.Branches)
                         if (HasObjectBindings(branch.Children)) return true;
@@ -685,9 +714,33 @@ namespace Square.Compiler.Emit
             return value.Trim();
         }
 
-        internal void EmitOptionalFactory(List<SqxNode> nodes, string indent, string localName)
+        internal void EmitOptionalFactory(List<SqxNode> nodes, string indent, IReadOnlyList<string> localNames)
         {
-            EmitFactoryBody(nodes, indent, localName);
+            EmitFactoryBody(nodes, indent, localNames);
+        }
+
+        private static IReadOnlyList<string> AddLocals(IReadOnlyList<string> locals, params string[] names)
+        {
+            var result = new List<string>(locals);
+            foreach (var name in names)
+                if (!string.IsNullOrWhiteSpace(name) && !result.Contains(name, StringComparer.Ordinal)) result.Add(name);
+            return result;
+        }
+
+        private sealed class SlotGroup
+        {
+            public SlotGroup(string name, bool nameIsExpression, string scope, List<SqxNode> nodes)
+            {
+                Name = name;
+                NameIsExpression = nameIsExpression;
+                Scope = scope;
+                Nodes = nodes;
+            }
+
+            public string Name { get; }
+            public bool NameIsExpression { get; }
+            public string Scope { get; }
+            public List<SqxNode> Nodes { get; }
         }
 
         private static string[] Split(string value, char separator) =>

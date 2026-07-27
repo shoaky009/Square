@@ -381,12 +381,12 @@ public sealed class SqxGenerator : IIncrementalGenerator
                 foreach (var child in EnumerateElements(element.Children))
                     yield return child;
             }
-            else if (node is SqvForDirective forDirective)
+            else if (node is TemplateForDirective forDirective)
             {
                 foreach (var child in EnumerateElements(forDirective.Children))
                     yield return child;
             }
-            else if (node is SqvIfChainDirective ifChain)
+            else if (node is TemplateIfChainDirective ifChain)
             {
                 foreach (var branch in ifChain.Branches)
                 foreach (var child in EnumerateElements(branch.Children))

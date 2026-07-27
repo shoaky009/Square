@@ -4,7 +4,7 @@ namespace Square.Compiler.Parser;
 
 /// <summary>
 /// Vue 模板解析器：消费 <see cref="SqvLexer"/> 产出的 token，直接构造 <see cref="SqxNode"/> 树，
-/// 并把 <c>v-for</c> / <c>v-if</c> 链提升为 <see cref="SqvForDirective"/> / <see cref="SqvIfChainDirective"/>。
+/// 并把 <c>v-for</c> / <c>v-if</c> 链降低为共享模板 IR。
 /// 不依赖 <c>SqxCoreParser</c> / <c>SqxParser</c>。
 /// </summary>
 internal sealed class SqvTemplateParser
@@ -147,7 +147,7 @@ internal sealed class SqvTemplateParser
     private static List<SqxNode> RewriteSiblings(List<SqxNode> nodes)
     {
         var rewritten = new List<SqxNode>(nodes.Count);
-        SqvIfChainDirective currentChain = null;
+        TemplateIfChainDirective currentChain = null;
 
         for (var i = 0; i < nodes.Count; i++)
         {
@@ -173,7 +173,7 @@ internal sealed class SqvTemplateParser
                         "SQV0005");
                 }
                 var key = FindAttr(element, "__vfor_key");
-                var directive = new SqvForDirective
+                var directive = new TemplateForDirective
                 {
                     SourceExpression = vfor.RawValue ?? "",
                     ItemName = FindAttr(element, "__vfor_item")?.RawValue ?? "item",
@@ -205,17 +205,17 @@ internal sealed class SqvTemplateParser
 
                 if (vifKind == "if")
                 {
-                    currentChain = new SqvIfChainDirective { Position = position };
-                    currentChain.Branches.Add(new SqvIfBranch { Condition = cond ?? "false", Position = position, Children = new List<SqxNode> { element } });
+                    currentChain = new TemplateIfChainDirective { Position = position };
+                    currentChain.Branches.Add(new TemplateIfBranch { Condition = cond ?? "false", Position = position, Children = new List<SqxNode> { element } });
                     rewritten.Add(currentChain);
                 }
                 else if (vifKind == "elseif" && currentChain != null)
                 {
-                    currentChain.Branches.Add(new SqvIfBranch { Condition = cond ?? "false", Position = position, Children = new List<SqxNode> { element } });
+                    currentChain.Branches.Add(new TemplateIfBranch { Condition = cond ?? "false", Position = position, Children = new List<SqxNode> { element } });
                 }
                 else if (vifKind == "else" && currentChain != null)
                 {
-                    currentChain.Branches.Add(new SqvIfBranch { IsElse = true, Position = position, Children = new List<SqxNode> { element } });
+                    currentChain.Branches.Add(new TemplateIfBranch { IsElse = true, Position = position, Children = new List<SqxNode> { element } });
                     currentChain = null;
                 }
                 else
@@ -265,7 +265,7 @@ internal static class SqvAttributeConverter
 {
     public static SqxAttribute Convert(string name, string value, int line, int column, int position, List<SqxAttribute> pending)
     {
-        // v-for：解析为内部标记属性，后续在 AST 上重组为 SqvForDirective。
+        // v-for：解析为内部标记属性，后续降低为共享循环 IR。
         if (name == "v-for")
         {
             var parsed = ParseVFor(value);
@@ -312,7 +312,7 @@ internal static class SqvAttributeConverter
             var rest = name.Substring(1);
             var propName = StripModifiers(rest);
             if (propName.Length > 0 && propName[0] == '[')
-                throw new SqxParseException("Dynamic argument '" + name + "' is not supported", position, "SQV0006");
+                return DynamicPropertyAttr(propName, value, line, position);
             if (propName == "key")
                 return new SqxAttribute { Name = "__vfor_key", RawValue = value, IsExpression = true, Line = line, Position = position };
             if (propName.Length == 0) return null;
@@ -324,7 +324,7 @@ internal static class SqvAttributeConverter
             var rest = name.Substring("v-bind:".Length);
             var propName = StripModifiers(rest);
             if (propName.Length > 0 && propName[0] == '[')
-                throw new SqxParseException("Dynamic argument '" + name + "' is not supported", position, "SQV0006");
+                return DynamicPropertyAttr(propName, value, line, position);
             if (propName == "key")
                 return new SqxAttribute { Name = "__vfor_key", RawValue = value, IsExpression = true, Line = line, Position = position };
             if (propName.Length == 0) return null;
@@ -340,18 +340,16 @@ internal static class SqvAttributeConverter
         {
             var slotName = NormalizeSlotName(name.Substring(1));
             if (slotName.Length > 0 && slotName[0] == '[')
-                throw new SqxParseException("Dynamic slot argument '" + name + "' is not supported", position, "SQV0006");
-            if (!string.IsNullOrWhiteSpace(value))
-                throw new SqxParseException("Scoped slot properties are not supported", position, "SQV0008");
+                return DynamicSlotAttr(slotName, value, line, position, pending);
+            AddSlotScope(value, line, position, pending);
             return StaticAttr("slot", slotName, line, position);
         }
         if (name.StartsWith("v-slot", StringComparison.Ordinal))
         {
             var slotName = NormalizeSlotName(name.Substring("v-slot".Length));
             if (slotName.Length > 0 && slotName[0] == '[')
-                throw new SqxParseException("Dynamic slot argument '" + name + "' is not supported", position, "SQV0006");
-            if (!string.IsNullOrWhiteSpace(value))
-                throw new SqxParseException("Scoped slot properties are not supported", position, "SQV0008");
+                return DynamicSlotAttr(slotName, value, line, position, pending);
+            AddSlotScope(value, line, position, pending);
             return StaticAttr("slot", slotName, line, position);
         }
 
@@ -414,24 +412,93 @@ internal static class SqvAttributeConverter
         var dot = eventNameWithModifiers.IndexOf('.');
         var eventName = dot >= 0 ? eventNameWithModifiers.Substring(0, dot) : eventNameWithModifiers;
         if (eventName.Length > 0 && eventName[0] == '[')
-            throw new SqxParseException("Dynamic event argument '[...]' is not supported", position, "SQV0006");
+        {
+            var argument = ExtractDynamicArgument(eventName, position);
+            var modifiers = dot >= 0 ? eventNameWithModifiers.Substring(dot + 1) : "";
+            ValidateEventModifiers(modifiers, position);
+            return new SqxAttribute
+            {
+                Name = "__sqv_dynamic_event",
+                ArgumentExpression = argument,
+                RawValue = WrapEventHandler(value, modifiers),
+                IsExpression = true,
+                IsDynamicEvent = true,
+                Line = line,
+                Position = position
+            };
+        }
         if (eventName.Length == 0) return null;
         if (dot >= 0)
         {
-            foreach (var modifier in eventNameWithModifiers.Substring(dot + 1).Split('.'))
-            {
-                if (modifier is not ("stop" or "prevent"))
-                    throw new SqxParseException(
-                        "Event modifier '." + modifier + "' is not supported",
-                        position,
-                        "SQV0002");
-            }
+            ValidateEventModifiers(eventNameWithModifiers.Substring(dot + 1), position);
         }
         var attrName = ToEventAttribute(eventName);
         if (string.IsNullOrWhiteSpace(value))
             return ExprAttr(attrName, value, line, position);
         var wrapper = WrapEventHandler(value, dot >= 0 ? eventNameWithModifiers.Substring(dot + 1) : "");
         return ExprAttr(attrName, wrapper, line, position);
+    }
+
+    private static SqxAttribute DynamicPropertyAttr(string name, string value, int line, int position) =>
+        new()
+        {
+            Name = "__sqv_dynamic_property",
+            ArgumentExpression = ExtractDynamicArgument(name, position),
+            RawValue = value ?? "null",
+            IsExpression = true,
+            IsDynamicProperty = true,
+            Line = line,
+            Position = position
+        };
+
+    private static SqxAttribute DynamicSlotAttr(
+        string name,
+        string value,
+        int line,
+        int position,
+        List<SqxAttribute> pending)
+    {
+        AddSlotScope(value, line, position, pending);
+        return new SqxAttribute
+        {
+            Name = "slot",
+            ArgumentExpression = ExtractDynamicArgument(name, position),
+            RawValue = ExtractDynamicArgument(name, position),
+            IsExpression = true,
+            Line = line,
+            Position = position
+        };
+    }
+
+    private static void AddSlotScope(string value, int line, int position, List<SqxAttribute> pending)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (!IsValidIdentifier(value))
+            throw new SqxParseException("Scoped slot binding must be a C# identifier", position, "SQV0008");
+        pending.Add(new SqxAttribute { Name = "__sqv_slot_scope", RawValue = value, Line = line, Position = position });
+    }
+
+    private static string ExtractDynamicArgument(string value, int position)
+    {
+        if (value.Length < 3 || value[0] != '[' || value[value.Length - 1] != ']')
+            throw new SqxParseException("Invalid dynamic argument '" + value + "'", position, "SQV0006");
+        var expression = value.Substring(1, value.Length - 2).Trim();
+        if (expression.Length == 0)
+            throw new SqxParseException("Dynamic argument cannot be empty", position, "SQV0006");
+        return expression;
+    }
+
+    private static void ValidateEventModifiers(string modifiers, int position)
+    {
+        if (string.IsNullOrWhiteSpace(modifiers)) return;
+        foreach (var modifier in modifiers.Split('.'))
+        {
+            if (modifier is not ("stop" or "prevent"))
+                throw new SqxParseException(
+                    "Event modifier '." + modifier + "' is not supported",
+                    position,
+                    "SQV0002");
+        }
     }
 
     private static string WrapEventHandler(string handler, string modifiers)

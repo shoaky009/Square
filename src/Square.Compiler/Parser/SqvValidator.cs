@@ -32,13 +32,13 @@ internal static class SqvValidator
                 ValidateElement(element);
                 Validate(element.Children);
                 break;
-            case SqvForDirective forDirective:
+            case TemplateForDirective forDirective:
                 ValidateExpression(forDirective.SourceExpression, forDirective.Position);
                 if (!string.IsNullOrWhiteSpace(forDirective.KeyExpression))
                     ValidateExpression(forDirective.KeyExpression, forDirective.KeyPosition);
                 Validate(forDirective.Children);
                 break;
-            case SqvIfChainDirective ifDirective:
+            case TemplateIfChainDirective ifDirective:
                 foreach (var branch in ifDirective.Branches)
                 {
                     if (!branch.IsElse)
@@ -60,6 +60,9 @@ internal static class SqvValidator
         var bindings = new Dictionary<string, SqxAttribute>(StringComparer.OrdinalIgnoreCase);
         foreach (var attribute in element.Attributes)
         {
+            if (!string.IsNullOrWhiteSpace(attribute.ArgumentExpression))
+                ValidateExpression(attribute.ArgumentExpression, attribute.Position);
+
             var target = NormalizeTarget(attribute.Name);
             if (bindings.TryGetValue(target, out var existing))
             {
@@ -100,6 +103,9 @@ internal static class SqvValidator
     {
         "__sqv_bind_object" => "__sqv_bind_object",
         "__sqv_on_object" => "__sqv_on_object",
+        "__sqv_dynamic_property" => "__sqv_dynamic_property",
+        "__sqv_dynamic_event" => "__sqv_dynamic_event",
+        "__sqv_slot_scope" => "__sqv_slot_scope",
         "text" => "TextContent",
         "value" => "Value",
         "checked" => "IsChecked",

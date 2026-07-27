@@ -11,18 +11,18 @@ internal sealed class DirectiveEmitPipeline
 {
     private readonly StringBuilder _sb;
     private readonly DirectiveCatalog _catalog;
-    private readonly Action<List<SqxNode>, string, string, string> _emitNodes;
-        private readonly Action<List<SqxNode>, string, string> _emitFactoryBody;
-    private readonly Action<string, SqxAttribute, string, string> _emitAttribute;
+    private readonly Action<List<SqxNode>, string, string, IReadOnlyList<string>> _emitNodes;
+    private readonly Action<List<SqxNode>, string, IReadOnlyList<string>> _emitFactoryBody;
+    private readonly Action<string, SqxAttribute, string, IReadOnlyList<string>> _emitAttribute;
     private readonly Func<string> _nextVariable;
     private readonly Dictionary<string, int> _fieldIndex = new Dictionary<string, int>(StringComparer.Ordinal);
 
     public DirectiveEmitPipeline(
         StringBuilder sb,
         DirectiveCatalog catalog,
-        Action<List<SqxNode>, string, string, string> emitNodes,
-        Action<List<SqxNode>, string, string> emitFactoryBody,
-        Action<string, SqxAttribute, string, string> emitAttribute,
+        Action<List<SqxNode>, string, string, IReadOnlyList<string>> emitNodes,
+        Action<List<SqxNode>, string, IReadOnlyList<string>> emitFactoryBody,
+        Action<string, SqxAttribute, string, IReadOnlyList<string>> emitAttribute,
         Func<string> nextVariable)
     {
         _sb = sb;
@@ -42,7 +42,7 @@ internal sealed class DirectiveEmitPipeline
         return i;
     }
 
-    public bool TryEmit(SqxElement element, string indent, string parentName, string localName)
+    public bool TryEmit(SqxElement element, string indent, string parentName, IReadOnlyList<string> localNames)
     {
         if (!_catalog.TryGet(element.TagName, out var descriptor))
             return false;
@@ -53,29 +53,29 @@ internal sealed class DirectiveEmitPipeline
         switch (descriptor.Pattern)
         {
             case "ControlFlowAttach":
-                EmitControlFlow(descriptor, element, indent, parentName, localName);
+                EmitControlFlow(descriptor, element, indent, parentName, localNames);
                 return true;
             case "SlotOutlet":
-                EmitSlotOutlet(descriptor, element, indent, parentName, localName);
+                EmitSlotOutlet(descriptor, element, indent, parentName, localNames);
                 return true;
             case "RouterTree":
-                EmitRouterTree(element, indent, parentName, localName);
+                EmitRouterTree(element, indent, parentName, localNames);
                 return true;
             default:
                 // Fall back by resolved tag name for known built-ins
                 if (descriptor.TagName == "Show" || descriptor.TagName == "For" || descriptor.TagName == "Switch")
                 {
-                    EmitControlFlow(descriptor, element, indent, parentName, localName);
+                    EmitControlFlow(descriptor, element, indent, parentName, localNames);
                     return true;
                 }
                 if (descriptor.TagName == "Slot")
                 {
-                    EmitSlotOutlet(descriptor, element, indent, parentName, localName);
+                    EmitSlotOutlet(descriptor, element, indent, parentName, localNames);
                     return true;
                 }
                 if (descriptor.TagName == "Router")
                 {
-                    EmitRouterTree(element, indent, parentName, localName);
+                    EmitRouterTree(element, indent, parentName, localNames);
                     return true;
                 }
                 return false;
@@ -87,7 +87,7 @@ internal sealed class DirectiveEmitPipeline
         SqxElement element,
         string indent,
         string parentName,
-        string localName)
+        IReadOnlyList<string> localNames)
     {
         var tag = descriptor.TagName;
         var prefix = string.IsNullOrEmpty(descriptor.FieldPrefix) ? "_dir" : descriptor.FieldPrefix;
@@ -101,12 +101,12 @@ internal sealed class DirectiveEmitPipeline
             var fallback = FindAttr(element, "fallback");
             _sb.AppendLine(indent + field + " = new ShowNode(" + condition + ", () =>");
             _sb.AppendLine(indent + "{");
-            _emitFactoryBody(element.Children, indent + "    ", localName);
+            _emitFactoryBody(element.Children, indent + "    ", localNames);
             if (fallback?.FragmentNodes != null)
             {
                 _sb.AppendLine(indent + "}, () =>");
                 _sb.AppendLine(indent + "{");
-                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
             }
             _sb.AppendLine(indent + "});");
             _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
@@ -132,12 +132,12 @@ internal sealed class DirectiveEmitPipeline
             var keyArgument = tag == "For" && !string.IsNullOrWhiteSpace(key) ? key + ", " : "";
             _sb.AppendLine(indent + field + " = " + create + "(" + source + ", " + keyArgument + lambda + " =>");
             _sb.AppendLine(indent + "{");
-            _emitFactoryBody(element.Children, indent + "    ", itemLocal);
+            _emitFactoryBody(element.Children, indent + "    ", AddLocals(localNames, itemLocal, indexName));
             if (fallback?.FragmentNodes != null)
             {
                 _sb.AppendLine(indent + "}, () =>");
                 _sb.AppendLine(indent + "{");
-                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
             }
             _sb.AppendLine(indent + "});");
             _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
@@ -159,14 +159,14 @@ internal sealed class DirectiveEmitPipeline
                 {
                     _sb.AppendLine(indent + field + ".AddBranch(" + when + ", () => " + when + ", () =>");
                     _sb.AppendLine(indent + "{");
-                    _emitFactoryBody(matchElement.Children, indent + "    ", localName);
+                    _emitFactoryBody(matchElement.Children, indent + "    ", localNames);
                     _sb.AppendLine(indent + "});");
                 }
                 else
                 {
                     _sb.AppendLine(indent + field + ".AddDefault(() =>");
                     _sb.AppendLine(indent + "{");
-                    _emitFactoryBody(matchElement.Children, indent + "    ", localName);
+                    _emitFactoryBody(matchElement.Children, indent + "    ", localNames);
                     _sb.AppendLine(indent + "});");
                 }
             }
@@ -175,7 +175,7 @@ internal sealed class DirectiveEmitPipeline
             {
                 _sb.AppendLine(indent + field + ".AddDefault(() =>");
                 _sb.AppendLine(indent + "{");
-                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localName);
+                _emitFactoryBody(fallback.FragmentNodes, indent + "    ", localNames);
                 _sb.AppendLine(indent + "});");
             }
             _sb.AppendLine(indent + "_generatedDirectives.Add(" + field + ");");
@@ -188,16 +188,40 @@ internal sealed class DirectiveEmitPipeline
         SqxElement element,
         string indent,
         string parentName,
-        string localName)
+        IReadOnlyList<string> localNames)
     {
-        var name = FindAttr(element, descriptor.PrimaryAttribute ?? "name")?.RawValue ?? "";
-        _sb.AppendLine(indent + "if (!Slots.Render(\"" + Escape(name) + "\", " + parentName + "))");
+        var nameAttribute = FindAttr(element, descriptor.PrimaryAttribute ?? "name");
+        var name = nameAttribute?.IsExpression == true
+            ? nameAttribute.RawValue
+            : "\"" + Escape(nameAttribute?.RawValue ?? "") + "\"";
+        var props = element.Attributes.Where(attribute =>
+            !string.Equals(attribute.Name, descriptor.PrimaryAttribute ?? "name", StringComparison.OrdinalIgnoreCase) &&
+            attribute.Name != "ref").ToList();
+        string renderArguments;
+        if (props.Count == 0)
+        {
+            renderArguments = name + ", " + parentName;
+        }
+        else
+        {
+            var propsName = _nextVariable();
+            _sb.AppendLine(indent + "var " + propsName + " = new SlotProps();");
+            foreach (var attribute in props)
+            {
+                var value = attribute.IsExpression
+                    ? attribute.RawValue
+                    : "\"" + Escape(attribute.RawValue ?? "") + "\"";
+                _sb.AppendLine(indent + propsName + ".Set(\"" + Escape(attribute.Name) + "\", " + value + ");");
+            }
+            renderArguments = name + ", " + parentName + ", " + propsName;
+        }
+        _sb.AppendLine(indent + "if (!Slots.Render(" + renderArguments + "))");
         _sb.AppendLine(indent + "{");
-        _emitNodes(element.Children, indent + "    ", parentName, localName);
+        _emitNodes(element.Children, indent + "    ", parentName, localNames);
         _sb.AppendLine(indent + "}");
     }
 
-    private void EmitRouterTree(SqxElement element, string indent, string parentName, string localName)
+    private void EmitRouterTree(SqxElement element, string indent, string parentName, IReadOnlyList<string> localNames)
     {
         var refAttr = FindAttr(element, "ref");
         var isRef = refAttr != null && !string.IsNullOrWhiteSpace(refAttr.RawValue);
@@ -219,7 +243,7 @@ internal sealed class DirectiveEmitPipeline
         foreach (var attribute in element.Attributes)
         {
             if (attribute.Name == "initialPath" || attribute.Name == "ref") continue;
-            _emitAttribute(variableName, attribute, indent, localName);
+            _emitAttribute(variableName, attribute, indent, localNames);
         }
 
         foreach (var route in element.Children.OfType<SqxElement>())
@@ -259,4 +283,12 @@ internal sealed class DirectiveEmitPipeline
 
     private static string Escape(string value) =>
         value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static IReadOnlyList<string> AddLocals(IReadOnlyList<string> locals, params string[] names)
+    {
+        var result = new List<string>(locals);
+        foreach (var name in names)
+            if (!string.IsNullOrWhiteSpace(name) && !result.Contains(name, StringComparer.Ordinal)) result.Add(name);
+        return result;
+    }
 }

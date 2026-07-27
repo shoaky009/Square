@@ -257,11 +257,8 @@ public class GeneratorDiagnosticsTests
     [InlineData(":key=\"Id\"", "SQV0002")]
     [InlineData("@click.once=\"Handle\"", "SQV0002")]
     [InlineData("v-model=\"Value\"", "SQV0002")]
-    [InlineData("#header=\"slotProps\"", "SQV0008")]
+    [InlineData("#header=\"{ slotProps }\"", "SQV0008")]
     [InlineData("v-custom=\"Value\"", "SQV0002")]
-    [InlineData(":[name]=\"Value\"", "SQV0006")]
-    [InlineData("@[event]=\"Handle\"", "SQV0006")]
-    [InlineData("#[slotName]", "SQV0006")]
     public void ReportsUnsupportedSqvSyntax(string attribute, string diagnosticId)
     {
         var source = "<template><Text " + attribute + ">x</Text></template>";

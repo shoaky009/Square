@@ -73,7 +73,7 @@
 SQV 拥有完全独立的解析栈，不依赖 SQX 的词法器/解析器：
 
 - `SqvLexer`：Vue 模板词法器，识别 `{{ }}` 插值、标签、属性名（含 `:`/`@`/`#`/`v-` 前缀与 `.修饰符`）、字符串、注释。
-- `SqvTemplateParser`：消费 `SqvLexer` token，直接构造 `SqxNode` 树，并把 `v-for`/`v-if` 链提升为 `SqvForDirective`/`SqvIfChainDirective`。
+- `SqvTemplateParser`：消费 `SqvLexer` token，构造共享模板 IR，并把 `v-for`/`v-if` 链降低为语言中性的 `TemplateForDirective`/`TemplateIfChainDirective`。
 - `SqvDocumentParser`：拆分 `<template>`/`<script>`/`<style>` 分区（支持嵌套 `<template>` 配对），提取脚本元数据。
 - `SqvAttributeConverter`：把原始 Vue 属性名/值转换为 emitter 可消费的 `SqxAttribute` 形式。
 - `SqvParser`：薄入口，委托给 `SqvDocumentParser`。
@@ -174,13 +174,11 @@ SQV 拥有完全独立的解析栈，不依赖 SQX 的词法器/解析器：
 - `v-html`，因为 Square 不是 HTML DOM。
 - `v-bind="object"`，在出现对象到属性绑定协议之前。
 - `v-on="object"`，在出现对象到事件绑定协议之前。
-- 动态参数，如 `:[name]` 和 `@[event]`。
 - `<component :is="...">`，在出现 AOT 安全的动态组件工厂模型之前。
 - `<Teleport>`，在 Square 拥有传送门/层目标模型之前。
 - `<Transition>` 与 `<TransitionGroup>`，在存在动画集成之前。
 - `<KeepAlive>`，在具备组件实例缓存语义之前。
 - `<Suspense>`，在具备异步组件语义之前。
-- 作用域插槽属性，在运行时支持插槽属性传递之前。
 
 ## 条件链
 
@@ -334,9 +332,7 @@ Card
 
 当前不生成并输出明确诊断，留待后续里程碑：
 
-- 动态参数（`:[name]`、`@[event]`、`#[name]`）。
 - `v-html`、`v-pre`、`v-once`、`v-memo`、`v-cloak`。
-- 作用域插槽属性。
 - 自定义组件 `v-model`、未知 `v-*` 指令，以及尚未实现的事件和 `v-model` 修饰符。
 
 ## 示例
@@ -384,18 +380,18 @@ Card
 - `v-model`（`Input`/`TextArea`/`CheckBox`/`Radio`/`Select`）。
 - `.trim`/`.number`/`.lazy` 修饰符。
 
-### 里程碑 E：动态参数与对象绑定（部分完成）
+### ✅ 里程碑 E：动态参数与对象绑定
 
-- `:[name]`、`@[event]`、`#[name]` 动态参数。
+- `:[name]`、`@[event]`、`#[name]` 动态参数已支持；属性/事件名可使用 `IReactiveValue<string>` 响应式切换。
 - `v-bind="obj"` 已支持 `IReadOnlyDictionary<string, object?>`，并支持 `ObservableValue<TMap>` / `IReactiveValue<TMap>` 响应式更新。
 - `v-on="obj"` 已支持 `IReadOnlyDictionary<string, Action<Event>>`，并支持响应式事件表替换和监听器清理。
 - 对象协议不使用反射；匿名对象、`dynamic` 和任意 `Delegate` 字典不在支持范围内。
-- 动态参数仍需要运行时协议设计。
+- 动态属性和事件使用 `SqvObjectBinding.BindProperty` / `BindEvent`，名称变化时清理旧属性或监听器；动态插槽名直接编译为 C# 字符串表达式。
 
-### 里程碑 F：内置组件与高级特性（待定）
+### 里程碑 F：内置组件与高级特性（部分完成）
 
 - `<component :is="...">`、`<Teleport>`、`<Transition>`、`<TransitionGroup>`、`<KeepAlive>`、`<Suspense>`。
-- 作用域插槽属性。
+- 作用域插槽属性已支持 `#name="slotProps"` 整包形式，出口通过 `SlotProps` 传递强类型值；解构语法等待类型化 slot contract。
 - `:key` 循环键。
 
 ### 里程碑 G：诊断与清理（基本完成）
