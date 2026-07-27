@@ -20,30 +20,105 @@ public sealed class CssParser
     {
         var rules = new List<CssRule>();
         var atRules = new List<CssAtRule>();
+        var imports = new List<CssImportRule>();
         var keyFrames = new List<KeyFramesRule>();
+        var importsAllowed = true;
         while (Peek().Type != CssTokenType.Eof)
         {
+            if (Peek().Type == CssTokenType.Whitespace)
+            {
+                Advance();
+                continue;
+            }
             if (Peek().Type == CssTokenType.AtKeyword)
             {
                 var atName = Peek().Text;
-                if (string.Equals(atName, "keyframes", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(atName, "import", StringComparison.OrdinalIgnoreCase))
                 {
+                    var import = ParseImportRule();
+                    if (import != null && importsAllowed) imports.Add(import);
+                }
+                else if (string.Equals(atName, "keyframes", StringComparison.OrdinalIgnoreCase))
+                {
+                    importsAllowed = false;
                     var kf = ParseKeyFrames();
                     if (kf != null) keyFrames.Add(kf);
                 }
                 else
                 {
+                    var importPrefixRule =
+                        (string.Equals(atName, "charset", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(atName, "layer", StringComparison.OrdinalIgnoreCase)) &&
+                        IsSemicolonTerminatedAtRule();
+                    if (!importPrefixRule)
+                        importsAllowed = false;
                     var atRule = ParseAtRule();
                     if (atRule != null) atRules.Add(atRule);
                 }
             }
             else
             {
+                importsAllowed = false;
                 var parsedRules = ParseRules();
                 if (parsedRules.Count > 0) rules.AddRange(parsedRules);
             }
         }
-        return new CssStyleSheet(rules, atRules) { KeyFrames = keyFrames };
+        return new CssStyleSheet(rules, atRules) { Imports = imports, KeyFrames = keyFrames };
+    }
+
+    private CssImportRule? ParseImportRule()
+    {
+        Advance(); // @import
+        var tokens = new List<CssToken>();
+        while (Peek().Type is not (CssTokenType.Semicolon or CssTokenType.Eof))
+            tokens.Add(Advance());
+        if (Peek().Type == CssTokenType.Semicolon) Advance();
+        if (tokens.Count == 0) return null;
+
+        var index = 0;
+        SkipWhitespace(tokens, ref index);
+        string? href = null;
+        if (index < tokens.Count && tokens[index].Type == CssTokenType.String)
+        {
+            href = tokens[index++].Text;
+        }
+        else if (index < tokens.Count && tokens[index].Type == CssTokenType.Identifier &&
+                 string.Equals(tokens[index].Text, "url", StringComparison.OrdinalIgnoreCase))
+        {
+            index++;
+            SkipWhitespace(tokens, ref index);
+            if (index >= tokens.Count || tokens[index].Type != CssTokenType.OpenParen) return null;
+            index++;
+            SkipWhitespace(tokens, ref index);
+            if (index < tokens.Count && tokens[index].Type == CssTokenType.String)
+                href = tokens[index++].Text;
+            else
+            {
+                var url = new System.Text.StringBuilder();
+                while (index < tokens.Count && tokens[index].Type != CssTokenType.CloseParen)
+                {
+                    if (tokens[index].Type != CssTokenType.Whitespace) url.Append(tokens[index].Text);
+                    index++;
+                }
+                href = url.ToString();
+            }
+            while (index < tokens.Count && tokens[index].Type != CssTokenType.CloseParen) index++;
+            if (index < tokens.Count) index++;
+        }
+
+        if (string.IsNullOrWhiteSpace(href)) return null;
+        var conditions = FormatTokens(tokens, index);
+        return new CssImportRule(href, conditions);
+    }
+
+    private bool IsSemicolonTerminatedAtRule()
+    {
+        for (var index = _i + 1; index < _tokens.Count; index++)
+        {
+            if (_tokens[index].Type == CssTokenType.Semicolon) return true;
+            if (_tokens[index].Type is CssTokenType.OpenBrace or CssTokenType.Eof) return false;
+        }
+        return false;
     }
 
     private KeyFramesRule? ParseKeyFrames()
@@ -85,12 +160,41 @@ public sealed class CssParser
     {
         var name = Advance().Text;
         var sb = new System.Text.StringBuilder();
-        while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.Eof))
+        while (Peek().Type is not (CssTokenType.OpenBrace or CssTokenType.Semicolon or CssTokenType.Eof))
             sb.Append(Advance().Text).Append(' ');
+        if (Peek().Type == CssTokenType.Semicolon)
+        {
+            Advance();
+            return new CssAtRule(name, sb.ToString().Trim(), []);
+        }
         if (Peek().Type != CssTokenType.OpenBrace) return null;
         Advance();
         var decls = ParseDeclarations();
         return new CssAtRule(name, sb.ToString().Trim(), decls);
+    }
+
+    private static void SkipWhitespace(List<CssToken> tokens, ref int index)
+    {
+        while (index < tokens.Count && tokens[index].Type == CssTokenType.Whitespace) index++;
+    }
+
+    private static string FormatTokens(List<CssToken> tokens, int start)
+    {
+        var result = new System.Text.StringBuilder();
+        var pendingSpace = false;
+        for (var i = start; i < tokens.Count; i++)
+        {
+            var token = tokens[i];
+            if (token.Type == CssTokenType.Whitespace)
+            {
+                pendingSpace = result.Length > 0;
+                continue;
+            }
+            if (pendingSpace) result.Append(' ');
+            result.Append(token.Text);
+            pendingSpace = false;
+        }
+        return result.ToString().Trim();
     }
 
     private List<CssRule> ParseRules()

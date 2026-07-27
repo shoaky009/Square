@@ -96,6 +96,33 @@ public static class CssStyleReconciler
         }
     }
 
+    internal static void ReapplyScopesToTree(Element root)
+    {
+        StyleScope[] scopes;
+        lock (Gate)
+            scopes = Scopes.Where(scope => ReferenceEquals(FindTreeRoot(scope.Root), root)).ToArray();
+        if (scopes.Length == 0) return;
+
+        using (Element.SuppressInvalidation())
+        {
+            ClearCascadedSubtree(root);
+            foreach (var scope in scopes)
+            {
+                scope.Engine.ApplyStylesToTreeCore(scope.Root);
+                scope.Animations.Attach(scope.Root);
+            }
+        }
+    }
+
+    internal static void UnregisterScopesForTree(Element root)
+    {
+        lock (Gate)
+        {
+            Scopes.RemoveAll(scope => ReferenceEquals(FindTreeRoot(scope.Root), root));
+            DirtyElements.RemoveWhere(element => ReferenceEquals(FindTreeRoot(element), root));
+        }
+    }
+
     /// <summary>Advances animations owned by CSS scopes in the supplied element tree.</summary>
     public static bool TickAnimations(Element root, float deltaSeconds)
     {

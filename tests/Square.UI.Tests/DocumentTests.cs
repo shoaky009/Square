@@ -1,5 +1,7 @@
 using System;
 using Square.Controls;
+using Square.CSS.Engine;
+using Square.CSS.Tokenizer;
 using Square.Events;
 using Square.Hosting;
 using Square.Platform;
@@ -103,6 +105,121 @@ public class DocumentTests
         Assert.Same(window, second.AppWindow);
         Assert.Equal(new Square.Graphics.Size(640, 480), window.ClientSize);
         Assert.Equal(IntPtr.Zero, window.NativeWindow);
+    }
+
+    [Fact]
+    public void AppWindowLoadsMultipleGlobalCssSourcesInOrder()
+    {
+        var window = new AppWindow("Styles");
+        var button = new Button("Styled");
+        window.Load(button);
+        window.LoadGlobalCssText(
+            "Button { color: red; background: white; }",
+            "Button { color: blue; }");
+
+        ApplyWindowStyles(window);
+
+        Assert.Equal("blue", button.Style.Get("color"));
+        Assert.Equal("white", button.Style.Get("background"));
+        CssStyleReconciler.UnregisterScopesForTree(window.WindowDocument.DocumentElement);
+    }
+
+    [Fact]
+    public void AppWindowLoadsMultipleGlobalCssFilesRelativeToApplicationDirectory()
+    {
+        var window = new AppWindow("Styles");
+        var button = new Button("Styled");
+        window.Load(button);
+
+        window.LoadGlobalCss("global-base.css", "global-overrides.css");
+        ApplyWindowStyles(window);
+
+        Assert.Equal("18px", button.Style.Get("font-size"));
+        Assert.Equal("green", button.Style.Get("color"));
+        CssStyleReconciler.UnregisterScopesForTree(window.WindowDocument.DocumentElement);
+    }
+
+    [Fact]
+    public void ComponentCssOverridesGlobalCssAtEqualSpecificity()
+    {
+        var window = new AppWindow("Styles");
+        var button = new Button("Styled");
+        window.Load(button);
+        window.LoadGlobalCssText("Button { color: red; background: white; }");
+        window.RegisterGlobalCssScope(window.WindowDocument.DocumentElement);
+
+        var componentEngine = new CssEngine();
+        componentEngine.LoadStyleSheet(new CssParser(new CssTokenizer(
+            "Button { color: blue; }").Tokenize()).Parse());
+        componentEngine.ApplyStylesToTree(button);
+        CssStyleReconciler.ReapplyScopesToTree(window.WindowDocument.DocumentElement);
+
+        Assert.Equal("blue", button.Style.Get("color"));
+        Assert.Equal("white", button.Style.Get("background"));
+        CssStyleReconciler.UnregisterScopesForTree(window.WindowDocument.DocumentElement);
+    }
+
+    [Fact]
+    public void AppWindowLoadsNestedCssImportsRelativeToEachStyleSheet()
+    {
+        var window = new AppWindow("Imports");
+        var button = new Button("Styled");
+        window.Load(button);
+
+        window.LoadGlobalCss("css-imports/root.css");
+        ApplyWindowStyles(window);
+
+        Assert.Equal("blue", button.Style.Get("color"));
+        Assert.Equal("19px", button.Style.Get("font-size"));
+        Assert.Equal("white", button.Style.Get("background"));
+        var rootSheet = Assert.Single(window.Document.StyleSheets);
+        Assert.EndsWith(Path.Combine("css-imports", "root.css"), rootSheet.Href);
+        var baseSheet = Assert.Single(rootSheet.Imports);
+        var paletteSheet = Assert.Single(baseSheet.Imports);
+        Assert.EndsWith(Path.Combine("css-imports", "palette.css"), paletteSheet.Href);
+        CssStyleReconciler.UnregisterScopesForTree(window.WindowDocument.DocumentElement);
+    }
+
+    [Fact]
+    public void AppWindowRejectsCircularCssImports()
+    {
+        var window = new AppWindow("Imports");
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            window.LoadGlobalCss("css-imports/cycle-a.css"));
+
+        Assert.Contains("Circular CSS @import", exception.Message);
+        Assert.Empty(window.Document.StyleSheets);
+    }
+
+    [Fact]
+    public void AppWindowRejectsUnsupportedConditionalCssImports()
+    {
+        var window = new AppWindow("Imports");
+
+        var exception = Assert.Throws<NotSupportedException>(() =>
+            window.LoadGlobalCssText("@import \"theme.css\" screen;"));
+
+        Assert.Contains("Conditional CSS @import", exception.Message);
+    }
+
+    [Fact]
+    public void RelativeCssImportRequiresFileBackedStyleSheet()
+    {
+        var window = new AppWindow("Imports");
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            window.LoadGlobalCssText("@import \"theme.css\";"));
+
+        Assert.Contains("requires a stylesheet loaded from a file", exception.Message);
+    }
+
+    private static void ApplyWindowStyles(AppWindow window)
+    {
+        var root = window.WindowDocument.DocumentElement;
+        window.RegisterGlobalCssScope(root);
+        window.WindowDocument.Build();
+        CssStyleReconciler.ReapplyScopesToTree(root);
     }
 
     [Fact]

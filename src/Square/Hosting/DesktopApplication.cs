@@ -165,7 +165,9 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         BackendRegistration.RegisterDefaults();
         Square.Controls.ControlRegistration.RegisterDefaults();
 
+        MainWindow.RegisterGlobalCssScope(_root);
         _document.Build();
+        CssStyleReconciler.ReapplyScopesToTree(_root);
         var lifecycle = (IComponentLifecycle)_root;
         // 先注册帧调度，再 OnAttached：组件在 OnAttached 里 RequestAnimationFrame 才能被调度
         _root.AddEventListener(StandardEvents.RequestFrame, HandleFrameRequest);
@@ -195,6 +197,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             _scheduledFrames.Clear();
             if (_root.IsLoaded) lifecycle.OnUnloaded();
             lifecycle.OnDetached();
+            CssStyleReconciler.UnregisterScopesForTree(_root);
             _renderContext?.Dispose();
             _renderContext = null;
             if (_host != null) MainWindow.Detach(_host);

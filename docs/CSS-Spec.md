@@ -233,7 +233,25 @@ Button:active {
 
 ---
 
-## 12. Animation（M2）✅ 已实现
+## 12. `@import`
+
+由 `AppWindow.LoadGlobalCss(...)` 加载的文件样式表支持：
+
+```css
+@import "base.css";
+@import url("./themes/light.css");
+```
+
+- `@import` 必须位于普通规则之前；允许出现在 `@charset` 和分号形式的 `@layer` 声明之后。
+- 相对地址基于当前 CSS 文件目录，而不是应用程序根目录。
+- 支持递归本地文件导入、循环检测和最多 64 层的深度限制。
+- 导入规则先于当前文件规则进入级联，行为等同于在 `@import` 位置展开。
+- 当前不支持 HTTP/HTTPS、media 条件、`supports()`、`layer()` 条件和内存 CSS 的相对导入。
+- 顶层样式表通过 `Document.StyleSheets` 枚举，导入关系通过 `DocumentStyleSheet.Imports` 访问。
+
+---
+
+## 13. Animation（M2）✅ 已实现
 
 ```css
 @keyframes fade-in {
@@ -254,9 +272,9 @@ Text {
 
 ---
 
-## 13. 内联样式与类
+## 14. 内联样式与类
 
-### 13.1 内联 `style`
+### 14.1 内联 `style`
 
 ```xml
 <Button style="color: red; padding: 8px;">Click</Button>
@@ -265,7 +283,7 @@ Text {
 - 优先级最高（仅次于 `!important`）
 - 命令式：`el.Style.Set("color", "red")`
 
-### 13.2 `class`
+### 14.2 `class`
 
 ```xml
 <Button class="primary large">Click</Button>
@@ -274,7 +292,7 @@ Text {
 - 空格分隔多个类
 - 命令式：`el.ClassList.Add("primary")` / `.Remove("primary")` / `.Toggle("primary")`
 
-### 13.3 绑定
+### 14.3 绑定
 
 ```xml
 <Button class={ActiveClass}>Click</Button>

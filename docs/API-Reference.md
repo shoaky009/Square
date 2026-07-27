@@ -71,12 +71,34 @@ namespace Square.Hosting;
 public sealed class AppWindow
 {
     public IntPtr NativeWindow { get; }
+    public void LoadGlobalCss(params string[] paths);
+    public void LoadGlobalCssText(params string[] css);
     public void Open(Element content, Size? size = null);
     public Task<object?> OpenDialog(Element content, Size? size = null);
     public Task<T?> OpenDialog<T>(Element content, Size? size = null);
     public void CloseDialog<T>(T result);
 }
 ```
+
+`LoadGlobalCss` 从文件加载窗口级全局样式。相对路径以 `AppContext.BaseDirectory` 为基准；可一次传入多个路径，也可多次调用。`LoadGlobalCssText` 接收一个或多个 CSS 源文本。两种方法均保持添加顺序，同等 specificity 下后加载规则覆盖先加载规则，并且必须在应用开始运行前调用。
+
+```csharp
+var window = new AppWindow("My App");
+window.LoadGlobalCss("Styles/base.css", "Styles/theme.css");
+window.LoadGlobalCssText(".debug { outline-width: 1px; }");
+window.Load(new Main());
+```
+
+组件 `<style>` 在全局样式之后应用，因此同等 specificity 下组件规则优先。内联样式仍保持最高优先级。
+
+文件样式表支持位于顶部的 `@import "file.css"` 与 `@import url("file.css")`。相对地址按当前 CSS 文件解析，递归导入会保持“导入规则先于当前文件规则”的级联顺序，并检测循环引用。当前不支持网络 URL、media、`supports()` 和 `layer` 条件；`LoadGlobalCssText` 没有基础文件地址，因此不能使用相对导入。
+
+```csharp
+IReadOnlyList<DocumentStyleSheet> sheets = window.Document.StyleSheets;
+IReadOnlyList<DocumentStyleSheet> imports = sheets[0].Imports;
+```
+
+`Document.StyleSheets` 只包含通过窗口加载的顶层全局样式表。导入表通过父样式表的 `Imports` 访问；组件 `<style>` 保持独立作用域，不加入该集合。
 
 `NativeWindow` 返回当前原生窗口标识：Win32 为 `HWND`，X11 为 `Window`。原生窗口尚未创建或已经释放时返回 `IntPtr.Zero`。该属性只读，不转移句柄所有权，调用方不得释放或销毁它。
 

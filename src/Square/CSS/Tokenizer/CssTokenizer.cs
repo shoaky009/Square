@@ -59,6 +59,7 @@ public sealed class CssTokenizer
                 continue;
             }
             if (IsIdentStart(c)) { var name = ReadIdent(); tokens.Add(new CssToken(CssTokenType.Identifier, name, _line)); continue; }
+            tokens.Add(new CssToken(CssTokenType.Delimiter, c.ToString(), _line));
             _pos++;
         }
         tokens.Add(new CssToken(CssTokenType.Eof, "", _line));

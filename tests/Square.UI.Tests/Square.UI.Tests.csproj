@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <None Update="resource-priority.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="global-base.css" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="global-overrides.css" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="css-imports\**\*.css" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

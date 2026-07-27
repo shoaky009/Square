@@ -1,3 +1,4 @@
+using Square.CSS.Engine;
 using Square.Graphics;
 using Square.Platform;
 using Square.Rendering;
@@ -185,6 +186,32 @@ public sealed class AppWindow : IRenderBackendApplication
         _document.Body.Children.Add(content);
     }
 
+    /// <summary>按给定顺序加载一个或多个全局 CSS 文件。</summary>
+    /// <param name="paths">CSS 文件路径；相对路径以应用程序基目录为准。</param>
+    public void LoadGlobalCss(params string[] paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        EnsureGlobalCssCanBeLoaded();
+        foreach (var path in paths)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            _document.LoadGlobalCss(path);
+        }
+    }
+
+    /// <summary>按给定顺序加载一个或多个全局 CSS 源文本。</summary>
+    /// <param name="css">CSS 源文本。</param>
+    public void LoadGlobalCssText(params string[] css)
+    {
+        ArgumentNullException.ThrowIfNull(css);
+        EnsureGlobalCssCanBeLoaded();
+        foreach (var source in css)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            _document.LoadGlobalCssText(source);
+        }
+    }
+
     /// <summary>加载自定义标题栏元素。</summary>
     public void LoadCustomTitleBar(UIElement titleBar)
     {
@@ -323,6 +350,18 @@ public sealed class AppWindow : IRenderBackendApplication
         OwnerHandle = OwnerHandle,
         IsModal = IsModal
     };
+
+    internal void RegisterGlobalCssScope(Element root)
+    {
+        if (_document.StyleSheets.Count > 0)
+            CssStyleReconciler.RegisterScope(_document.GlobalCssEngine, root);
+    }
+
+    private void EnsureGlobalCssCanBeLoaded()
+    {
+        if (_runtime?.IsRunning == true)
+            throw new InvalidOperationException("Global CSS must be loaded before the application starts.");
+    }
 
     private AppWindow CreateChildWindow(Element content, Size? size, bool isModal)
     {

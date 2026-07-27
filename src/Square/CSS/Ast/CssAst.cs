@@ -64,9 +64,17 @@ public sealed record CssRule(ComplexSelector Selector, List<Declaration> Declara
 /// <param name="AtRules">At 规则列表。</param>
 public sealed record CssStyleSheet(List<CssRule> Rules, List<CssAtRule> AtRules)
 {
+    /// <summary>样式表顶部按源码顺序声明的导入规则。</summary>
+    public List<CssImportRule> Imports { get; set; } = new();
+
     /// <summary>关键帧规则列表。</summary>
     public List<KeyFramesRule> KeyFrames { get; set; } = new();
 };
+
+/// <summary>表示一条 CSS <c>@import</c> 规则。</summary>
+/// <param name="Href">导入目标地址。</param>
+/// <param name="Conditions">URL 后的 layer、supports 或 media 条件文本。</param>
+public sealed record CssImportRule(string Href, string Conditions);
 
 /// <summary>表示一条 At 规则。</summary>
 /// <param name="Name">规则名称。</param>

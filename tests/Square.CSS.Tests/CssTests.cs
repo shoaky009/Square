@@ -67,6 +67,39 @@ public class CssTokenizerTests
 public class CssParserTests
 {
     [Fact]
+    public void ParseImportStringAndUrlRulesAtTopOfStyleSheet()
+    {
+        var css = "@import \"base.css\"; @import url('./theme.css'); Button { color: red; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+
+        Assert.Equal(2, sheet.Imports.Count);
+        Assert.Equal("base.css", sheet.Imports[0].Href);
+        Assert.Equal("./theme.css", sheet.Imports[1].Href);
+        Assert.Single(sheet.Rules);
+    }
+
+    [Fact]
+    public void ImportAfterStyleRuleIsIgnoredWithoutConsumingFollowingRules()
+    {
+        var css = "Text { color: red; } @import \"late.css\"; Button { color: blue; }";
+        var sheet = new CssParser(new CssTokenizer(css).Tokenize()).Parse();
+
+        Assert.Empty(sheet.Imports);
+        Assert.Equal(2, sheet.Rules.Count);
+    }
+
+    [Fact]
+    public void ParseImportConditionsForLoaderValidation()
+    {
+        var sheet = new CssParser(new CssTokenizer(
+            "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;").Tokenize()).Parse();
+
+        var import = Assert.Single(sheet.Imports);
+        Assert.Equal("theme.css", import.Href);
+        Assert.Equal("layer(theme) supports(display: grid) screen", import.Conditions);
+    }
+
+    [Fact]
     public void ParseSingleRule()
     {
         var tokens = new CssTokenizer("View { color: red; }").Tokenize();

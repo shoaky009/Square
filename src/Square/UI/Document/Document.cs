@@ -1,3 +1,4 @@
+using Square.CSS;
 using Square.Events;
 using Square.Text.Fonts;
 using Square.UI.ElementApi;
@@ -14,6 +15,7 @@ public abstract class Document : Node
     private string _title = "";
     private FontFaceSet? _fonts;
     private Selection? _selection;
+    private readonly List<DocumentStyleSheet> _styleSheets = [];
 
     /// <summary>
     /// 文档元素根，只读（对齐 <c>document.documentElement</c>）。
@@ -41,6 +43,9 @@ public abstract class Document : Node
 
     /// <summary>当前文档选择（对齐 <c>getSelection()</c>）。</summary>
     public Selection Selection => _selection ??= new Selection(this);
+
+    /// <summary>文档按加载顺序持有的顶层全局样式表。</summary>
+    public IReadOnlyList<DocumentStyleSheet> StyleSheets => _styleSheets;
 
     /// <inheritdoc />
     public override NodeType NodeTypeValue => NodeType.Document;
@@ -129,6 +134,8 @@ public abstract class Document : Node
         foreach (var child in element.ChildNodes)
             AssignOwnerDocument(child);
     }
+
+    internal void AddStyleSheet(DocumentStyleSheet styleSheet) => _styleSheets.Add(styleSheet);
 
     internal interface IEmbeddedDocumentRoot
     {

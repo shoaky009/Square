@@ -77,6 +77,7 @@ cd MyApp
 using Square.Hosting;
 
 var window = new AppWindow("My First App", 600, 400);
+window.LoadGlobalCss("Styles/reset.css", "Styles/app.css");
 window.Load(new Main());
 
 new DesktopApplication(window).Run();
@@ -85,6 +86,39 @@ new DesktopApplication(window).Run();
 Windows 项目引用 `Square.Platform.Win32`，Linux 项目引用 `Square.Platform.X11`。平台包自动注册默认宿主，不需要在 `Program.cs` 中调用 `PlatformRegistry.Register(...)`。
 
 `Main` 是由 `Main.sqv` 在编译期生成的组件类。`AppWindow` 负责窗口内容、尺寸、标题栏和渲染配置；`DesktopApplication` 负责应用生命周期和消息循环。
+
+`LoadGlobalCss` 可一次传入多个 CSS 文件，也可多次调用。文件按加载顺序参与级联，同等 specificity 下后加载的规则覆盖先加载规则。相对路径以应用程序输出目录为基准，因此需要在项目文件中复制 CSS：
+
+```xml
+<ItemGroup>
+  <Content Include="Styles\**\*.css" CopyToOutputDirectory="PreserveNewest" />
+</ItemGroup>
+```
+
+也可以直接加载内存中的 CSS 文本：
+
+```csharp
+window.LoadGlobalCssText(
+    ":root { --primary: #0078d4; }",
+    "Button { background: var(--primary); }");
+```
+
+全局 CSS 应在 `DesktopApplication.Run()` 前加载。组件 `<style>` 仍作为组件作用域应用，并在同等 specificity 下覆盖全局样式。
+
+文件样式表支持本地 `@import`：
+
+```css
+@import "reset.css";
+@import url("./themes/light.css");
+
+Button {
+  color: var(--button-color);
+}
+```
+
+相对地址以声明 `@import` 的 CSS 文件目录为基准，支持递归导入并检测循环引用。`@import` 必须位于普通样式规则之前；出现在普通规则之后时按 CSS 规范忽略。当前仅支持本地文件和无条件导入，HTTP/HTTPS、media 条件、`supports()` 和 `layer` 尚不支持。由于内存 CSS 没有来源文件，`LoadGlobalCssText` 中的相对 `@import` 会抛出异常。
+
+已加载的顶层样式表可通过 `window.Document.StyleSheets` 按顺序枚举；每个 `DocumentStyleSheet.Imports` 保存其直接导入关系。
 
 ---
 

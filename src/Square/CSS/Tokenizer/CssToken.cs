@@ -55,6 +55,8 @@ public enum CssTokenType
     Asterisk,
     /// <summary>等号（=）。</summary>
     Equals,
+    /// <summary>未被其他类型覆盖的标点分隔符。</summary>
+    Delimiter,
     /// <summary>输入结束。</summary>
     Eof
 }

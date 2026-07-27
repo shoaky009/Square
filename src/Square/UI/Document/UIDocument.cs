@@ -1,3 +1,6 @@
+using Square.CSS;
+using Square.CSS.Engine;
+
 namespace Square.UI;
 
 /// <summary>
@@ -17,6 +20,10 @@ internal sealed class UIDocument : Document
 
     /// <summary>文档独立的调度、协调和 Store 上下文。</summary>
     public UIContext Context { get; } = new();
+
+    internal CssEngine GlobalCssEngine { get; } = new();
+
+    private DocumentStyleSheetLoader? _styleSheetLoader;
 
     /// <summary>承载此文档的应用窗口；未绑定到桌面宿主时为 null。</summary>
     public Square.Hosting.AppWindow? AppWindow { get; internal set; }
@@ -60,4 +67,19 @@ internal sealed class UIDocument : Document
         foreach (var child in Body.Children)
             child.BuildElementTree();
     }
+
+    internal void LoadGlobalCss(string path)
+    {
+        var styleSheet = GetStyleSheetLoader().LoadFile(path);
+        AddStyleSheet(styleSheet);
+    }
+
+    internal void LoadGlobalCssText(string css)
+    {
+        var styleSheet = GetStyleSheetLoader().LoadText(css);
+        AddStyleSheet(styleSheet);
+    }
+
+    private DocumentStyleSheetLoader GetStyleSheetLoader() =>
+        _styleSheetLoader ??= new DocumentStyleSheetLoader(GlobalCssEngine);
 }
