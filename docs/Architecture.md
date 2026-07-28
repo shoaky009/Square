@@ -55,7 +55,7 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 
 ## 3. 模块划分与职责
 
-当前物理程序集为 `Square`、`Square.Compiler`、`Square.Platform.Win32`、`Square.Platform.X11`、`Square.Backends.Vulkan`、`Square.Extensions` 和 `Square.DevTools`。下表中的 Runtime/UI/Controls 等名称是 `Square` 聚合程序集内部保持稳定的逻辑模块与命名空间。
+当前物理程序集包括 `Square`、`Square.Compiler`、平台与渲染后端、`Square.Extensions`、`Square.Extensions.Markdown`、`Square.Extensions.CodeEditor` 和 `Square.DevTools`。下表中的 Runtime/UI/Controls 等名称是 `Square` 聚合程序集内部保持稳定的逻辑模块与命名空间。
 
 | 模块 | 职责 | 关键设计 |
 |---|---|---|
@@ -72,7 +72,9 @@ Layout Engine  (Square.Rendering, CSS 盒/flex/grid)
 | `Square.Platform` | 平台宿主抽象 | `IPlatformHost`、`IPlatformFactory`、`PlatformRegistry` 与跨平台截图入口 |
 | `Square.Platform.Win32` | Windows 平台实现 | Win32 窗口、消息循环、输入、IME、剪贴板与窗口截图 |
 | `Square.Platform.X11` | Linux 平台实现 | X11 窗口、事件循环、输入、IME、剪贴板与窗口截图 |
-| `Square.Extensions` | 可选扩展 | Markdown、RichText 与文件弹窗；由应用显式注册，不被核心反向依赖 |
+| `Square.Extensions` | 可选扩展 | RichText、Routing 与文件弹窗；由应用显式注册，不被核心反向依赖 |
+| `Square.Extensions.Markdown` | Markdown 扩展 | Markdig 文档模型与 TextMate 代码块高亮；通过 `MarkdownRegistration` 注册 |
+| `Square.Extensions.CodeEditor` | 代码编辑扩展 | PieceTable、视口绘制、多光标、折叠与 TextMate 高亮；通过 `CodeEditorRegistration` 注册 |
 | `Square.Backends` | 渲染后端 | 纯 C# Software Renderer → Skia/Blend2D/Cairo |
 | `Square.Hosting` | 桌面应用宿主 | `DesktopApplication(UIDocument)`：窗口、输入、焦点、帧调度、布局与 DisplayTree 提交 |
 

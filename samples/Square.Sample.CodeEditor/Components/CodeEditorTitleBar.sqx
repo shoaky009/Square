@@ -1,0 +1,140 @@
+<template>
+  <TitleBar class="code-title-bar">
+    <Text slot="icon" class="code-title-icon" text="{ }" />
+
+    <View class="code-title-content">
+      <Text class="code-title" text="CodeEditor" />
+      <MenuBar class="code-menu-bar">
+        <MenuItem text="File">
+          <Menu>
+            <MenuItem text="Load sample" shortcut="Ctrl+L" onClick={OnLoadSample} />
+            <MenuItem text="Clear document" onClick={OnClear} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="Edit">
+          <Menu>
+            <MenuItem text="Undo" shortcut="Ctrl+Z" onClick={OnUndo} />
+            <MenuItem text="Redo" shortcut="Ctrl+Y" onClick={OnRedo} />
+            <MenuSeparator />
+            <MenuItem text="Select all" shortcut="Ctrl+A" onClick={OnSelectAll} />
+            <MenuItem text="Find next" shortcut="Ctrl+F" onClick={OnFindNext} />
+            <MenuItem text="Find previous" shortcut="Ctrl+Shift+F" onClick={OnFindPrevious} />
+            <MenuItem text="Replace next" shortcut="Ctrl+H" onClick={OnReplaceNext} />
+            <MenuItem text="Replace all" onClick={OnReplaceAll} />
+            <MenuItem text="Toggle comment" shortcut="Ctrl+/" onClick={OnToggleComment} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="Language">
+          <Menu>
+            <MenuItem text="C#" onClick={OnLangCSharp} />
+            <MenuItem text="JSON" onClick={OnLangJson} />
+            <MenuItem text="JavaScript" onClick={OnLangJs} />
+            <MenuItem text="Python" onClick={OnLangPython} />
+            <MenuItem text="Markdown" onClick={OnLangMarkdown} />
+          </Menu>
+        </MenuItem>
+
+        <MenuItem text="View">
+          <Menu>
+            <MenuItem text="Theme light" onClick={OnThemeLight} />
+            <MenuItem text="Theme dark" onClick={OnThemeDark} />
+            <MenuItem text="Toggle line numbers" onClick={OnToggleLineNumbers} />
+            <MenuItem text="Toggle folding" onClick={OnToggleFolding} />
+            <MenuItem text="Fold all" onClick={OnCollapseAllFolds} />
+            <MenuItem text="Unfold all" onClick={OnExpandAllFolds} />
+            <MenuItem text="Select fold at caret" onClick={OnSelectFoldAtCaret} />
+            <MenuItem text="Toggle word wrap" onClick={OnToggleWordWrap} />
+            <MenuItem text="Toggle scrollbars" onClick={OnToggleScrollBars} />
+            <MenuItem text="Toggle overview ruler" onClick={OnToggleOverviewRuler} />
+            <MenuItem text="Toggle find panel" onClick={OnToggleFindPanel} />
+            <MenuItem text="Toggle read-only" onClick={OnToggleReadOnly} />
+            <MenuItem text="Toggle glyph margin" onClick={OnToggleGlyphMargin} />
+          </Menu>
+        </MenuItem>
+      </MenuBar>
+    </View>
+  </TitleBar>
+</template>
+
+<style>
+  .code-title-bar {
+    height: 44px;
+    background: #252526;
+    padding-left: 12px;
+  }
+
+  .code-title-icon {
+    width: 32px;
+    color: #569cd6;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .code-title-content {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    height: 44px;
+    flex-grow: 1;
+    min-width: 0;
+  }
+
+  .code-title {
+    color: #cccccc;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .code-menu-bar {
+    display: flex;
+    flex-direction: row;
+    width: 320px;
+    height: 32px;
+    background: #252526;
+  }
+
+  .code-menu-bar MenuItem {
+    color: #cccccc;
+  }
+
+  .code-menu-bar MenuItem:hover {
+    background: #2a2d2e;
+    color: #ffffff;
+  }
+
+  .code-menu-bar MenuItem:open {
+    background: #37373d;
+    color: #ffffff;
+  }
+
+  .code-menu-bar Menu {
+    min-width: 220px;
+    background: #252526;
+    border: 1px solid #454545;
+  }
+
+  .code-menu-bar Menu MenuItem {
+    background: #252526;
+    color: #cccccc;
+  }
+
+  .code-menu-bar Menu MenuItem:hover {
+    background: #094771;
+    color: #ffffff;
+  }
+
+  .code-menu-bar Menu MenuItem:open {
+    background: #094771;
+    color: #ffffff;
+  }
+
+  .code-menu-bar Menu MenuSeparator {
+    color: #454545;
+  }
+</style>
+
+<script lang="csharp" namespace="Square.Sample.CodeEditorApp.Components">
+</script>

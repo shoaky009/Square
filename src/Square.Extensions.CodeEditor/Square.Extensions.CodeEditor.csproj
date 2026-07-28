@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <Description>Code editor control for Square: viewport editing, VS Code language configuration, TextMate highlighting</Description>
+    <PackageTags>$(PackageTags);codeeditor;editor;textmate;syntax;highlight</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Square\Square.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TextMateSharp" />
+    <PackageReference Include="TextMateSharp.Grammars" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Square.Extensions.CodeEditor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="docs\**\*" Pack="false" />
+    <EmbeddedResource Include="Languages\**\*.json" Condition="Exists('Languages')" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,459 @@
+<template>
+  <View class="app-shell">
+    <View class="status-row">
+      <View class="page-heading">
+        <Text class="eyebrow" text="SQUARE.EXTENSIONS.CODEEDITOR" />
+        <Text class="app-subtitle" text="Code editor workspace" />
+      </View>
+      <Text ref={StatusLabel} class="status" text="Ready" />
+    </View>
+
+    <View class="toolbar">
+      <Text class="toolbar-label" text="Language" />
+      <Button class="chip" text="C#" onClick={OnLangCSharp} />
+      <Button class="chip" text="JSON" onClick={OnLangJson} />
+      <Button class="chip" text="JS" onClick={OnLangJs} />
+      <Button class="chip" text="Python" onClick={OnLangPython} />
+      <Button class="chip" text="Markdown" onClick={OnLangMarkdown} />
+      <Text class="toolbar-label toolbar-label-spaced" text="Theme" />
+      <Button class="chip" text="Light" onClick={OnThemeLight} />
+      <Button class="chip" text="Dark" onClick={OnThemeDark} />
+      <Button class="chip chip-spaced" text="Line # on/off" onClick={OnToggleLineNumbers} />
+      <Button class="chip" text="Glyph gutter" onClick={OnToggleGlyphMargin} />
+      <Button class="chip" text="Demo marks" onClick={OnDemoDecorations} />
+      <Button class="chip" text="Fold on/off" onClick={OnToggleFolding} />
+      <Button class="chip" text="Fold all" onClick={OnCollapseAllFolds} />
+      <Button class="chip" text="Unfold all" onClick={OnExpandAllFolds} />
+      <Button class="chip" text="Word wrap" onClick={OnToggleWordWrap} />
+      <Button class="chip" text="Scrollbars" onClick={OnToggleScrollBars} />
+      <Button class="chip" text="Overview" onClick={OnToggleOverviewRuler} />
+      <Button class="chip" text="Find panel" onClick={OnToggleFindPanel} />
+      <Button class="chip" text="Read-only" onClick={OnToggleReadOnly} />
+    </View>
+
+    <View ref={FindPanel} class="find-panel">
+      <Text class="find-label" text="Find" />
+      <Text ref={FindQueryLabel} class="find-query" text="" />
+      <Text ref={FindCountLabel} class="find-count" text="" />
+      <Button class="chip" text="Prev" onClick={OnFindPrevious} />
+      <Button class="chip" text="Next" onClick={OnFindNext} />
+      <Button class="chip" text="Replace" onClick={OnReplaceNext} />
+      <Button class="chip" text="All" onClick={OnReplaceAll} />
+      <Button class="chip" text="Case" onClick={OnToggleFindCase} />
+      <Button class="chip" text="Close" onClick={OnCloseFindPanel} />
+    </View>
+
+    <View class="workspace">
+      <View class="editor-pane">
+        <View class="pane-heading">
+          <Text ref={LanguageLabel} class="pane-label" text="LANGUAGE: csharp" />
+          <Text class="pane-hint" text="Type, select, Ctrl+Z/Y, Ctrl+/ comment, Tab indent" />
+        </View>
+        <CodeEditor ref={Editor} class="code-editor" Language="csharp" ThemeId="default-dark" ShowLineNumbers="true" onInput={OnEditorInput} />
+      </View>
+      <View class="side-pane">
+        <View class="pane-heading">
+          <Text class="pane-label" text="STATS" />
+          <Text class="pane-hint" text="Live document info" />
+        </View>
+        <Text ref={StatsText} class="stats-text" text="" />
+        <View class="pane-heading">
+          <Text class="pane-label" text="HINTS" />
+        </View>
+        <Text ref={HintText} class="hint-text" text="" />
+      </View>
+    </View>
+  </View>
+</template>
+<script lang="csharp" namespace="Square.Sample.CodeEditorApp.Components">
+  protected override void OnAttachedCore()
+  {
+    base.OnAttachedCore();
+    HintText.TextContent =
+      "Ctrl+A select all\n" +
+      "Ctrl+Z / Ctrl+Y undo redo\n" +
+      "Ctrl+/ toggle line comment\n" +
+      "Ctrl+F find next (uses selection)\n" +
+      "Tab / Shift+Tab indent\n" +
+      "Click glyph margin for breakpoint\n" +
+      "Click ▾/▸ in gutter to fold\n" +
+      "Shift+click fold / double-click ⋯ select fold\n" +
+      "Delete/Backspace/type on fold = edit whole fold\n" +
+      "Alt+click add multi-cursor · Esc clear\n" +
+      "Shift+arrows select · Ctrl+Shift+arrows word\n" +
+      "Ctrl+[ toggle fold at line\n" +
+      "Ctrl+Shift+[ / ] fold/unfold all";
+    Editor.GutterClick += OnGutterClick;
+    Editor.SelectionChanged += (_, _) => RefreshStats();
+    LoadSampleCSharp();
+    ApplyDemoDecorations();
+    FindPanel.IsVisible = false;
+    RefreshFindPanel();
+    SetStatus("Ready");
+  }
+
+  internal void OnUndo()
+  {
+    SetStatus(Editor.Undo() ? "Undo applied" : "Nothing to undo");
+    RefreshStats();
+  }
+
+  internal void OnRedo()
+  {
+    SetStatus(Editor.Redo() ? "Redo applied" : "Nothing to redo");
+    RefreshStats();
+  }
+
+  internal void OnSelectAll()
+  {
+    Editor.SelectAll();
+    SetStatus("Document selected");
+    RefreshStats();
+  }
+
+  internal void OnFindNext()
+  {
+    EnsureFindQuery();
+    Editor.FindPanelVisible = true;
+    FindPanel.IsVisible = true;
+    SetStatus(Editor.FindNext() ? "Found: " + Editor.FindQuery : "Not found: " + Editor.FindQuery);
+    RefreshFindPanel();
+    RefreshStats();
+  }
+
+  internal void OnFindPrevious()
+  {
+    EnsureFindQuery();
+    Editor.FindPanelVisible = true;
+    FindPanel.IsVisible = true;
+    SetStatus(Editor.FindPrevious() ? "Found prev: " + Editor.FindQuery : "Not found: " + Editor.FindQuery);
+    RefreshFindPanel();
+    RefreshStats();
+  }
+
+  internal void OnReplaceNext()
+  {
+    if (Editor.FindQuery.Length == 0 && Editor.SelectionLength > 0)
+      Editor.FindQuery = Editor.SelectedText;
+    if (Editor.FindQuery.Length == 0)
+      Editor.FindQuery = "class";
+    if (Editor.ReplaceQuery.Length == 0)
+      Editor.ReplaceQuery = "Type";
+    SetStatus(Editor.ReplaceNext() ? "Replaced / found next" : "Nothing to replace");
+    RefreshStats();
+  }
+
+  internal void OnReplaceAll()
+  {
+    if (Editor.FindQuery.Length == 0 && Editor.SelectionLength > 0)
+      Editor.FindQuery = Editor.SelectedText;
+    if (Editor.FindQuery.Length == 0)
+      Editor.FindQuery = "class";
+    if (Editor.ReplaceQuery.Length == 0)
+      Editor.ReplaceQuery = "Type";
+    var n = Editor.ReplaceAll();
+    SetStatus(n > 0 ? "Replaced " + n + " occurrence(s)" : "No matches");
+    RefreshStats();
+  }
+
+  internal void OnToggleComment()
+  {
+    Editor.HandleKey(191, control: true);
+    SetStatus("Toggle line comment");
+    RefreshStats();
+  }
+
+  internal void OnLoadSample()
+  {
+    LoadSampleForLanguage(Editor.Language);
+    SetStatus("Sample loaded for " + Editor.Language);
+  }
+
+  internal void OnClear()
+  {
+    Editor.Value = "";
+    SetStatus("Document cleared");
+    RefreshStats();
+  }
+
+  internal void OnLangCSharp() => SetLanguage("csharp");
+  internal void OnLangJson() => SetLanguage("json");
+  internal void OnLangJs() => SetLanguage("javascript");
+  internal void OnLangPython() => SetLanguage("python");
+  internal void OnLangMarkdown() => SetLanguage("markdown");
+
+  internal void OnThemeLight()
+  {
+    Editor.ThemeId = "default-light";
+    SetStatus("Theme: default-light");
+  }
+
+  internal void OnThemeDark()
+  {
+    Editor.ThemeId = "default-dark";
+    SetStatus("Theme: default-dark");
+  }
+
+  internal void OnToggleLineNumbers()
+  {
+    Editor.ToggleLineNumbers();
+    SetStatus(Editor.ShowLineNumbers ? "Line numbers on" : "Line numbers off");
+  }
+
+  internal void OnToggleGlyphMargin()
+  {
+    Editor.ToggleGlyphMargin();
+    SetStatus(Editor.ShowGlyphMargin ? "Glyph margin on" : "Glyph margin off");
+  }
+
+  internal void OnDemoDecorations()
+  {
+    ApplyDemoDecorations();
+    SetStatus("Demo decorations applied (" + Editor.DecorationCount + ")");
+  }
+
+  private void OnGutterClick(object? sender, CodeEditorGutterClickEventArgs e)
+  {
+    if (e.Lane != CodeEditorGutterLane.Glyph) return;
+    var id = "bp-" + e.Line;
+    if (Editor.GetDecorationsAt(e.Line).Any(d => d.Id == id))
+    {
+      Editor.RemoveDecoration(id);
+      SetStatus("Breakpoint cleared on line " + (e.Line + 1));
+    }
+    else
+    {
+      Editor.SetDecoration(new CodeEditorLineDecoration
+      {
+        Id = id,
+        Line = e.Line,
+        Glyph = "●",
+        GlyphColor = Color.FromRgb(229, 57, 53),
+      });
+      SetStatus("Breakpoint on line " + (e.Line + 1));
+    }
+  }
+
+  private void ApplyDemoDecorations()
+  {
+    Editor.ClearDecorations();
+    Editor.SetDecorations(
+    [
+      new CodeEditorLineDecoration
+      {
+        Id = "git-added",
+        Line = 2,
+        GutterColor = Color.FromRgb(64, 160, 64),
+      },
+      new CodeEditorLineDecoration
+      {
+        Id = "git-modified",
+        Line = 5,
+        GutterColor = Color.FromRgb(200, 160, 40),
+      },
+      new CodeEditorLineDecoration
+      {
+        Id = "bp-demo",
+        Line = 8,
+        Glyph = "●",
+        GlyphColor = Color.FromRgb(229, 57, 53),
+        LineBackground = Color.FromRgba(229, 57, 53, 28),
+      },
+    ]);
+  }
+
+  internal void OnToggleFolding()
+  {
+    Editor.ToggleFolding();
+    SetStatus(Editor.ShowFolding ? "Folding on" : "Folding off");
+  }
+
+  internal void OnCollapseAllFolds()
+  {
+    Editor.CollapseAllFolds();
+    SetStatus("Collapsed all folds (" + Editor.FoldRegionCount + " regions)");
+    RefreshStats();
+  }
+
+  internal void OnExpandAllFolds()
+  {
+    Editor.ExpandAllFolds();
+    SetStatus("Expanded all folds");
+    RefreshStats();
+  }
+
+  internal void OnSelectFoldAtCaret()
+  {
+    var line = Editor.Model.GetLineNumberAt(Editor.CaretIndex);
+    if (Editor.SelectCollapsedFoldAt(line))
+      SetStatus("Selected fold at line " + (line + 1) + " (" + Editor.SelectionLength + " chars)");
+    else
+      SetStatus("No fold at caret line");
+    RefreshStats();
+  }
+
+  internal void OnToggleWordWrap()
+  {
+    Editor.ToggleWordWrap();
+    SetStatus(Editor.WordWrap ? "Word wrap on" : "Word wrap off");
+  }
+
+  internal void OnToggleScrollBars()
+  {
+    Editor.ToggleScrollBars();
+    SetStatus(Editor.ShowScrollBars ? "Scrollbars on" : "Scrollbars off");
+  }
+
+  internal void OnToggleReadOnly()
+  {
+    Editor.ToggleReadOnly();
+    SetStatus(Editor.ReadOnly ? "Read-only on" : "Read-only off");
+  }
+
+  internal void OnToggleOverviewRuler()
+  {
+    Editor.ToggleOverviewRuler();
+    SetStatus(Editor.ShowOverviewRuler ? "Overview ruler on" : "Overview ruler off");
+  }
+
+  internal void OnToggleFindPanel()
+  {
+    Editor.ToggleFindPanel();
+    FindPanel.IsVisible = Editor.FindPanelVisible;
+    if (Editor.FindPanelVisible)
+    {
+      EnsureFindQuery();
+      RefreshFindPanel();
+      SetStatus("Find panel open");
+    }
+    else
+      SetStatus("Find panel closed");
+  }
+
+  internal void OnCloseFindPanel()
+  {
+    Editor.FindPanelVisible = false;
+    FindPanel.IsVisible = false;
+    SetStatus("Find panel closed");
+  }
+
+  internal void OnToggleFindCase()
+  {
+    Editor.FindMatchCase = !Editor.FindMatchCase;
+    RefreshFindPanel();
+    SetStatus(Editor.FindMatchCase ? "Match case on" : "Match case off");
+  }
+
+  private void EnsureFindQuery()
+  {
+    if (Editor.SelectionLength > 0)
+      Editor.FindQuery = Editor.SelectedText;
+    if (Editor.FindQuery.Length == 0)
+      Editor.FindQuery = "class";
+    if (Editor.ReplaceQuery.Length == 0)
+      Editor.ReplaceQuery = "Type";
+  }
+
+  private void RefreshFindPanel()
+  {
+    FindQueryLabel.TextContent = Editor.FindQuery.Length == 0 ? "(empty)" : Editor.FindQuery;
+    var count = Editor.FindMatchCount;
+    var index = Editor.FindMatchIndex;
+    FindCountLabel.TextContent = count == 0
+      ? "0 matches"
+      : (index > 0 ? index + " / " + count : count + " matches")
+        + (Editor.FindMatchCase ? " · case" : "");
+  }
+
+  private void SetLanguage(string language)
+  {
+    Editor.Language = language;
+    LanguageLabel.TextContent = "LANGUAGE: " + language;
+    LoadSampleForLanguage(language);
+    SetStatus("Language: " + language);
+  }
+
+  private void LoadSampleForLanguage(string language)
+  {
+    Editor.Value = language switch
+    {
+      "json" => "{\n  \"name\": \"Square\",\n  \"version\": 1,\n  \"features\": [\"codeeditor\", \"viewport\", \"textmate\"],\n  \"enabled\": true\n}\n",
+      "javascript" => "function greet(name) {\n  // hello from CodeEditor\n  const message = `Hello, ${name}!`;\n  console.log(message);\n  return message;\n}\n\ngreet(\"Square\");\n",
+      "python" => "def fib(n):\n    # Fibonacci\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(10))\n",
+      "markdown" => "# CodeEditor Sample\n\nEdit **markdown** with TextMate highlighting.\n\n```csharp\npublic class Demo { }\n```\n\n- PieceTable\n- Viewport\n- Themes\n",
+      _ => "using System;\n\nnamespace Demo;\n\n/// <summary>CodeEditor C# sample.</summary>\npublic sealed class Program\n{\n    public static void Main(string[] args)\n    {\n        // Ctrl+/ toggles comments\n        var message = \"Hello, CodeEditor!\";\n        Console.WriteLine(message);\n\n        for (var i = 0; i < 3; i++)\n        {\n            Console.WriteLine($\"tick {i}\");\n        }\n    }\n}\n",
+    };
+    Editor.SelectAll();
+    // collapse to end via move after select: delete selection length by placing caret
+    Editor.HandleKey(39); // collapse selection to end when moving without extend after selection
+    RefreshStats();
+  }
+
+  private void LoadSampleCSharp() => LoadSampleForLanguage("csharp");
+
+  private void OnEditorInput()
+  {
+    SetStatus("Document changed");
+    RefreshStats();
+  }
+
+  private void RefreshStats()
+  {
+    var model = Editor.Model;
+    var sel = Editor.SelectionLength;
+    var selStart = Editor.SelectionStart;
+    StatsText.TextContent =
+      "Language: " + Editor.Language + "\n" +
+      "Theme: " + (Editor.ThemeId ?? "default") + "\n" +
+      "Lines: " + model.LineCount + "\n" +
+      "Length: " + model.Length + "\n" +
+      "Caret: " + Editor.CaretIndex + "\n" +
+      "Cursors: " + Editor.CursorCount + (Editor.HasMultiCursors ? " (multi)" : "") + "\n" +
+      "Selection: " + (sel == 0 ? "none" : selStart + ".." + (selStart + sel) + " (" + sel + " / cut " + Editor.SelectedText.Length + ")") + "\n" +
+      "Undo: " + (Editor.CanUndo ? "yes" : "no") + " / Redo: " + (Editor.CanRedo ? "yes" : "no") + "\n" +
+      "Line numbers: " + (Editor.ShowLineNumbers ? "on" : "off") + "\n" +
+      "Glyph margin: " + (Editor.ShowGlyphMargin ? "on" : "off") + "\n" +
+      "Decorations: " + Editor.DecorationCount + "\n" +
+      "Folding: " + (Editor.ShowFolding ? "on" : "off") + " (" + Editor.FoldRegionCount + ")\n" +
+      "Word wrap: " + (Editor.WordWrap ? "on" : "off") + "\n" +
+      "Scrollbars: " + (Editor.ShowScrollBars ? "on" : "off") + "\n" +
+      "Overview: " + (Editor.ShowOverviewRuler ? "on" : "off") + "\n" +
+      "Find panel: " + (Editor.FindPanelVisible ? "on" : "off") + "\n" +
+      "Find: " + (Editor.FindQuery.Length == 0 ? "-" : Editor.FindMatchIndex + "/" + Editor.FindMatchCount) + "\n" +
+      "Read-only: " + (Editor.ReadOnly ? "on" : "off") + "\n" +
+      "Tab: " + Editor.TabSize + (Editor.InsertSpaces ? " spaces" : " tabs");
+  }
+
+  private void SetStatus(string text)
+  {
+    StatusLabel.TextContent = text;
+    RefreshFindPanel();
+    RefreshStats();
+  }
+</script>
+<style>
+  .app-shell { display: flex; flex-direction: column; width: 100%; height: 100%; gap: 12px; padding: 18px; background: #1e1e1e; overflow: hidden; }
+  .status-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; height: 40px; flex-grow: 0; flex-shrink: 0; }
+  .page-heading { display: flex; flex-direction: column; gap: 2px; }
+  .eyebrow { color: #569cd6; font-size: 11px; font-weight: 700; }
+  .app-subtitle { color: #d4d4d4; font-size: 18px; font-weight: 700; }
+  .status { color: #b5cea8; font-size: 12px; background: #252526; padding: 7px 12px; border: 1px solid #3c3c3c; }
+  .toolbar { display: flex; flex-direction: row; align-items: center; gap: 6px; height: 36px; flex-grow: 0; flex-shrink: 0; overflow: hidden; }
+  .find-panel { display: flex; flex-direction: row; align-items: center; gap: 8px; height: 36px; flex-grow: 0; flex-shrink: 0; padding: 0 10px; background: #252526; border: 1px solid #3c3c3c; }
+  .find-label { color: #858585; font-size: 11px; flex-grow: 0; flex-shrink: 0; }
+  .find-query { color: #dcdcaa; font-size: 12px; font-family: monospace; min-width: 80px; flex-grow: 0; flex-shrink: 0; }
+  .find-count { color: #9cdcfe; font-size: 11px; min-width: 90px; flex-grow: 0; flex-shrink: 0; }
+  .toolbar-label { color: #858585; font-size: 11px; height: 14px; flex-grow: 0; flex-shrink: 0; }
+  .toolbar-label-spaced { margin-left: 14px; }
+  .chip { height: 28px; padding: 0 10px; font-size: 12px; color: #d4d4d4; background: #2d2d2d; border: 1px solid #3c3c3c; flex-grow: 0; flex-shrink: 0; }
+  .chip-spaced { margin-left: 14px; }
+  .workspace { display: flex; flex-direction: row; gap: 14px; min-height: 0; flex-grow: 1; flex-shrink: 1; align-items: stretch; }
+  .editor-pane { display: flex; flex-direction: column; gap: 8px; flex-grow: 3; flex-shrink: 1; flex-basis: 0; min-width: 0; min-height: 0; padding: 12px; background: #252526; border: 1px solid #3c3c3c; overflow: hidden; }
+  .side-pane { display: flex; flex-direction: column; gap: 8px; flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-width: 220px; min-height: 0; padding: 12px; background: #252526; border: 1px solid #3c3c3c; overflow: hidden; }
+  .pane-heading { display: flex; flex-direction: column; gap: 2px; flex-grow: 0; flex-shrink: 0; height: 34px; }
+  .pane-label { color: #cccccc; font-size: 12px; font-weight: 700; }
+  .pane-hint { color: #858585; font-size: 11px; }
+  .code-editor { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; align-self: stretch; font-family: monospace; font-size: 13px; }
+  .stats-text { min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; color: #ce9178; font-size: 12px; line-height: 20px; font-family: monospace; background: #1e1e1e; padding: 10px; border: 1px solid #3c3c3c; }
+  .hint-text { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; color: #9cdcfe; font-size: 12px; line-height: 20px; background: #1e1e1e; padding: 10px; border: 1px solid #3c3c3c; }
+</style>

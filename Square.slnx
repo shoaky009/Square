@@ -4,13 +4,14 @@
   <Project Path="src/Square.Platform.X11/Square.Platform.X11.csproj" />
   <Project Path="src/Square.Compiler/Square.Compiler.csproj" />
   <Project Path="src/Square.Extensions/Square.Extensions.csproj" />
-  <Project Path="src/Square.Extensions.CodePad/Square.Extensions.CodePad.csproj" />
+  <Project Path="src/Square.Extensions.Markdown/Square.Extensions.Markdown.csproj" />
+  <Project Path="src/Square.Extensions.CodeEditor/Square.Extensions.CodeEditor.csproj" />
   <Project Path="src/Square.Images/Square.Images.csproj" />
   <Project Path="src/Square.DevTools/Square.DevTools.csproj" />
   <Project Path="src/Square.Backends.Vulkan/Square.Backends.Vulkan.csproj" />
   <Project Path="src/Square.Backends.Skia/Square.Backends.Skia.csproj" />
   <Folder Name="/Samples/">
-    <Project Path="samples/Square.Sample.CodePad/Square.Sample.CodePad.csproj" />
+    <Project Path="samples/Square.Sample.CodeEditor/Square.Sample.CodeEditor.csproj" />
     <Project Path="samples/Square.Sample.HelloWorld/Square.Sample.HelloWorld.csproj" />
     <Project Path="samples/Square.Sample.RichText/Square.Sample.RichText.csproj" />
     <Project Path="samples/Square.Sample.Vue/Square.Sample.Vue.csproj" />
@@ -22,7 +23,7 @@
     <Project Path="tests/Square.Backends.Vulkan.Tests/Square.Backends.Vulkan.Tests.csproj" />
     <Project Path="tests/Square.Backends.Skia.Tests/Square.Backends.Skia.Tests.csproj" />
     <Project Path="tests/Square.CSS.Tests/Square.CSS.Tests.csproj" />
-    <Project Path="tests/Square.Extensions.CodePad.Tests/Square.Extensions.CodePad.Tests.csproj" />
+    <Project Path="tests/Square.Extensions.CodeEditor.Tests/Square.Extensions.CodeEditor.Tests.csproj" />
     <Project Path="tests/Square.Graphics.Tests/Square.Graphics.Tests.csproj" />
     <Project Path="tests/Square.Images.Tests/Square.Images.Tests.csproj" />
     <Project Path="tests/Square.Markup.Tests/Square.Markup.Tests.csproj" />

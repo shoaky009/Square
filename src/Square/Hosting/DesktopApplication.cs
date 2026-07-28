@@ -1081,13 +1081,26 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         var selectableStart = items.Count;
         if (fragmentsByElement.TryGetValue(element, out var fragments))
         {
-            foreach (var fragment in fragments)
+            if (element is ITextSelectable selectable && !string.IsNullOrEmpty(selectable.SelectableText))
+            {
+                var fragment = MergeSelectableTextFragments(element, selectable.SelectableText, fragments);
                 items.Add(new TextSelectionItem(
                     element,
-                    fragment.Text,
+                    selectable.SelectableText,
                     fragment.Bounds,
                     fragment,
-                    FindTextNode(element, fragment.Text)));
+                    FindTextNode(element, selectable.SelectableText)));
+            }
+            else
+            {
+                foreach (var fragment in fragments)
+                    items.Add(new TextSelectionItem(
+                        element,
+                        fragment.Text,
+                        fragment.Bounds,
+                        fragment,
+                        FindTextNode(element, fragment.Text)));
+            }
         }
         else if (element is ITextSelectable selectable && !string.IsNullOrEmpty(selectable.SelectableText))
             items.Add(new TextSelectionItem(
@@ -1101,6 +1114,37 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
             CollectSelectableText(child, items, fragmentsByElement);
         if (items.Count > selectableStart + 1 && element is ITextSelectable)
             items.RemoveAt(selectableStart);
+    }
+
+    internal static TextFragment MergeSelectableTextFragments(
+        Element element,
+        string selectableText,
+        IReadOnlyList<TextFragment> fragments)
+    {
+        if (fragments.Count == 1 && fragments[0].Text == selectableText)
+            return fragments[0];
+
+        var characters = new List<TextCharacterFragment>();
+        var bounds = Rect.Empty;
+        var searchFrom = 0;
+        foreach (var fragment in fragments)
+        {
+            bounds = bounds.IsEmpty ? fragment.Bounds : Rect.Union(bounds, fragment.Bounds);
+            var fragmentStart = selectableText.IndexOf(fragment.Text, searchFrom, StringComparison.Ordinal);
+            if (fragmentStart < 0)
+                fragmentStart = Math.Min(searchFrom, selectableText.Length);
+            foreach (var character in fragment.Characters)
+            {
+                characters.Add(new TextCharacterFragment(
+                    Math.Min(selectableText.Length, fragmentStart + character.StartOffset),
+                    Math.Min(selectableText.Length, fragmentStart + character.EndOffset),
+                    character.Bounds,
+                    character.SelectionBounds));
+            }
+            searchFrom = Math.Min(selectableText.Length, fragmentStart + fragment.Text.Length);
+        }
+
+        return new TextFragment(element, selectableText, fragments[0].Font, bounds, characters);
     }
 
     private static TextSelectionPoint FindTextSelectionPoint(TextSelectionState selection, Element? hit, Point point)
@@ -1202,6 +1246,13 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         {
             range.SetStart(startText, Math.Clamp(startPoint.Offset, 0, startText.Length));
             range.SetEnd(endText, Math.Clamp(endPoint.Offset, 0, endText.Length));
+        }
+        else if (startItem.TextNode == null || endItem.TextNode == null)
+        {
+            // Custom-painted selectable text has no DOM Text node. Keep the visual selection
+            // as the source of truth so clipboard text includes its logical SelectableText.
+            documentSelection.RemoveAllRanges();
+            return;
         }
         else
         {

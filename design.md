@@ -84,11 +84,15 @@ Backend + Platform host (Software/Win32/X11/...)
 | `Square.Platform` | 平台宿主抽象与实现 | `IPlatformHost`、Win32、X11、截图；P/Invoke 使用 `LibraryImport` |
 | `Square.Hosting` | 桌面应用组合层 | `DesktopApplication`、`RenderMode`、`RenderDecision`、`RenderDiagnostics` |
 | `Square.Extensions.Routing` | 可选窗口路由 | Route matcher、nested RouterView、history、guards、KeepAlive、RouterLink |
-| `Square.Extensions` | 可选扩展模块 | Markdown 渲染扩展，基于 Markdig |
+| `Square.Extensions` | 可选扩展模块 | RichText、Routing 等可选控件 |
+| `Square.Extensions.Markdown` | Markdown 扩展模块 | 基于 Markdig 的文档模型与 TextMate 代码块高亮 |
+| `Square.Extensions.CodeEditor` | 代码编辑扩展模块 | PieceTable、视口虚拟化、TextMate 高亮、折叠、多光标与查找替换 |
 | `Square.DevTools` | 本地 HTTP 调试与自动化 | localhost + token；renderer PNG 截图；指针、键盘、文本、滚轮输入注入 |
 | `Square.Text` | 文本、字体、选择与测量基础 | Font manager、FontFaceSet、文本测量、caret/selection/hit test 基础 |
 
 依赖方向遵循：核心抽象向下游开放，平台/后端/扩展在边缘注册；核心层不得反向依赖具体平台和具体图形库。
+
+代码编辑器以 TextMate 作为低成本、错误容忍的实时高亮层，以轻量括号、XML 标签和 Python 缩进规则提供基础折叠。ANTLR4 不进入核心依赖；若后续需要诊断、符号、大纲或精确语法折叠，应作为可选语言服务扩展接入。
 
 ---
 
@@ -408,7 +412,7 @@ NativeAOT 约束贯穿设计：
 - M2：CSS 能力扩展、Slot/组件组合、Signal/Dispatcher、主题与动画基础。
 - 架构重建：去除 `Visual` 术语，迁移到 `Document`/`Node`/`Element`/`EventTarget` 模型。
 - `.sqv` Vue 模板前端初步实现。
-- `Square.Extensions` Markdown 扩展。
+- 独立的 `Square.Extensions.Markdown` 与 `Square.Extensions.CodeEditor` 扩展。
 - Win32/X11 平台截图、PNG 编码、BMP 转 PNG。
 - DOM `Range`/`Selection` 文本选择模型与 `TextFragment` 字符级命中测试。
 - Software Renderer 性能优化：位图像素/裁剪区域缓存、批量 BGRA 填充、脏区 Present。

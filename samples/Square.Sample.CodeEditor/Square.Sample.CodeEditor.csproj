@@ -5,26 +5,24 @@
     <OutputType Condition="'$(IsWindowsBuild)' != 'false'">WinExe</OutputType>
     <OutputType Condition="'$(IsWindowsBuild)' == 'false'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Square.Sample.Vue</RootNamespace>
-    <Description>Square Vue Template Sample Application</Description>
+    <RootNamespace>Square.Sample.CodeEditorApp</RootNamespace>
+    <Description>Square CodeEditor Demo</Description>
     <PublishAot>true</PublishAot>
     <EmitCompilerGeneratedFiles Condition="'$(SquareEmitCompilerGeneratedFiles)' == 'true'">true</EmitCompilerGeneratedFiles>
     <OptimizationPreference>Size</OptimizationPreference>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Square.Backends.Vulkan\Square.Backends.Vulkan.csproj" />
     <ProjectReference Include="..\..\src\Square\Square.csproj" />
     <ProjectReference Include="..\..\src\Square.Platform.Win32\Square.Platform.Win32.csproj" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <ProjectReference Include="..\..\src\Square.Platform.X11\Square.Platform.X11.csproj" Condition="'$(SquareTargetPlatform)' == 'X11'" />
-    <ProjectReference Include="..\..\src\Square.Extensions\Square.Extensions.csproj" />
-    <ProjectReference Include="..\..\src\Square.Extensions.Markdown\Square.Extensions.Markdown.csproj" />
-    <ProjectReference Include="..\..\src\Square.Images\Square.Images.csproj" />
+    <ProjectReference Include="..\..\src\Square.Extensions.CodeEditor\Square.Extensions.CodeEditor.csproj" />
+    <ProjectReference Include="..\..\src\Square.DevTools\Square.DevTools.csproj" />
     <ProjectReference Include="..\..\src\Square.Compiler\Square.Compiler.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="**\*.sqv" />
+    <AdditionalFiles Include="**\*.sqx" />
     <Compile Include="..\..\src\Square.Platform.Win32\buildTransitive\Square.Platform.Win32.Registration.cs" Link="Square.Generated\PlatformRegistration.g.cs" Condition="'$(SquareTargetPlatform)' == 'Win32'" />
     <Compile Include="..\..\src\Square.Platform.X11\buildTransitive\Square.Platform.X11.Registration.cs" Link="Square.Generated\PlatformRegistration.g.cs" Condition="'$(SquareTargetPlatform)' == 'X11'" />
   </ItemGroup>

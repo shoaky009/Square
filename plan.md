@@ -3,7 +3,7 @@
 > 配套设计文档：`design.md`（总体架构、模块划分、Phase 1 详细设计、模板/绑定/流程控制规范、关键技术决策）
 > 需求来源：`docs/Requirements.md`（v0.3 Draft）
 > 范围：全模块分阶段路线图 + 里程碑排期 + 风险与缓解 + 交付说明
-> 状态：M0–M2 已完成，架构重建（rebuild）已完成并合并至 main。后续扩展：`.sqv` Vue 模板前端初步实现（规范化路径，详见 `docs/vue-plan.md`）；新增 `Square.Extensions` 扩展模块（`MarkdownViewer` 基于 Markdig）、平台截图 `PlatformScreenshot`（Win32/X11）、PNG 编码 `BitmapPngEncoder` 与 BMP 解码 `BmpPngConverter`、DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试；Software Renderer 完成性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）。
+> 状态：M0–M2 已完成，架构重建（rebuild）已完成并合并至 main。后续扩展：`.sqv` Vue 模板前端初步实现（规范化路径，详见 `docs/vue-plan.md`）；新增独立 `Square.Extensions.Markdown`（Markdig + TextMate）与 `Square.Extensions.CodeEditor`（PieceTable + TextMate）扩展、平台截图 `PlatformScreenshot`（Win32/X11）、PNG 编码 `BitmapPngEncoder` 与 BMP 解码 `BmpPngConverter`、DOM `Range` 文本选择模型与 `TextFragment` 字符级命中测试；Software Renderer 完成性能优化（位图像素/裁剪区域缓存、批量 BGRA 填充）。
 
 ---
 

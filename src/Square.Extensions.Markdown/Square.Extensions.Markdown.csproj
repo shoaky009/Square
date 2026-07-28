@@ -3,9 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
-    <Description>Square Extensions: optional components and integrations</Description>
+    <Description>Markdown document model and viewer for Square with TextMate code highlighting</Description>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="TextMateSharp" />
+    <PackageReference Include="TextMateSharp.Grammars" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Square\Square.csproj" />

@@ -875,6 +875,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
             x1 = Math.Min(x1, (int)MathF.Ceiling(_clipRight));
             y1 = Math.Min(y1, (int)MathF.Ceiling(_clipBottom));
         }
+        if (x0 >= x1 || y0 >= y1) return;
 
         for (var y = y0; y < y1; y++)
         {

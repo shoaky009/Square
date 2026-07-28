@@ -2245,7 +2245,7 @@ public static class ExtensionRegistration
 
 | 成员 | 说明 |
 |---|---|
-| `RegisterDefaults()` | 注册 `MarkdownViewer`、`RichTextEditor` 等扩展标签。幂等，重复调用安全 |
+| `RegisterDefaults()` | 注册 `RichTextEditor`、`RouterView` 等扩展标签。幂等，重复调用安全 |
 
 应用启动时调用一次即可让扩展控件在 `.sqx` / `.sqv` 中按标签使用：
 
@@ -2256,6 +2256,12 @@ app.Run();
 ```
 
 ### MarkdownViewer
+
+`MarkdownViewer` 位于独立包 `Square.Extensions.Markdown`。应用启动时先调用：
+
+```csharp
+MarkdownRegistration.RegisterDefaults();
+```
 
 ```csharp
 namespace Square.Extensions.Markdown;
@@ -2276,7 +2282,7 @@ public sealed class MarkdownViewer : UIElement
 | `SourceDocument` | 可选的预解析文档；非空时优先于 `Content`，不会再次经过 Markdig |
 | `Document` | 当前解析后的只读 Markdown 文档模型；不暴露 Markdig 类型 |
 
-`MarkdownDocument.Parse(string?)` 将源文本解析为 `Square.Extensions.Markdown` 自有的块和行内模型。Markdig 仅作为 `Square.Extensions` 内部解析器，不会出现在公开模型或核心 `Square` 项目的依赖中。
+`MarkdownDocument.Parse(string?)` 将源文本解析为 `Square.Extensions.Markdown` 自有的块和行内模型。Markdig 仅作为 `Square.Extensions.Markdown` 内部解析器，不会出现在公开模型或核心 `Square` 项目的依赖中。围栏代码块通过 TextMate grammar 数据库进行语法高亮。
 
 `MarkdownViewer` 将该模型渲染为 Square 元素树（标题 H1–H6、段落、嵌套有序/无序列表、任务列表、引用、代码块、分隔线、表格、图片、链接、强调与行内代码）。容器默认 `display:flex; flex-direction:column; gap:8px`，各块带 `markdown-*` class，可在 `<style>` 中定制。挂载（`OnAttached`）或 Prop 变化时自动重新渲染。
 
@@ -2286,6 +2292,40 @@ public sealed class MarkdownViewer : UIElement
 var document = MarkdownDocument.Parse(source);
 var viewer = new MarkdownViewer { SourceDocument = document };
 ```
+
+### CodeEditor
+
+`CodeEditor` 位于独立包 `Square.Extensions.CodeEditor`。应用启动时先注册：
+
+```csharp
+using Square.Extensions.CodeEditor;
+
+CodeEditorRegistration.RegisterDefaults();
+```
+
+随后可在代码或模板中使用：
+
+```csharp
+var editor = new CodeEditor
+{
+    Language = "csharp",
+    ThemeId = "default-dark",
+    ShowLineNumbers = true,
+    ShowFolding = true,
+    WordWrap = false,
+};
+editor.Value = "public class App { }";
+```
+
+```xml
+<CodeEditor Language="json" ThemeId="default-dark" ShowLineNumbers="true" />
+```
+
+核心能力包括 PieceTable 编辑模型、增量撤销/重做、视口虚拟化、多光标、查找替换、行装饰、overview ruler 与代码折叠。语法高亮使用 `TextMateSharp` / `TextMateSharp.Grammars`；未知 languageId 回退为纯文本。
+
+`TextMateLanguageProvider.RegisterExtension(path)` 可加载包含 `package.json` 和 `syntaxes/*.tmLanguage.json` 的 VS Code 扩展目录。`LanguageRegistry.GuessLanguage(path)` 可按文件扩展名推断 languageId。
+
+折叠占位规则：花括号显示 `{...}`，多行数组或列表显示 `[...]`，XML/HTML 保留开始标签首行并显示 ` ...>`，Python 冒号缩进块显示 `...`。
 
 ---
 
@@ -2311,8 +2351,9 @@ public enum VerticalAlignment { Top, Center, Bottom, Stretch }
 | `BackendRegistration` | `RegisterDefaults()` | `BACKEND_SOFTWARE` 等编译常量 |
 | `PlatformRegistry` | `Register(new Win32PlatformFactory())` 或 `Register(new X11PlatformFactory())` | 应用在 `Run()` 前显式调用 |
 | `ExtensionRegistration` | `RegisterDefaults()` | 手动调用（引用 `Square.Extensions` 后） |
+| `MarkdownRegistration` | `RegisterDefaults()` | 手动调用（引用 `Square.Extensions.Markdown` 后） |
 
-应用代码通常不需要手动调用 `BackendRegistration`，但必须显式注册所引用的平台工厂。`ExtensionRegistration` **不由** `DesktopApplication` 自动调用——引用 `Square.Extensions` 后需在 `app.Run()` 前手动调用一次，以注册 `MarkdownViewer` 等扩展标签。
+应用代码通常不需要手动调用 `BackendRegistration`，但必须显式注册所引用的平台工厂。扩展注册器不由 `DesktopApplication` 自动调用：`Square.Extensions` 使用 `ExtensionRegistration`，Markdown 使用独立的 `MarkdownRegistration`。
 
 ---
 
@@ -2356,4 +2397,5 @@ private void OnClick(Event e) { }
 | `Square.Extensions.Routing` | `Router`, `RouterView`, `RouterLink`, `RouteLocation`, `RouteDefinition`, `INavigationHistory` |
 | `Square.Controls.Animation` | `Animation<T>`, `Clock`, `Easing` |
 | `Square.Extensions.Markdown` | `MarkdownViewer` |
+| `Square.Extensions.CodeEditor` | `CodeEditor`, `CodeEditorRegistration`, `LanguageRegistry`, `TextMateLanguageProvider`, `CodeEditorThemeRegistry` |
 | `Square.Extensions` | `ExtensionRegistration` |

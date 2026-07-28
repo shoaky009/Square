@@ -45,5 +45,19 @@ public class RoundedRectSeamTests
         Assert.True(AlphaAt(bitmap, 37, 25) > 0);
     }
 
+    [Fact]
+    public void RoundedRectOutsideCanvasIsSafelyClipped()
+    {
+        var bitmap = new Bitmap(362, 40);
+        using var context = new RenderContext(bitmap, 1f);
+        context.Clear(Color.Transparent);
+
+        context.FillGeometry(
+            new RoundedRectGeometry(new Rect(364, 8, 36, 20), 2, 2),
+            new SolidColorBrush(Color.FromRgba(0, 0, 0, 128)));
+
+        Assert.All(bitmap.Pixels, value => Assert.Equal(0, value));
+    }
+
     private static byte AlphaAt(Bitmap bitmap, int x, int y) => bitmap.Pixels[y * bitmap.Stride + x * 4 + 3];
 }

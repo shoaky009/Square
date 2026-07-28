@@ -248,10 +248,10 @@ public class MarkdownDocumentTests
         var block = Assert.Single(
             viewer.QueryAll<View>(),
             view => view.ClassList.Contains("markdown-code"));
-        var blockText = Assert.Single(block.QueryAll<Square.Controls.Text>());
+        var blockText = Assert.Single(block.Children);
         Assert.True(blockText.ClassList.Contains("markdown-code-text"));
         Assert.True(blockText.ClassList.Contains("language-csharp"));
-        Assert.Equal("var value = 1;", blockText.TextContent);
+        Assert.Equal("var value = 1;", Assert.IsAssignableFrom<ITextSelectable>(blockText).SelectableText);
 
         var inline = Assert.Single(
             viewer.QueryAll<View>(),
@@ -278,11 +278,85 @@ public class MarkdownDocumentTests
 
         var fragments = tree.CollectTextFragments(viewer);
 
-        Assert.Contains(fragments, fragment => fragment.Text == "var value = 1;");
+        var codeFragments = fragments
+            .Where(fragment => fragment.Element.ClassList.Contains("markdown-code-text"))
+            .ToArray();
+        Assert.Equal("var value = 1;", string.Concat(codeFragments.Select(fragment => fragment.Text)));
         Assert.Contains(fragments, fragment => fragment.Text == "Layer");
         Assert.Contains(fragments, fragment => fragment.Text == "Responsibility");
         Assert.Contains(fragments, fragment => fragment.Text == "Parser");
         Assert.All(fragments, fragment => Assert.True(fragment.Element.IsUserSelectText()));
+    }
+
+    [Fact]
+    public void HighlightedCodeFragmentsMergeIntoContinuousSelectableText()
+    {
+        var viewer = new MarkdownViewer
+        {
+            Content = "```csharp\nvar viewer = new MarkdownViewer { Content = \"# Hello\" };\n```",
+        };
+        viewer.BuildElementTree();
+        ((IComponentLifecycle)viewer).OnAttached();
+        var layout = new LayoutEngine();
+        layout.Measure(viewer, new Size(700, float.PositiveInfinity));
+        layout.Arrange(viewer, new Rect(0, 0, 700, 200));
+        var tree = new DisplayTree();
+        tree.BuildFrom(viewer);
+
+        var codeElement = Assert.Single(
+            viewer.QueryAll<UIElement>(),
+            element => element.ClassList.Contains("markdown-code-text"));
+        var selectable = Assert.IsAssignableFrom<ITextSelectable>(codeElement);
+        var fragments = tree.CollectTextFragments(viewer)
+            .Where(fragment => ReferenceEquals(fragment.Element, codeElement))
+            .ToArray();
+        var merged = Square.Hosting.DesktopApplication.MergeSelectableTextFragments(
+            codeElement,
+            selectable.SelectableText,
+            fragments);
+
+        Assert.Equal(selectable.SelectableText, merged.Text);
+        Assert.Equal(0, merged.Characters[0].StartOffset);
+        Assert.Equal(3, merged.Characters[2].EndOffset);
+        Assert.Equal(0, merged.HitTestOffset(new Point(merged.Bounds.Left, merged.Bounds.Top + 2)));
+    }
+
+    [Fact]
+    public void HighlightedCodeExposesDomTextForCrossBlockCopy()
+    {
+        var viewer = new MarkdownViewer
+        {
+            Content = "Before\n\n```csharp\nvar value = 1;\n```\n\nAfter",
+        };
+        var document = new UIDocument();
+        document.Body.AppendChild(viewer);
+        viewer.BuildElementTree();
+        ((IComponentLifecycle)viewer).OnAttached();
+
+        var codeElement = Assert.Single(
+            viewer.QueryAll<UIElement>(),
+            element => element.ClassList.Contains("markdown-code-text"));
+        var codeNode = Assert.Single(codeElement.ChildNodes.OfType<Square.UI.Text>());
+        Assert.Equal("var value = 1;", codeNode.Data);
+
+        var textNodes = EnumerateTextNodes(viewer).ToArray();
+        var before = Assert.Single(textNodes, node => node.Data == "Before");
+        var after = Assert.Single(textNodes, node => node.Data == "After");
+        var range = document.CreateRange();
+        range.SetStart(before, 0);
+        range.SetEnd(after, after.Length);
+
+        Assert.Equal("Before\nvar value = 1;\nAfter", range.ToString());
+
+        static IEnumerable<Square.UI.Text> EnumerateTextNodes(Node node)
+        {
+            if (node is not Element element) yield break;
+            foreach (var child in element.ChildNodes)
+            {
+                if (child is Square.UI.Text text) yield return text;
+                foreach (var descendant in EnumerateTextNodes(child)) yield return descendant;
+            }
+        }
     }
 
     [Fact]
@@ -332,5 +406,16 @@ public class MarkdownDocumentTests
     {
         Assert.Empty(MarkdownDocument.Parse(null).Blocks);
         Assert.Empty(MarkdownDocument.Parse("  ").Blocks);
+    }
+
+    [Fact]
+    public void MarkdownRegistrationRegistersViewerIndependently()
+    {
+        MarkdownRegistration.RegisterDefaults();
+
+        var create = typeof(ElementRegistry).GetMethod(
+            "Create",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.IsType<MarkdownViewer>(create.Invoke(null, ["MarkdownViewer"]));
     }
 }

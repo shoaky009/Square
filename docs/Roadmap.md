@@ -93,7 +93,8 @@
 M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M0–M8 阶段编号：
 
 - **`.sqv` Vue 模板前端**：在保留 `.sqx` 原生语法的前提下，新增 Vue 3 模板语法兼容前端。`SqvParser` 将 `{{ }}` 插值、`:prop` / `v-bind`、`@event` / `v-on`、`v-if` / `v-else-if` / `v-else`、`v-for` / `:key`、`ref` 及事件修饰符（`.stop` / `.prevent`）规范化为与 `.sqx` 相同的中间表示，运行时仍是纯 C#。配套 `samples/Square.Sample.Vue` 提供控件、表单、媒体、Markdown、路由、信号、溢出等示例页面。完整设计与后续里程碑见 `docs/vue-plan.md`。
-- **`Square.Extensions` 扩展模块**：新增可选项目，承载第三方集成与高级控件。首个组件 `MarkdownViewer` 基于 Markdig 将 Markdown 解析为 Square 元素树（标题、段落、列表、引用、代码块、分隔线、链接）。通过 `ExtensionRegistration.RegisterDefaults()` 注册扩展控件标签。
+- **`Square.Extensions.Markdown` 扩展模块**：从聚合扩展中独立，使用 Markdig 构建 Markdown 文档模型，围栏代码块通过 TextMate grammar 高亮；通过 `MarkdownRegistration.RegisterDefaults()` 注册。
+- **`Square.Extensions.CodeEditor` 扩展模块**：提供 PieceTable、视口虚拟化、多光标、查找替换、代码折叠和 TextMate grammar 高亮；支持导入 VS Code 扩展 grammar，通过 `CodeEditorRegistration.RegisterDefaults()` 注册。
 - **平台截图**：`PlatformScreenshot.CaptureByProcessId` / `TryCaptureByProcessId` 按进程 ID 捕获窗口位图，Win32 与 X11 各有实现，按构建层 `PLATFORM_*` 裁剪。
 - **进程内 renderer 截图**：`DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程将 DisplayTree 重放到离屏 Software bitmap，不依赖 PID、窗口枚举或桌面合成器；DevTools 与示例 `--screenshot` 默认使用该路径。
 - **原生 Vulkan 后端**：基于 Silk.NET 实现 Windows/Win32 与 Linux/X11 surface、swapchain、批处理、纹理 atlas、MSAA、字体渲染和可选 GPU framebuffer readback；已支持 NativeAOT 系统 loader、内嵌 SPIR-V 与无动态代码的 validation callback。

@@ -1,4 +1,3 @@
-using Square.Extensions.Markdown;
 using Square.Extensions.RichText;
 using Square.Extensions.Routing;
 using Square.UI;
@@ -14,7 +13,6 @@ public static class ExtensionRegistration
         if (_registered) return;
         _registered = true;
 
-        ElementRegistry.Register("MarkdownViewer", static () => new MarkdownViewer());
         ElementRegistry.Register("RichTextEditor", static () => new RichTextEditor());
         ElementRegistry.Register("RouterView", static () => new RouterView());
         ElementRegistry.Register("RouterLink", static () => new RouterLink());
