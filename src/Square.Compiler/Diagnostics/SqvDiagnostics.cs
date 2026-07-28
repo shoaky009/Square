@@ -22,13 +22,13 @@ public static class SqvDiagnostics
         "SQV0005", "重复的属性或事件绑定", "{0}", Category, DiagnosticSeverity.Error, true);
 
     public static readonly DiagnosticDescriptor SQV0006_DynamicArgument = new(
-        "SQV0006", "暂不支持动态参数", "{0}", Category, DiagnosticSeverity.Error, true);
+        "SQV0006", "无效的动态参数", "{0}", Category, DiagnosticSeverity.Error, true);
 
     public static readonly DiagnosticDescriptor SQV0007_UnsupportedBuiltIn = new(
         "SQV0007", "不支持的 Vue 内置组件", "{0}", Category, DiagnosticSeverity.Error, true);
 
     public static readonly DiagnosticDescriptor SQV0008_ScopedSlot = new(
-        "SQV0008", "暂不支持作用域插槽属性", "{0}", Category, DiagnosticSeverity.Error, true);
+        "SQV0008", "无效或不支持的作用域插槽属性形式", "{0}", Category, DiagnosticSeverity.Error, true);
 
     public static readonly DiagnosticDescriptor SQV0009_InvalidExpression = new(
         "SQV0009", "模板表达式必须是 C# 表达式", "{0}", Category, DiagnosticSeverity.Error, true);

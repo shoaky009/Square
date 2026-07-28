@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Square.Graphics;
 using Square.Hosting;
@@ -35,12 +36,13 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     private readonly IntPtr _textCursor;
     private readonly IntPtr _handCursor;
     private readonly IntPtr _arrowCursor;
-    private readonly uint _frameIntervalMs = 16;
-
     private Size _clientSize;
+    private Size _physicalClientSize;
     private int _winX;
     private int _winY;
     private float _dpiScale = 1f;
+    private double _refreshRate = X11DisplayMetrics.DefaultRefreshRate;
+    private bool _refreshRateDetectionFailed;
     private bool _running;
     private IRenderContext? _renderContext;
     private X11SoftwareRenderSurface? _softwareSurface;
@@ -88,6 +90,8 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
 
         _screen = X11Api.DefaultScreen(_display);
         _root = X11Api.DefaultRootWindow(_display);
+        _dpiScale = DetectDpiScale();
+        _refreshRate = DetectRefreshRate();
 
         if (X11Api.MatchVisualInfo(_display, _screen, 32, X11Api.TrueColor, out var vi32))
         {
@@ -122,7 +126,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                       | X11Api.CWColormap;
 
         _window = X11Api.CreateWindow(_display, _root,
-            0, 0, (uint)_width, (uint)_height,
+            0, 0, (uint)ToPhysical(_width), (uint)ToPhysical(_height),
             0, _depth, X11Api.InputOutput,
             _visual, valueMask, ref attr);
 
@@ -182,7 +186,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         ApplyCursor();
 
         X11Api.GetGeometry(_display, _window, out _, out _, out _, out var w, out var h, out _, out _);
-        _clientSize = new Size((int)w, (int)h);
+        UpdateClientSize(new Size((int)w, (int)h));
 
         InitInputMethod();
     }
@@ -366,7 +370,9 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
 
     public void PumpEvents()
     {
-        var lastTick = Environment.TickCount64;
+        var clock = Stopwatch.StartNew();
+        var frameInterval = X11DisplayMetrics.FrameIntervalTicks(_refreshRate, Stopwatch.Frequency);
+        var nextFrameDeadline = X11DisplayMetrics.NextFrameDeadline(0, clock.ElapsedTicks, frameInterval);
         while (_running)
         {
             try
@@ -383,10 +389,16 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                 System.Console.Error.WriteLine($"[X11] Exception in event loop: {ex}");
             }
 
-            var now = Environment.TickCount64;
-            if (now - lastTick >= _frameIntervalMs)
+            var now = clock.ElapsedTicks;
+            var updatedFrameInterval = X11DisplayMetrics.FrameIntervalTicks(_refreshRate, Stopwatch.Frequency);
+            if (updatedFrameInterval != frameInterval)
             {
-                lastTick = now;
+                frameInterval = updatedFrameInterval;
+                nextFrameDeadline = X11DisplayMetrics.NextFrameDeadline(0, now, frameInterval);
+            }
+            if (now >= nextFrameDeadline)
+            {
+                nextFrameDeadline = X11DisplayMetrics.NextFrameDeadline(nextFrameDeadline, now, frameInterval);
                 try { Tick?.Invoke(); }
                 catch (Exception ex) { System.Console.Error.WriteLine($"[X11] Exception in tick: {ex}"); }
             }
@@ -419,16 +431,11 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                     _winY = *(int*)(raw + 52);
                     var w = *(int*)(raw + 56);
                     var h = *(int*)(raw + 60);
-                    var newSize = new Size(w, h);
-                    if (newSize != _clientSize)
-                    {
-                        _clientSize = newSize;
-                        if (_renderContext is IResizableRenderContext r) r.Resize(newSize);
-                        SizeChanged?.Invoke(newSize);
-                    }
+                    UpdateDisplayMetrics(new Size(w, h), true);
                 }
                 break;
             case X11Api.MapNotify:
+                UpdateDisplayMetrics(_physicalClientSize, true);
                 RefreshWindowState(false);
                 break;
             case X11Api.UnmapNotify:
@@ -464,7 +471,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                     uint state = *(uint*)(raw + 80);
                     uint button = *(uint*)(raw + 84);
                     _lastModifierState = state;
-                    var pt = new Point(x, y);
+                    var pt = ToLogicalPoint(x, y);
                     if (button == X11Api.Button4)
                         WheelEvent?.Invoke(pt, 120);
                     else if (button == X11Api.Button5)
@@ -487,7 +494,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                     uint button = *(uint*)(raw + 84);
                     _lastModifierState = state;
                     if (button is not X11Api.Button4 and not X11Api.Button5)
-                        MouseEvent?.Invoke(new Point(x, y), MouseAction.Up);
+                        MouseEvent?.Invoke(ToLogicalPoint(x, y), MouseAction.Up);
                 }
                 break;
             case X11Api.MotionNotify:
@@ -495,7 +502,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
                     var raw = (byte*)(&e);
                     int x = *(int*)(raw + 64);
                     int y = *(int*)(raw + 68);
-                    MouseEvent?.Invoke(new Point(x, y), MouseAction.Move);
+                    MouseEvent?.Invoke(ToLogicalPoint(x, y), MouseAction.Move);
                 }
                 break;
             case X11Api.FocusIn:
@@ -856,7 +863,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
             X11Api.PutImage(_display, _imagePixmap, _gc, _ximage,
                 0, 0, 0, 0, (uint)bitmap.Width, (uint)bitmap.Height);
             X11Api.PutImage(_display, _window, _gc, _ximage,
-                0, 0, 0, 0, (uint)_clientSize.Width, (uint)_clientSize.Height);
+                0, 0, 0, 0, (uint)_physicalClientSize.Width, (uint)_physicalClientSize.Height);
             X11Api.Flush(_display);
             return;
         }
@@ -869,8 +876,8 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
             var w = Math.Min(bitmap.Width - x, (int)Math.Ceiling(r.Width));
             var h = Math.Min(bitmap.Height - y, (int)Math.Ceiling(r.Height));
             if (w <= 0 || h <= 0) continue;
-            w = Math.Min(w, (int)_clientSize.Width - x);
-            h = Math.Min(h, (int)_clientSize.Height - y);
+            w = Math.Min(w, (int)_physicalClientSize.Width - x);
+            h = Math.Min(h, (int)_physicalClientSize.Height - y);
             if (w <= 0 || h <= 0) continue;
 
             X11Api.PutImage(_display, _imagePixmap, _gc, _ximage,
@@ -884,6 +891,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
     private void EnsureImageBuffer()
     {
         if (_lastFrame == null) return;
+        if (_imagePixmap == IntPtr.Zero) RebuildPixmap();
         var needed = _lastFrame.Pixels.Length;
         if (_imageBufferPtr != IntPtr.Zero && _imageBufferSize >= needed && _ximage != IntPtr.Zero) return;
 
@@ -923,7 +931,7 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
             _imagePixmap = IntPtr.Zero;
         }
         _imagePixmap = X11Api.CreatePixmap(_display, _window,
-            (uint)Math.Max(1, _clientSize.Width), (uint)Math.Max(1, _clientSize.Height), _depth);
+            (uint)Math.Max(1, _physicalClientSize.Width), (uint)Math.Max(1, _physicalClientSize.Height), _depth);
 
         DestroyXImage();
     }
@@ -948,6 +956,84 @@ internal sealed unsafe class X11Host : IPlatformHost, IPlatformNativeWindow
         System.Console.Error.WriteLine($"[X11 ERROR] code={e.error_code} req={e.request_code} minor={e.minor_code}: {msg}");
         return 0;
     }
+
+    private float DetectDpiScale()
+    {
+        var resourcesPointer = X11Api.XResourceManagerString(_display);
+        var resources = resourcesPointer != IntPtr.Zero
+            ? Marshal.PtrToStringUTF8(resourcesPointer)
+            : null;
+        var screen = X11Api.ScreenOfDisplay(_display, _screen);
+        var dpi = X11DisplayMetrics.ResolveDpi(
+            resources,
+            X11Api.DisplayWidth(_display, _screen),
+            X11Api.DisplayHeight(_display, _screen),
+            screen != IntPtr.Zero ? X11Api.WidthMMOfScreen(screen) : 0,
+            screen != IntPtr.Zero ? X11Api.HeightMMOfScreen(screen) : 0);
+        return X11DisplayMetrics.DpiToScale(dpi);
+    }
+
+    private double DetectRefreshRate()
+    {
+        if (_refreshRateDetectionFailed) return X11DisplayMetrics.DefaultRefreshRate;
+
+        IntPtr config = IntPtr.Zero;
+        try
+        {
+            config = X11Api.XRRGetScreenInfo(_display, _root);
+            if (config == IntPtr.Zero) throw new InvalidOperationException("XRRGetScreenInfo failed.");
+            var rate = X11Api.XRRConfigCurrentRate(config);
+            var normalized = X11DisplayMetrics.NormalizeRefreshRate(rate);
+            if (normalized != rate) _refreshRateDetectionFailed = true;
+            return normalized;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException
+                                   or EntryPointNotFoundException
+                                   or BadImageFormatException
+                                   or InvalidOperationException)
+        {
+            _refreshRateDetectionFailed = true;
+            return X11DisplayMetrics.DefaultRefreshRate;
+        }
+        finally
+        {
+            if (config != IntPtr.Zero) X11Api.XRRFreeScreenConfigInfo(config);
+        }
+    }
+
+    private void UpdateDisplayMetrics(Size physicalSize, bool refreshDpi)
+    {
+        var oldLogicalSize = _clientSize;
+        var oldPhysicalSize = _physicalClientSize;
+        var oldDpiScale = _dpiScale;
+        if (refreshDpi) _dpiScale = DetectDpiScale();
+        _refreshRate = DetectRefreshRate();
+        UpdateClientSize(physicalSize);
+
+        var dpiChanged = MathF.Abs(oldDpiScale - _dpiScale) > float.Epsilon;
+        var physicalSizeChanged = oldPhysicalSize != _physicalClientSize;
+        if (!dpiChanged && !physicalSizeChanged && oldLogicalSize == _clientSize) return;
+
+        if (physicalSizeChanged && _imagePixmap != IntPtr.Zero) RebuildPixmap();
+
+        if (_renderContext is IDpiResizableRenderContext dpiResizable)
+            dpiResizable.Resize(_clientSize, _dpiScale);
+        else if (_renderContext is IResizableRenderContext resizable)
+            resizable.Resize(_clientSize);
+        SizeChanged?.Invoke(_clientSize);
+    }
+
+    private void UpdateClientSize(Size physicalSize)
+    {
+        _physicalClientSize = physicalSize;
+        _clientSize = new Size(physicalSize.Width / _dpiScale, physicalSize.Height / _dpiScale);
+    }
+
+    private int ToPhysical(int logicalValue)
+        => Math.Max(1, (int)MathF.Round(logicalValue * _dpiScale));
+
+    private Point ToLogicalPoint(float x, float y)
+        => new(x / _dpiScale, y / _dpiScale);
 
     public void Dispose()
     {

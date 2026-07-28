@@ -13,8 +13,8 @@
 | **M1 Phase 1 MVP** | 编译优先可运行 Demo：`.sqx`→C#、Props、ref、基础 CSS、flex 布局、纯 C# 软件渲染、基础控件、事件、Win32 宿主、构建层裁剪、生命周期、NativeAOT 验证 | `.sqx` 示例经 Source Generator 编译为 AOT 可执行，窗口渲染并响应交互；Props 传值校验、ref 操作、`<Show>`/`<For>` 可用 | ✅ 完成 |
 | **M2 CSS 完整化 + 组件组合 + 动画 + 主题** | 默认/具名 Slot、fallback、嵌套组件；`Signal<T>` 跨组件/跨线程通信；完整 Selector/Cascade/Pseudo/Animation；Grid；Theme；元素查询 API | 插槽保持调用方作用域且不产生隐式布局容器；后台信号经 Dispatcher 安全送达 UI；CSS 测试套件通过 | ✅ 完成 |
 | **M3 扩展控件 + 路由** | `Square.Extensions.Routing` 窗口路由、参数、通配符、嵌套 RouterView、守卫、KeepAlive；扩展控件 | 路由可前进/后退、守卫重定向并正确切换生命周期；各控件可交互 | ✅ 完成 |
-| **M4 图形后端扩展** | Vulkan / Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 | 🔄 Vulkan 已落地 |
-| **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 | 🔄 部分完成 |
+| **M4 图形后端扩展** | Vulkan / Skia / Blend2D / Cairo 后端接入（`IRenderContext` 不变） | 同一 Demo 切换后端渲染一致 | 🔄 Vulkan、Skia 已落地；后端合规测试起步 |
+| **M5 跨平台桌面** | Linux(X11)、macOS 平台宿主；高 DPI/高刷新率打磨 | 三桌面平台 AOT 可执行均运行 | 🔄 X11 DPI/刷新率调度已落地，macOS 待实现 |
 | **M6 移动端与 WebAssembly** | Android / iOS / WASM 平台层（最小实现） | 目标平台可启动并渲染基础 UI | ⏳ 计划 |
 | **M7 文本与 Canvas 完整** | BiDi、Font Fallback、Caret/Selection/HitTest 完整、标准 RichTextBox/WYSIWYG 富文本模型与渲染、Canvas `CanvasRenderingContext2D` 兼容层→DrawCommand | 复杂文本/富文本编辑与 Canvas 绘图可运行 | ⏳ 计划 |
 | **M8 工具链** | 完整 Source Generator 诊断、IDE 智能提示/补全、编译期检查 | IDE 内 `.sqx` 报错可定位、可补全 | ⏳ 计划 |
@@ -51,7 +51,7 @@
 [x] Props：`[Prop]` 特性 + `ObservableValue<T>` 包装 + 编译期校验（必填 + 类型）+ `OnPropChanged`
 [x] ref：模板标记 + 强类型字段生成 + 挂载/卸载赋值 + 重复名称诊断
 [x] 示例 + NativeAOT 发布验证 + 基线指标（2.53 MiB EXE，512ms 启动，32 MB 内存）
-[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` + 条件 `ProjectReference` ✓ / trim 注解待添加
+[~] 构建层裁剪：C# `#if` + MSBuild `DefineConstants` + 条件 `ProjectReference` ✓ / 未声明 AOT 兼容的运行时包已启用 trim analyzer，第三方依赖与平台回调验证后再逐包声明兼容性
 [x] 流程控制结构原语：`<Show>`/`<For>`/`<Switch>`/`<Match>` + `ObservableCollection<T>`
 [x] 组件/应用生命周期钩子（OnAttached/OnDetached/OnLoaded/OnUnloaded + Application.OnStart/OnExit）
 
@@ -97,6 +97,7 @@ M2 与架构重建完成后，以下能力作为增量落地，未归入既有 M
 - **平台截图**：`PlatformScreenshot.CaptureByProcessId` / `TryCaptureByProcessId` 按进程 ID 捕获窗口位图，Win32 与 X11 各有实现，按构建层 `PLATFORM_*` 裁剪。
 - **进程内 renderer 截图**：`DesktopApplication.CaptureRendererBitmapAsync()` 在 UI 线程将 DisplayTree 重放到离屏 Software bitmap，不依赖 PID、窗口枚举或桌面合成器；DevTools 与示例 `--screenshot` 默认使用该路径。
 - **原生 Vulkan 后端**：基于 Silk.NET 实现 Windows/Win32 与 Linux/X11 surface、swapchain、批处理、纹理 atlas、MSAA、字体渲染和可选 GPU framebuffer readback；已支持 NativeAOT 系统 loader、内嵌 SPIR-V 与无动态代码的 validation callback。
+- **Skia CPU 后端与后端合规测试**：`Square.Backends.Skia` 支持基础几何、渐变、描边、位图与文本绘制，并按 Win32/X11 条件携带对应 native assets；公共 conformance suite 统一验证 Software、Skia、Vulkan 工厂契约，并对可 headless 创建的 Software/Skia 验证 DPI、capture 与基础像素语义。Vulkan 的真实 surface/readback 合规仍由有 GPU 的集成环境验证。
 - **DevTools NativeAOT**：移除 ASP.NET Core/Kestrel 依赖，改为 loopback `HttpListener`、显式路由与手写 JSON 序列化，主示例 AOT 发布可继续启用截图、输入注入和 Inspector。
 - **PNG 编码与 BMP 解码**：`Square.Graphics.Codecs` 命名空间下，`BitmapPngEncoder` 将 `Bitmap` 编码为 8 位 RGBA PNG（zlib 压缩），`BmpPngConverter` 提供非压缩 24/32 位 BMP 加载与 BMP→PNG 转换，纯 C# 无外部依赖。
 - **SVG 资源与模板 SVG DOM**：`Square.Graphics.Svg.SvgImage` 可从文件、流或字符串加载静态 SVG；SQX/SQV 可直接声明 `svg/g/path/rect/circle/ellipse/line/polyline/polygon`。每个根 `SVGSVGElement` 持有 `SVGDocument : XMLDocument`，内部 SVG 节点由该文档管理并通过现有矢量绘制命令渲染，支持 NativeAOT。
@@ -128,17 +129,17 @@ M2 与架构重建已完成，`.sqv` 前端、扩展模块、截图、PNG、文�
 - M3 扩展控件（ScrollViewer、List、Tree、Swiper、Popup、Dialog、MenuBar/Menu/ContextMenu 已落地；基础范围完成）
 - M4 Vulkan 描边收尾：`LineCap` / `LineJoin` / `MiterLimit`、任意 Path dash、复杂路径抗锯齿场景与真实 GPU readback 自动验证已落地
 - Vulkan NativeAOT：Windows x64 原生发布、启动、GPU readback 与截图回归验证已通过
-- M5 跨平台完善（macOS 宿主、高 DPI/高刷新率）
+- M5 跨平台完善（macOS 宿主；X11 已支持 Xft/物理 DPI fallback 与 XRandR 刷新率驱动调度，后续继续完善多显示器动态 DPI）
 - M9 多目标输出：WinUI host + Software bitmap、SVG exporter、NativeUiNode 原型、Godot 嵌入宿主（见 `docs/Rendering-Targets.md`）
 - M7 标准 RichTextBox/WYSIWYG：富文本 document model、per-range style、selection/run 映射；折叠选区已支持活动样式、相邻 run 样式继承及基础加粗/下划线/斜体操作，DOM `Range` 映射、BiDi 与复杂文本布局仍待完成
-- `.sqv` 前端继续推进：`v-model` 与基础 slots 已落地；下一步是独立 Template IR、scoped slot props、动态参数与解析器归属清理（见 `docs/vue-plan.md` 里程碑 A、E–G）
+- `.sqv` 前端继续推进：动态参数、对象绑定、`v-model` 与整包 scoped slot props 已落地；下一步是独立 Template IR、类型化 scoped slot 解构、自定义组件 `v-model` 与语义诊断（见 `docs/vue-plan.md` 里程碑 F–G）
 - 继续扩展 CSS Grid / Animation 到更完整规范
 
 ---
 
 ## 9. M5 跨平台桌面进度
 
-[~] Linux / X11 平台宿主：窗口、消息循环、鼠标/键盘/滚轮、剪贴板（CLIPBOARD + PRIMARY 中键粘贴）、Software Renderer 通过 `XPutImage` 上屏、原生 Vulkan surface/swapchain/present、构建层 `PLATFORM_X11` 裁剪与交叉发布 ✓ / IME 待实现 / 高 DPI 待实现
+[~] Linux / X11 平台宿主：窗口、消息循环、鼠标/键盘/滚轮、剪贴板（CLIPBOARD + PRIMARY 中键粘贴）、XIM/XIC 文本输入、Software Renderer 通过 `XPutImage` 上屏、原生 Vulkan surface/swapchain/present、构建层 `PLATFORM_X11` 裁剪与交叉发布、Xft/物理 DPI fallback、可选 XRandR 刷新率调度 ✓ / 完整 IME preedit 与候选窗定位、多显示器动态 DPI 待完善
 [~] 跨平台字形栅格化：Windows 走 GDI `GetGlyphOutline` ✓ / Linux 与 macOS 走 StbTrueTypeSharp（纯 C#，无 native 依赖）✓ / 字体回退按脚本（CJK/日/韩）映射到 Noto/Source Han ✓ / Fontconfig 集成待实现
 [ ] macOS 平台宿主
-[ ] 高 DPI / 高刷新率打磨
+[~] 高 DPI / 高刷新率打磨：X11 逻辑/物理坐标和 fractional DPI、刷新率 deadline 调度 ✓ / per-monitor DPI、呈现反馈与热插拔验收待完善

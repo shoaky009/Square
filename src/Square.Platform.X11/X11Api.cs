@@ -174,6 +174,9 @@ internal static partial class X11Api
     [LibraryImport("libX11.so.6", EntryPoint = "XDefaultScreen")]
     public static partial int DefaultScreen(IntPtr display);
 
+    [LibraryImport("libX11.so.6", EntryPoint = "XResourceManagerString")]
+    public static partial IntPtr XResourceManagerString(IntPtr display);
+
     [LibraryImport("libX11.so.6", EntryPoint = "XBlackPixel")]
     public static partial nuint BlackPixel(IntPtr display, int screen);
 
@@ -362,6 +365,15 @@ internal static partial class X11Api
 
     [LibraryImport("libX11.so.6", EntryPoint = "XScreenOfDisplay")]
     public static partial IntPtr ScreenOfDisplay(IntPtr display, int screen);
+
+    [LibraryImport("libXrandr.so.2", EntryPoint = "XRRGetScreenInfo")]
+    public static partial IntPtr XRRGetScreenInfo(IntPtr display, IntPtr drawable);
+
+    [LibraryImport("libXrandr.so.2", EntryPoint = "XRRConfigCurrentRate")]
+    public static partial short XRRConfigCurrentRate(IntPtr config);
+
+    [LibraryImport("libXrandr.so.2", EntryPoint = "XRRFreeScreenConfigInfo")]
+    public static partial void XRRFreeScreenConfigInfo(IntPtr config);
 
     [LibraryImport("libX11.so.6", EntryPoint = "XCreatePixmap")]
     public static partial IntPtr CreatePixmap(IntPtr display, IntPtr drawable, uint width, uint height, int depth);

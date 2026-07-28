@@ -5,6 +5,7 @@
     <IsPackable>true</IsPackable>
     <Description>Square desktop UI framework</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
 
   <ItemGroup>

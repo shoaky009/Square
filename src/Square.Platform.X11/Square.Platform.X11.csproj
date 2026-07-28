@@ -5,6 +5,7 @@
     <IsPackable>true</IsPackable>
     <Description>Square X11 platform host</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
 
   <ItemGroup>

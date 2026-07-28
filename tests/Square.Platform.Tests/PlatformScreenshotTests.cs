@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using Square.Platform;
 #if PLATFORM_WIN32
 using Square.Platform.Win32;
@@ -37,6 +38,9 @@ public class PlatformScreenshotTests
     [Fact]
     public void CaptureByProcessIdReportsMissingWindow()
     {
+#if PLATFORM_X11
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return;
+#endif
         Assert.Throws<InvalidOperationException>(() => PlatformScreenshot.CaptureByProcessId(int.MaxValue));
     }
 }

@@ -11,6 +11,7 @@ public sealed class VulkanBackendFactory : IRenderBackendFactory
 
     public IRenderContext CreateContext(RenderContextCreateInfo info)
     {
+        ArgumentNullException.ThrowIfNull(info);
         if (info.NativeTarget is null)
             throw new VulkanException("Vulkan backend requires a platform NativeTarget (Win32VulkanRenderTarget or X11VulkanRenderTarget).");
 
