@@ -64,6 +64,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private const float DefaultFontSize = 14f;
     private const float ContentPaddingX = 8f;
     private const float ContentPaddingY = 8f;
+    private const int MaxHistoryEntries = 100;
     private int _caretIndex;
     private int _selectionAnchor;
     private bool _isDragging;
@@ -74,6 +75,10 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     private double _nextCaretTransitionSeconds;
     private Animation<float>? _caretBlinkAnimation;
     private readonly System.Diagnostics.Stopwatch _caretClock = System.Diagnostics.Stopwatch.StartNew();
+    private readonly List<EditorSnapshot> _undoHistory = [];
+    private readonly List<EditorSnapshot> _redoHistory = [];
+    private bool _updatingValue;
+    private string _knownValue = "";
 
     protected abstract bool IsMultiline { get; }
     protected virtual bool CanEditText => true;
@@ -117,6 +122,10 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     public virtual bool CanCopySelection => true;
     /// <inheritdoc/>
     public virtual bool CanCutSelection => true;
+    /// <summary>是否存在可撤销的编辑。</summary>
+    public bool CanUndo => _undoHistory.Count > 0;
+    /// <summary>是否存在可重做的编辑。</summary>
+    public bool CanRedo => _redoHistory.Count > 0;
     /// <inheritdoc/>
     public Rect CaretRect => GetCaretRect();
     /// <summary>选区背景色。</summary>
@@ -205,6 +214,15 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         if (!IsEnabled) return;
         switch (keyCode)
         {
+            case 90 when CanEditText && control && shift:
+                Redo();
+                return;
+            case 90 when CanEditText && control:
+                Undo();
+                return;
+            case 89 when CanEditText && control:
+                Redo();
+                return;
             case 8 when CanEditText:
                 Backspace();
                 return;
@@ -310,6 +328,26 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         return true;
     }
 
+    /// <summary>撤销最近一次用户编辑。</summary>
+    public bool Undo()
+    {
+        if (!CanEditText || _undoHistory.Count == 0) return false;
+        var snapshot = Pop(_undoHistory);
+        PushHistory(_redoHistory, CaptureSnapshot());
+        RestoreSnapshot(snapshot);
+        return true;
+    }
+
+    /// <summary>重做最近一次已撤销的用户编辑。</summary>
+    public bool Redo()
+    {
+        if (!CanEditText || _redoHistory.Count == 0) return false;
+        var snapshot = Pop(_redoHistory);
+        PushHistory(_undoHistory, CaptureSnapshot());
+        RestoreSnapshot(snapshot);
+        return true;
+    }
+
     /// <inheritdoc/>
     public bool ToggleCaretBlink()
     {
@@ -354,6 +392,13 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     {
         base.OnPropertyChanged(name);
         if (name != nameof(Value)) return;
+        var value = Value;
+        if (!_updatingValue && !string.Equals(value, _knownValue, StringComparison.Ordinal))
+        {
+            _undoHistory.Clear();
+            _redoHistory.Clear();
+        }
+        _knownValue = value;
         if (!IsFocused)
         {
             _caretIndex = Value.Length;
@@ -368,9 +413,14 @@ public abstract class TextEditorBase : UIElement, ITextEditor
 
     private void ReplaceSelection(string replacement)
     {
+        var before = CaptureSnapshot();
         var start = SelectionStart;
         var length = SelectionLength;
-        Value = Value.Remove(start, length).Insert(start, replacement);
+        var nextValue = Value.Remove(start, length).Insert(start, replacement);
+        if (nextValue == Value && length == 0) return;
+        PushHistory(_undoHistory, before);
+        _redoHistory.Clear();
+        SetValueFromEdit(nextValue);
         _caretIndex = start + replacement.Length;
         _selectionAnchor = _caretIndex;
         _preferredX = null;
@@ -378,6 +428,48 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         EnsureCaretVisible();
         DispatchEvent(StandardEvents.CreateInput());
         InvalidatePaint();
+    }
+
+    private EditorSnapshot CaptureSnapshot() => new(Value, _caretIndex);
+
+    private void RestoreSnapshot(EditorSnapshot snapshot)
+    {
+        SetValueFromEdit(snapshot.Value);
+        _caretIndex = Math.Clamp(snapshot.Caret, 0, Value.Length);
+        _selectionAnchor = _caretIndex;
+        _preferredX = null;
+        ResetCaretBlink();
+        EnsureCaretVisible();
+        DispatchEvent(StandardEvents.CreateInput());
+        InvalidatePaint();
+    }
+
+    private void SetValueFromEdit(string value)
+    {
+        _updatingValue = true;
+        try
+        {
+            Value = value;
+        }
+        finally
+        {
+            _updatingValue = false;
+        }
+    }
+
+    private static EditorSnapshot Pop(List<EditorSnapshot> history)
+    {
+        var index = history.Count - 1;
+        var snapshot = history[index];
+        history.RemoveAt(index);
+        return snapshot;
+    }
+
+    private static void PushHistory(List<EditorSnapshot> history, EditorSnapshot snapshot)
+    {
+        if (history.Count == MaxHistoryEntries)
+            history.RemoveAt(0);
+        history.Add(snapshot);
     }
 
     private void Backspace()
@@ -678,6 +770,8 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     {
         internal int End => Start + Length;
     }
+
+    private readonly record struct EditorSnapshot(string Value, int Caret);
 }
 
 /// <summary>单行输入框，支持 <c>text</c>、<c>password</c>、<c>number</c> 类型。</summary>

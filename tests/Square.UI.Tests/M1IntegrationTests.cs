@@ -387,6 +387,91 @@ public class M1IntegrationTests
     }
 
     [Fact]
+    public void InputSupportsUndoAndRedoShortcuts()
+    {
+        var input = new Input();
+
+        input.HandleTextInput("hello");
+        input.HandleTextInput(" world");
+        Assert.True(input.CanUndo);
+        Assert.False(input.CanRedo);
+
+        input.HandleKey(90, control: true);
+        Assert.Equal("hello", input.Value);
+        Assert.True(input.CanRedo);
+
+        input.HandleKey(90, control: true, shift: true);
+        Assert.Equal("hello world", input.Value);
+
+        input.HandleKey(90, control: true);
+        input.HandleKey(89, control: true);
+        Assert.Equal("hello world", input.Value);
+    }
+
+    [Fact]
+    public void TextAreaUndoRestoresSelectionReplacementAndDeletion()
+    {
+        var textArea = new TextArea { Value = "first\nsecond" };
+        textArea.Focus();
+        textArea.HandleKey(36, control: true);
+        for (var i = 0; i < 5; i++) textArea.HandleKey(39);
+        for (var i = 0; i < 7; i++) textArea.HandleKey(39, shift: true);
+
+        textArea.HandleTextInput("changed");
+        Assert.Equal("firstchanged", textArea.Value);
+        textArea.HandleKey(90, control: true);
+        Assert.Equal("first\nsecond", textArea.Value);
+        Assert.Equal(0, textArea.SelectionLength);
+
+        textArea.HandleKey(36, control: true);
+        for (var i = 0; i < 5; i++) textArea.HandleKey(39);
+        for (var i = 0; i < 7; i++) textArea.HandleKey(39, shift: true);
+        textArea.HandleKey(46);
+        Assert.Equal("first", textArea.Value);
+        textArea.HandleKey(90, control: true);
+        Assert.Equal("first\nsecond", textArea.Value);
+        Assert.Equal(0, textArea.SelectionLength);
+    }
+
+    [Fact]
+    public void NewEditClearsRedoAndProgrammaticValueResetsHistory()
+    {
+        var input = new Input();
+        input.HandleTextInput("one");
+        input.HandleTextInput("two");
+        input.Undo();
+
+        input.HandleTextInput("three");
+        Assert.False(input.CanRedo);
+        Assert.Equal("onethree", input.Value);
+
+        input.Value = "external";
+        Assert.False(input.CanUndo);
+        Assert.False(input.CanRedo);
+    }
+
+    [Fact]
+    public void ObservableBindingEchoDoesNotClearTextAreaUndoHistory()
+    {
+        var component = new Main();
+        component.BuildElementTree();
+        var textPage = Assert.Single(component.QueryAll<TextSamplesPage>());
+        var textArea = Assert.Single(
+            textPage.QueryAll<TextArea>(),
+            editor => editor.ClassList.Contains("editor-multiline"));
+        var original = textArea.Value;
+
+        textArea.SelectAll();
+        textArea.HandleTextInput("changed");
+        Assert.Equal("changed", textPage.Notes.Value);
+        Assert.True(textArea.CanUndo);
+
+        textArea.HandleKey(90, control: true);
+        Assert.Equal(original, textArea.Value);
+        Assert.Equal(original, textPage.Notes.Value);
+    }
+
+    [Fact]
     public void UserSelectTextEnablesSelectableTextAndInheritsToChildren()
     {
         var parent = new View();
