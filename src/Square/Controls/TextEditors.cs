@@ -2,6 +2,7 @@ using System.Text;
 using Square.Controls.Animation;
 using Square.Events;
 using Square.Graphics;
+using Square.Platform;
 using Square.UI;
 
 namespace Square.Controls;
@@ -28,8 +29,13 @@ public interface ITextEditor
     void HandleTextInput(string text);
     /// <summary>处理键盘按键。</summary>
     void HandleKey(int keyCode, bool shift = false, bool control = false);
-    /// <summary>处理指针按下。</summary>
-    void HandlePointerDown(Point point, bool extendSelection = false);
+    /// <summary>
+    /// 处理指针按下。
+    /// 返回 <c>true</c> 表示进入文本拖选；返回 <c>false</c> 表示点击已被控件消费（如 gutter 折叠 / Alt 多光标），宿主不应开始拖选。
+    /// </summary>
+    /// <param name="extendSelection">Shift 扩展选区。</param>
+    /// <param name="addCursor">Alt 添加光标（多光标编辑器可选支持）。</param>
+    bool HandlePointerDown(Point point, bool extendSelection = false, bool addCursor = false);
     /// <summary>处理指针移动。</summary>
     void HandlePointerMove(Point point);
     /// <summary>处理指针抬起。</summary>
@@ -44,6 +50,12 @@ public interface ITextEditor
     bool ToggleCaretBlink();
     /// <summary>重置光标闪烁状态。</summary>
     void ResetCaretBlink();
+
+    /// <summary>
+    /// 按指针位置解析光标样式；返回 <c>null</c> 时宿主使用默认文本光标。
+    /// 用于行号/折叠槽等非编辑区域显示箭头。
+    /// </summary>
+    CursorKind? ResolveCursorAt(Point point) => null;
 }
 
 /// <summary>文本编辑器基类，提供光标、选区、键盘与指针交互的通用实现。</summary>
@@ -232,9 +244,10 @@ public abstract class TextEditorBase : UIElement, ITextEditor
     }
 
     /// <inheritdoc/>
-    public void HandlePointerDown(Point point, bool extendSelection = false)
+    public bool HandlePointerDown(Point point, bool extendSelection = false, bool addCursor = false)
     {
-        if (!IsEnabled) return;
+        if (!IsEnabled) return false;
+        _ = addCursor;
         var index = HitTestIndex(point);
         if (!extendSelection) _selectionAnchor = index;
         _caretIndex = index;
@@ -242,6 +255,7 @@ public abstract class TextEditorBase : UIElement, ITextEditor
         _preferredX = null;
         ResetCaretBlink();
         InvalidatePaint();
+        return true;
     }
 
     /// <inheritdoc/>

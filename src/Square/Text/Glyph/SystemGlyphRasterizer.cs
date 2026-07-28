@@ -27,7 +27,10 @@ public sealed class RasterizedGlyph
 /// <summary>系统字形光栅器，优先使用 Win32 GDI，不可用时回退到 stb_truetype。</summary>
 public sealed partial class SystemGlyphRasterizer
 {
+    internal static SystemGlyphRasterizer Shared { get; } = new();
+
     private readonly Dictionary<GlyphKey, RasterizedGlyph?> _cache = [];
+    private readonly object _cacheGate = new();
     private readonly StbGlyphRasterizer _stbRasterizer = new();
     private readonly bool _cacheGlyphs;
 
@@ -42,7 +45,11 @@ public sealed partial class SystemGlyphRasterizer
     public bool IsAvailable => OperatingSystem.IsWindows() || _stbRasterizer.IsAvailable;
 
     /// <summary>清空字形缓存。</summary>
-    public void Clear() => _cache.Clear();
+    public void Clear()
+    {
+        lock (_cacheGate)
+            _cache.Clear();
+    }
 
     /// <summary>光栅化指定字体的单个字符，返回字形位图与度量；不可用或失败时返回 null。</summary>
     /// <param name="font">目标字体。</param>
@@ -55,13 +62,21 @@ public sealed partial class SystemGlyphRasterizer
             ? font
             : new Font(family, font.Size, font.Weight, font.Style);
         var key = new GlyphKey(effectiveFont.Family, effectiveFont.Size, effectiveFont.Weight, effectiveFont.Style, character);
-        if (_cacheGlyphs && _cache.TryGetValue(key, out var cached)) return cached;
+        if (!_cacheGlyphs)
+            return OperatingSystem.IsWindows() && !FontCollection.Shared.IsCustomFamily(effectiveFont.Family)
+                ? RasterizeWin32(effectiveFont, character)
+                : _stbRasterizer.Rasterize(effectiveFont, character);
 
-        var glyph = OperatingSystem.IsWindows() && !FontCollection.Shared.IsCustomFamily(effectiveFont.Family)
-            ? RasterizeWin32(effectiveFont, character)
-            : _stbRasterizer.Rasterize(effectiveFont, character);
-        if (_cacheGlyphs) _cache[key] = glyph;
-        return glyph;
+        lock (_cacheGate)
+        {
+            if (_cache.TryGetValue(key, out var cached)) return cached;
+
+            var glyph = OperatingSystem.IsWindows() && !FontCollection.Shared.IsCustomFamily(effectiveFont.Family)
+                ? RasterizeWin32(effectiveFont, character)
+                : _stbRasterizer.Rasterize(effectiveFont, character);
+            _cache[key] = glyph;
+            return glyph;
+        }
     }
 
     private static string ResolveFontFamily(string requestedFamily, char character)
@@ -262,7 +277,7 @@ public sealed partial class SystemGlyphRasterizer
 
 internal static class SystemTextMeasurementRegistration
 {
-    private static readonly SystemGlyphRasterizer Rasterizer = new();
+    private static readonly SystemGlyphRasterizer Rasterizer = SystemGlyphRasterizer.Shared;
     private static readonly ITextMetricsProvider MetricsProvider = new SystemTextMetricsProvider(Rasterizer);
     private static readonly object Sync = new();
 

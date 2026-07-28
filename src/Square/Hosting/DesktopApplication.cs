@@ -613,7 +613,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         {
             var isSelectingDocumentText = _textSelection is { IsSelecting: true };
             var needsRender = isSelectingDocumentText ? false : UpdateHoverPath(hit);
-            _host.Cursor = ResolveCursor(hit);
+            _host.Cursor = ResolveCursor(hit, point);
             if (_isSelectingText && _focusedEditor != null)
             {
                 _focusedEditor.HandlePointerMove(MapPointerPoint(_focusedInput, point));
@@ -721,9 +721,13 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         {
             ClearDocumentSelection();
             var editorPoint = MapPointerPoint(editorElement, point);
-            editor.HandlePointerDown(editorPoint, CurrentModifiers.HasFlag(KeyModifiers.Shift));
-            if (selectWord) editor.SelectWordAt(editorPoint);
-            _isSelectingText = true;
+            var startedDrag = editor.HandlePointerDown(
+                editorPoint,
+                CurrentModifiers.HasFlag(KeyModifiers.Shift),
+                CurrentModifiers.HasFlag(KeyModifiers.Alt));
+            if (selectWord && startedDrag) editor.SelectWordAt(editorPoint);
+            // gutter/折叠等消费点击时返回 false：保留选区，不进入拖选
+            _isSelectingText = startedDrag;
             return;
         }
 
@@ -782,7 +786,7 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         return null;
     }
 
-    private static CursorKind ResolveCursor(Element? hit)
+    private static CursorKind ResolveCursor(Element? hit, Point point)
     {
         for (var current = hit; current != null; current = current.Parent)
         {
@@ -804,7 +808,8 @@ public sealed class DesktopApplication : Application, IAppWindowRuntime
         for (var current = hit; current != null; current = current.Parent)
         {
             if (current is Link link) return link.IsEnabled ? CursorKind.Hand : CursorKind.Arrow;
-            if (current is ITextEditor) return CursorKind.Text;
+            if (current is ITextEditor editor)
+                return editor.ResolveCursorAt(point) ?? CursorKind.Text;
         }
 
         return FindUserSelectRoot(hit) != null ? CursorKind.Text : CursorKind.Arrow;

@@ -35,7 +35,7 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     private Rect[] _scaledDirtyRects = [];
     private Matrix3x2 _currentTransform;
     private float _currentOpacity = 1f;
-    private readonly SystemGlyphRasterizer _glyphRasterizer = new();
+    private readonly SystemGlyphRasterizer _glyphRasterizer = SystemGlyphRasterizer.Shared;
 
     public Size CanvasSize => _canvasSize;
     public float DpiScale => _dpiScale;
@@ -326,13 +326,11 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
     public void Resize(Size canvasSize, float dpiScale)
     {
         dpiScale = NormalizeDpiScale(dpiScale);
-        var dpiChanged = MathF.Abs(_dpiScale - dpiScale) > float.Epsilon;
         var width = Math.Max(1, (int)MathF.Ceiling(canvasSize.Width * dpiScale));
         var height = Math.Max(1, (int)MathF.Ceiling(canvasSize.Height * dpiScale));
 
         _canvasSize = canvasSize;
         _dpiScale = dpiScale;
-        if (dpiChanged) _glyphRasterizer.Clear();
         _transformStack.Clear();
         _opacityStack.Clear();
         _currentOpacity = 1f;
@@ -383,7 +381,6 @@ internal sealed class RenderContext : IRenderContext, IDpiResizableRenderContext
 
     public void Dispose()
     {
-        _glyphRasterizer.Clear();
         _clipStack.Clear();
         _transformStack.Clear();
         _opacityStack.Clear();

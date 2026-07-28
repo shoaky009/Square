@@ -73,8 +73,26 @@ public sealed class DisplayTree
             if (node.Element.NeedsPaint)
             {
                 node.IsDirty = true;
+                var partial = !node.Element.IsPaintFullDirty && node.Element.PaintDirtyRects.Count > 0;
+                var partialRects = partial ? node.Element.PaintDirtyRects.ToArray() : null;
                 node.RebuildCommands();
-                _dirtyRects.Add(PadAndSnap(Translate(Union(oldVisualBounds, node.VisualBounds), visualOffset)));
+                if (partialRects is { Length: > 0 })
+                {
+                    var origin = node.Element.Geometry;
+                    foreach (var local in partialRects)
+                    {
+                        var absolute = new Rect(
+                            origin.X + local.X,
+                            origin.Y + local.Y,
+                            local.Width,
+                            local.Height);
+                        _dirtyRects.Add(PadAndSnap(Translate(absolute, visualOffset)));
+                    }
+                }
+                else
+                {
+                    _dirtyRects.Add(PadAndSnap(Translate(Union(oldVisualBounds, node.VisualBounds), visualOffset)));
+                }
             }
 
             var popupBounds = GetPopupVisualBounds(node.Element);

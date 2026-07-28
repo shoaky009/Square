@@ -470,7 +470,8 @@ public class M1IntegrationTests
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
         link.Style.ClearCascaded();
-        var cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link]));
+        var origin = new Point(0, 0);
+        var cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link, origin]));
         link.DispatchEvent(StandardEvents.CreateClick());
 
         Assert.Equal(CursorKind.Hand, cursor);
@@ -478,7 +479,7 @@ public class M1IntegrationTests
 
         link.IsEnabled = false;
         link.Style.ClearCascaded();
-        cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link]));
+        cursor = Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link, origin]));
         link.DispatchEvent(StandardEvents.CreateClick());
         Assert.Equal(CursorKind.Arrow, cursor);
         Assert.Equal(1, link.ActivationCount);
@@ -493,19 +494,20 @@ public class M1IntegrationTests
         var resolveCursor = typeof(Square.Hosting.DesktopApplication).GetMethod(
             "ResolveCursor",
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var origin = new Point(0, 0);
 
         parent.Style.Set("cursor", "pointer");
-        Assert.Equal(CursorKind.Hand, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+        Assert.Equal(CursorKind.Hand, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child, origin])));
 
         child.Style.Set("cursor", "text");
-        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child, origin])));
 
         child.Style.Set("cursor", "default");
-        Assert.Equal(CursorKind.Arrow, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child])));
+        Assert.Equal(CursorKind.Arrow, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [child, origin])));
 
         var link = new TrackingLink("Open", "https://example.test");
         link.Style.Set("cursor", "text");
-        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link])));
+        Assert.Equal(CursorKind.Text, Assert.IsType<CursorKind>(resolveCursor.Invoke(null, [link, origin])));
     }
 
     [Fact]

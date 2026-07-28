@@ -496,9 +496,12 @@ public sealed class MenuSeparator : UIElement
     public override void Paint(IRenderContext context)
     {
         var y = Geometry.Y + Geometry.Height / 2f;
+        var color = ControlDrawing.GetStyledColor(this, "color",
+            ControlDrawing.GetStyledColor(this, "background", Color.FromRgb(218, 221, 225)));
+        if (color.A == 0) color = Color.FromRgb(218, 221, 225);
         context.DrawPath(PathGeometry.Create()
             .MoveTo(new Point(Geometry.X + 8, y))
-            .LineTo(new Point(Geometry.Right - 8, y)), Pen.FromColor(Color.FromRgb(218, 221, 225)));
+            .LineTo(new Point(Geometry.Right - 8, y)), Pen.FromColor(color));
     }
 
     /// <inheritdoc/>

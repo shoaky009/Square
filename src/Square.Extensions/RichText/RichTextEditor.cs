@@ -226,13 +226,15 @@ public sealed class RichTextEditor : UIElement, ITextEditor
         DispatchInputChanged();
     }
 
-    public void HandlePointerDown(Point point, bool extendSelection = false)
+    public bool HandlePointerDown(Point point, bool extendSelection = false, bool addCursor = false)
     {
+        _ = addCursor;
         var position = HitTestPosition(point);
         SetSelection(extendSelection
             ? new RichTextSelection(_state.Selection.Anchor, position)
             : RichTextSelection.Collapsed(position));
         _isDragging = true;
+        return true;
     }
 
     public void HandlePointerMove(Point point)

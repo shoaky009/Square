@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <Description>Code editor control for Square: viewport editing, VS Code language configuration, Monaco Monarch highlighting</Description>
+    <PackageTags>$(PackageTags);codepad;editor;monaco;syntax;highlight</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Square\Square.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Square.Extensions.CodePad.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="docs\**\*" Pack="false" />
+    <EmbeddedResource Include="Languages\**\*.json" Condition="Exists('Languages')" />
+  </ItemGroup>
+
+</Project>

@@ -21,6 +21,8 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     private bool _isVisible = true;
     private bool _isLayoutDirty = true;
     private bool _needsPaint = true;
+    private bool _paintFullDirty = true;
+    private List<Rect>? _paintDirtyRects;
     private Size _scrollContentSize;
     private Point _scrollOffset;
     private int _zIndex;
@@ -635,14 +637,47 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     {
         _isLayoutDirty = true;
         _needsPaint = true;
+        _paintFullDirty = true;
+        _paintDirtyRects?.Clear();
         Parent?.InvalidateLayout();
     }
 
-    /// <summary>仅标记绘制失效（Square 扩展）。</summary>
+    /// <summary>仅标记绘制失效（Square 扩展；整控件脏）。</summary>
     public virtual void InvalidatePaint()
     {
         _needsPaint = true;
+        _paintFullDirty = true;
+        _paintDirtyRects?.Clear();
     }
+
+    /// <summary>
+    /// 标记局部绘制失效（Square 扩展）。
+    /// 命令仍会整节点重建，但 DisplayTree 可只 Present 这些矩形（用于光标闪烁等）。
+    /// <paramref name="localRect"/> 为相对本节点 Geometry 的局部坐标。
+    /// </summary>
+    public virtual void InvalidatePaint(Rect localRect)
+    {
+        if (localRect.IsEmpty)
+        {
+            InvalidatePaint();
+            return;
+        }
+        if (_paintFullDirty)
+        {
+            _needsPaint = true;
+            return;
+        }
+        _needsPaint = true;
+        _paintDirtyRects ??= [];
+        _paintDirtyRects.Add(localRect);
+    }
+
+    /// <summary>是否已标记为整控件绘制脏。</summary>
+    public bool IsPaintFullDirty => _paintFullDirty;
+
+    /// <summary>局部绘制脏矩形（相对 Geometry；整控件脏时为空）。</summary>
+    public IReadOnlyList<Rect> PaintDirtyRects =>
+        _paintFullDirty || _paintDirtyRects == null ? Array.Empty<Rect>() : _paintDirtyRects;
 
     /// <summary>按失效标志触发对应的重绘/重布局/样式失效流程（Square 扩展）。</summary>
     public void Invalidate(ElementInvalidation invalidation)
@@ -692,7 +727,12 @@ public abstract class Element : Node, IComponentLifecycle, ILayoutLifecycle
     public void ClearLayoutDirty() => _isLayoutDirty = false;
 
     /// <summary>清除绘制脏标记（由 DisplayTree 在收集命令后调用）。</summary>
-    public void ClearPaintDirty() => _needsPaint = false;
+    public void ClearPaintDirty()
+    {
+        _needsPaint = false;
+        _paintFullDirty = false;
+        _paintDirtyRects?.Clear();
+    }
 
     /// <summary>属性变更时的扩展点。</summary>
     protected virtual void OnPropertyChanged(string name) { }
