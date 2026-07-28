@@ -141,7 +141,13 @@ internal sealed class SkiaRenderContext : IRenderContext, IDpiResizableRenderCon
                     ? measured
                     : TextLayout.MeasureRuneAdvance(rune, text.Font);
                 using var skFont = SkiaRegistration.TextMetricsProvider.CreateFont(text.Font, rune.Value);
-                _canvas.DrawText(rune.ToString(), SnapToPhysicalPixel(x), SnapToPhysicalPixel(baseline), skFont, paint);
+                _canvas.DrawText(
+                    rune.ToString(),
+                    SnapToPhysicalPixel(x),
+                    SnapToPhysicalPixel(baseline),
+                    SKTextAlign.Left,
+                    skFont,
+                    paint);
                 x += advance;
                 offset += consumed;
             }
@@ -159,7 +165,12 @@ internal sealed class SkiaRenderContext : IRenderContext, IDpiResizableRenderCon
             IsAntialias = true,
             Color = new SKColor(255, 255, 255, OpacityByte(255))
         };
-        _canvas.DrawBitmap(cached.Bitmap, ToSkRect(sourceRect), ToSkRect(dest), paint);
+        _canvas.DrawBitmap(
+            cached.Bitmap,
+            ToSkRect(sourceRect),
+            ToSkRect(dest),
+            new SKSamplingOptions(SKFilterMode.Linear),
+            paint);
     }
 
     public void PushLayer(Rect bounds, float opacity)
@@ -366,51 +377,50 @@ internal sealed class SkiaRenderContext : IRenderContext, IDpiResizableRenderCon
     private static SKPath CreatePath(Geometry geometry)
     {
         if (geometry is Path path) return CreatePath(path);
-        var result = new SKPath();
+        using var builder = new SKPathBuilder();
         switch (geometry)
         {
             case RectGeometry rect:
-                result.AddRect(ToSkRect(rect.Rect));
+                builder.AddRect(ToSkRect(rect.Rect));
                 break;
             case RoundedRectGeometry rounded:
-                result.AddRoundRect(ToSkRect(rounded.Rect), rounded.RadiusX, rounded.RadiusY);
+                builder.AddRoundRect(ToSkRect(rounded.Rect), rounded.RadiusX, rounded.RadiusY);
                 break;
             case EllipseGeometry ellipse:
-                result.AddOval(new SKRect(
+                builder.AddOval(new SKRect(
                     ellipse.Center.X - ellipse.RadiusX,
                     ellipse.Center.Y - ellipse.RadiusY,
                     ellipse.Center.X + ellipse.RadiusX,
                     ellipse.Center.Y + ellipse.RadiusY));
                 break;
             default:
-                result.Dispose();
                 throw new NotSupportedException($"Skia rendering does not support geometry type '{geometry.GetType().Name}'.");
         }
-        return result;
+        return builder.Detach();
     }
 
     private static SKPath CreatePath(Path path)
     {
-        var result = new SKPath();
+        using var builder = new SKPathBuilder();
         foreach (var command in path.Commands)
         {
             switch (command)
             {
                 case MoveToCmd move:
-                    result.MoveTo(move.Point.X, move.Point.Y);
+                    builder.MoveTo(move.Point.X, move.Point.Y);
                     break;
                 case LineToCmd line:
-                    result.LineTo(line.Point.X, line.Point.Y);
+                    builder.LineTo(line.Point.X, line.Point.Y);
                     break;
                 case ArcToCmd arc:
-                    result.ArcTo(ToSkRect(arc.Oval), arc.StartAngle, arc.SweepAngle, forceMoveTo: false);
+                    builder.ArcTo(ToSkRect(arc.Oval), arc.StartAngle, arc.SweepAngle, forceMoveTo: false);
                     break;
                 case CloseCmd:
-                    result.Close();
+                    builder.Close();
                     break;
             }
         }
-        return result;
+        return builder.Detach();
     }
 
     private void CopyFramebufferTo(Bitmap bitmap)
